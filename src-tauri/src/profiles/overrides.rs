@@ -110,6 +110,7 @@ mod tests {
         p.credentials.push(CredentialMeta {
             host: "github.com".into(),
             username: "ada".into(),
+            oauth: false,
         });
         let o = p.git_overrides(Some(helper)).unwrap();
         let helpers: Vec<_> = o

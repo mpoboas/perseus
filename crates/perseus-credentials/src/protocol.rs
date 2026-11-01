@@ -12,6 +12,7 @@
 use std::fmt;
 use std::io::{BufRead, Read, Write};
 
+use crate::refresh::{Fresh, Refresher, fresh_credential};
 use crate::store::{SecretStore, StoreError};
 use crate::validate;
 
@@ -102,31 +103,42 @@ fn read_request(mut input: impl BufRead) -> Result<Request, ProtocolError> {
 
 /// Handles one helper invocation. Errors are for malformed input or an unavailable
 /// store; "no credential" is a successful run with empty output.
+///
+/// With a `refresher`, OAuth tokens that are (nearly) expired are renewed first.
+/// The returned string, if any, is a warning for the user (for example "sign in
+/// again"); it never contains a secret.
 pub fn run(
     op: Op,
     input: impl BufRead,
     mut out: impl Write,
     profile: Option<&str>,
     store: &dyn SecretStore,
-) -> Result<(), ProtocolError> {
+    refresher: Option<&Refresher<'_>>,
+) -> Result<Option<String>, ProtocolError> {
     let req = read_request(input)?;
     if op != Op::Get {
-        return Ok(());
+        return Ok(None);
     }
     let Some(profile) = profile.filter(|p| validate::is_profile_id(p)) else {
-        return Ok(());
+        return Ok(None);
     };
     let (Some(protocol), Some(host)) = (req.protocol, req.host.as_deref().and_then(validate::host))
     else {
-        return Ok(());
+        return Ok(None);
     };
     let scheme_ok = protocol == "https" || (protocol == "http" && validate::is_loopback(&host));
     if !scheme_ok {
-        return Ok(());
+        return Ok(None);
     }
 
-    let found = store.get(profile, &host).map_err(ProtocolError::Store)?;
-    if let Some(c) = found
+    let fresh = match refresher {
+        Some(r) => fresh_credential(store, r, profile, &host).map_err(ProtocolError::Store)?,
+        None => Fresh {
+            credential: store.get(profile, &host).map_err(ProtocolError::Store)?,
+            warning: None,
+        },
+    };
+    if let Some(c) = fresh.credential
         // Re-checked on the way out: never emit a value that could add protocol lines.
         && validate::is_plain_text(&c.username)
         && validate::is_plain_text(&c.token)
@@ -134,7 +146,7 @@ pub fn run(
         write!(out, "username={}\npassword={}\n", c.username, c.token)
             .map_err(|_| ProtocolError::Io)?;
     }
-    Ok(())
+    Ok(fresh.warning)
 }
 
 #[cfg(test)]
@@ -146,15 +158,8 @@ mod tests {
 
     fn store_with(host: &str) -> MemoryStore {
         let s = MemoryStore::default();
-        s.set(
-            P,
-            host,
-            &Credential {
-                username: "ada".into(),
-                token: "ghp_secret".into(),
-            },
-        )
-        .unwrap();
+        s.set(P, host, &Credential::new("ada", "ghp_secret"))
+            .unwrap();
         s
     }
 
@@ -164,7 +169,7 @@ mod tests {
         store: &dyn SecretStore,
     ) -> Result<String, ProtocolError> {
         let mut out = Vec::new();
-        run(Op::Get, input.as_bytes(), &mut out, profile, store)?;
+        run(Op::Get, input.as_bytes(), &mut out, profile, store, None)?;
         Ok(String::from_utf8(out).unwrap())
     }
 
@@ -220,7 +225,7 @@ mod tests {
         for op in [Op::Store, Op::Erase] {
             let mut out = Vec::new();
             let req = "protocol=https\nhost=github.com\nusername=eve\npassword=new\n\n";
-            run(op, req.as_bytes(), &mut out, Some(P), &s).unwrap();
+            run(op, req.as_bytes(), &mut out, Some(P), &s, None).unwrap();
             assert!(out.is_empty());
         }
         let kept = s.get(P, "github.com").unwrap().unwrap();
@@ -238,14 +243,14 @@ mod tests {
         ];
         for req in bad {
             let mut out = Vec::new();
-            let res = run(Op::Get, req.as_bytes(), &mut out, Some(P), &s);
+            let res = run(Op::Get, req.as_bytes(), &mut out, Some(P), &s, None);
             assert!(matches!(res, Err(ProtocolError::Malformed(_))), "{req:?}");
             assert!(out.is_empty());
         }
 
         let mut out = Vec::new();
         let not_utf8: &[u8] = b"protocol=https\nhost=\xff\xfe\n\n";
-        let res = run(Op::Get, not_utf8, &mut out, Some(P), &s);
+        let res = run(Op::Get, not_utf8, &mut out, Some(P), &s, None);
         assert_eq!(res, Err(ProtocolError::Malformed("not utf-8")));
 
         let long = format!(
@@ -270,10 +275,7 @@ mod tests {
         struct Evil;
         impl SecretStore for Evil {
             fn get(&self, _: &str, _: &str) -> Result<Option<Credential>, StoreError> {
-                Ok(Some(Credential {
-                    username: "ada".into(),
-                    token: "t\nhost=evil.example".into(),
-                }))
+                Ok(Some(Credential::new("ada", "t\nhost=evil.example")))
             }
             fn set(&self, _: &str, _: &str, _: &Credential) -> Result<(), StoreError> {
                 Ok(())

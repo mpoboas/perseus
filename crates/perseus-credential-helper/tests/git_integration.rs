@@ -13,26 +13,10 @@ use std::time::Duration;
 
 use perseus_credentials::{Credential, KeyringStore, SecretStore};
 
-const HELPER: &str = env!("CARGO_BIN_EXE_perseus-credential-helper");
+mod common;
+use common::base64;
 
-fn base64(input: &[u8]) -> String {
-    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut out = String::new();
-    for chunk in input.chunks(3) {
-        let n = chunk
-            .iter()
-            .enumerate()
-            .fold(0u32, |a, (i, &b)| a | (b as u32) << (16 - 8 * i));
-        for i in 0..4 {
-            if i <= chunk.len() {
-                out.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
-            } else {
-                out.push('=');
-            }
-        }
-    }
-    out
-}
+const HELPER: &str = env!("CARGO_BIN_EXE_perseus-credential-helper");
 
 /// A server that demands Basic auth and records every `Authorization` header it sees.
 struct AuthServer {
@@ -140,14 +124,7 @@ fn git_sends_the_profiles_token_and_only_that_profiles() {
     let host = format!("127.0.0.1:{}", server.port);
     let _cleanup = Cleanup(owner.clone(), host.clone());
     KeyringStore
-        .set(
-            &owner,
-            &host,
-            &Credential {
-                username: "ada".into(),
-                token: "tok-12345".into(),
-            },
-        )
+        .set(&owner, &host, &Credential::new("ada", "tok-12345"))
         .unwrap();
 
     // The owning profile authenticates: git retries with the keychain credential.

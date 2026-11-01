@@ -48,9 +48,61 @@ pub fn is_loopback(host: &str) -> bool {
     name == "localhost" || name.starts_with("127.")
 }
 
+/// An OAuth endpoint or verification page we are willing to contact or open:
+/// `https` (or `http` on loopback only), a plain hostname, no embedded credentials,
+/// no fragment, nothing a shell or protocol line could trip over.
+pub fn endpoint_url(s: &str) -> bool {
+    if !is_plain_text(s) || s.len() > 2048 || s.contains(char::is_whitespace) {
+        return false;
+    }
+    let Ok(u) = url::Url::parse(s) else {
+        return false;
+    };
+    let Some(h) = u.host_str() else {
+        return false;
+    };
+    let hostport = match u.port() {
+        Some(p) => format!("{h}:{p}"),
+        None => h.to_string(),
+    };
+    let scheme_ok = u.scheme() == "https" || (u.scheme() == "http" && is_loopback(&hostport));
+    scheme_ok
+        && host(&hostport).is_some()
+        && u.username().is_empty()
+        && u.password().is_none()
+        && u.fragment().is_none()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn endpoint_urls() {
+        for good in [
+            "https://github.com/login/device/code",
+            "https://gitlab.example.org:8443/oauth/token",
+            "http://127.0.0.1:5000/token",
+            "http://localhost/token",
+        ] {
+            assert!(endpoint_url(good), "{good}");
+        }
+        for bad in [
+            "http://github.com/login",
+            "ftp://github.com/x",
+            "https://user:pw@github.com/",
+            "https://github.com/#frag",
+            "https://github.com/a b",
+            "https://[::1]/x",
+            "javascript:alert(1)",
+            "file:///etc/passwd",
+            "https://",
+            "",
+            "https://github.com/\nHost: evil",
+        ] {
+            assert!(!endpoint_url(bad), "{bad:?} accepted");
+        }
+    }
 
     #[test]
     fn profile_ids() {

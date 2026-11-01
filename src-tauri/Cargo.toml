@@ -24,6 +24,7 @@ thiserror = "2.0.21"
 gix = "0.90.0"
 url = "2.5.8"
 uuid = { version = "1", features = ["v4"] }
+open = "5.4.5"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }

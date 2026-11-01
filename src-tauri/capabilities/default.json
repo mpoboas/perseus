@@ -26,6 +26,9 @@
     "allow-set-active-profile",
     "allow-set-credential",
     "allow-remove-credential",
-    "allow-pick-ssh-key"
+    "allow-pick-ssh-key",
+    "allow-oauth-presets",
+    "allow-oauth-sign-in",
+    "allow-oauth-cancel"
   ]
 }

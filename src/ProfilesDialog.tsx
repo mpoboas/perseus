@@ -8,6 +8,7 @@ import {
   saveProfile,
   setCredential,
 } from "./ipc";
+import { SignIn } from "./SignIn";
 
 interface Props {
   snapshot: ProfilesSnapshot;
@@ -195,11 +196,15 @@ export function ProfilesDialog({ snapshot, onChanged, onClose }: Props) {
                     used yet. Build it with <code>cargo build -p perseus-credential-helper</code>.
                   </p>
                 )}
+                <h4 className="subhead">Sign in with a provider</h4>
+                <SignIn profile={profile} onSignedIn={onChanged} onError={setError} />
+                <h4 className="subhead">Saved tokens</h4>
                 <ul className="token-list">
                   {profile.credentials.map((c) => (
                     <li key={c.host}>
                       <span className="token-host">{c.host}</span>
                       <span className="muted">{c.username}</span>
+                      {c.oauth && <span className="badge">OAuth</span>}
                       <button
                         className="mini"
                         disabled={busy}
@@ -211,6 +216,7 @@ export function ProfilesDialog({ snapshot, onChanged, onClose }: Props) {
                   ))}
                   {profile.credentials.length === 0 && <li className="muted">No tokens yet</li>}
                 </ul>
+                <h4 className="subhead">Or paste a token</h4>
                 <form
                   className="token-form"
                   autoComplete="off"

@@ -8,18 +8,60 @@ use crate::validate;
 
 const SERVICE: &str = "perseus";
 
+/// What is needed to renew an OAuth access token without asking the user again.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OAuthState {
+    /// Where to POST the refresh request; validated like every endpoint we contact.
+    pub token_url: String,
+    pub client_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub refresh_token: Option<String>,
+    /// Unix seconds. `None` means the access token does not expire (GitHub OAuth apps).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub expires_at: Option<u64>,
+}
+
+impl fmt::Debug for OAuthState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OAuthState")
+            .field("token_url", &self.token_url)
+            .field("client_id", &self.client_id)
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "<redacted>"),
+            )
+            .field("expires_at", &self.expires_at)
+            .finish()
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Credential {
     pub username: String,
     pub token: String,
+    /// Present for tokens obtained through an OAuth sign-in; absent for pasted tokens.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub oauth: Option<OAuthState>,
 }
 
-// Never print the token, even by accident in a log or panic message.
+impl Credential {
+    /// A plain token (personal access token, API token).
+    pub fn new(username: impl Into<String>, token: impl Into<String>) -> Self {
+        Self {
+            username: username.into(),
+            token: token.into(),
+            oauth: None,
+        }
+    }
+}
+
+// Never print a token, even by accident in a log or panic message.
 impl fmt::Debug for Credential {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Credential")
             .field("username", &self.username)
             .field("token", &"<redacted>")
+            .field("oauth", &self.oauth)
             .finish()
     }
 }
@@ -66,6 +108,20 @@ fn check(cred: &Credential) -> Result<(), StoreError> {
     }
     if !validate::is_plain_text(&cred.token) {
         return Err(StoreError::Invalid("token"));
+    }
+    if let Some(o) = &cred.oauth {
+        if !validate::endpoint_url(&o.token_url) {
+            return Err(StoreError::Invalid("token endpoint"));
+        }
+        if !validate::is_plain_text(&o.client_id) {
+            return Err(StoreError::Invalid("client id"));
+        }
+        if o.refresh_token
+            .as_deref()
+            .is_some_and(|r| !validate::is_plain_text(r))
+        {
+            return Err(StoreError::Invalid("refresh token"));
+        }
     }
     Ok(())
 }
@@ -142,10 +198,7 @@ mod tests {
     const P: &str = "0123456789abcdef0123456789abcdef";
 
     fn cred(token: &str) -> Credential {
-        Credential {
-            username: "ada".into(),
-            token: token.into(),
-        }
+        Credential::new("ada", token)
     }
 
     #[test]
@@ -172,10 +225,7 @@ mod tests {
                 Err(StoreError::Invalid("token"))
             );
         }
-        let bad_user = Credential {
-            username: "x\npassword=y".into(),
-            token: "t".into(),
-        };
+        let bad_user = Credential::new("x\npassword=y", "t");
         assert_eq!(
             s.set(P, "github.com", &bad_user),
             Err(StoreError::Invalid("username"))
@@ -185,9 +235,57 @@ mod tests {
     }
 
     #[test]
-    fn debug_output_hides_the_token() {
-        let shown = format!("{:?}", cred("super-secret-token"));
-        assert!(!shown.contains("super-secret-token"));
+    fn oauth_state_is_validated() {
+        let s = MemoryStore::default();
+        let with = |token_url: &str, client_id: &str, refresh: Option<&str>| {
+            let mut c = cred("t");
+            c.oauth = Some(OAuthState {
+                token_url: token_url.into(),
+                client_id: client_id.into(),
+                refresh_token: refresh.map(str::to_string),
+                expires_at: Some(1),
+            });
+            c
+        };
+        let url = "https://gitlab.com/oauth/token";
+        assert!(s.set(P, "gitlab.com", &with(url, "cid", Some("r"))).is_ok());
+        assert_eq!(
+            s.set(
+                P,
+                "gitlab.com",
+                &with("http://evil.example/token", "cid", None)
+            ),
+            Err(StoreError::Invalid("token endpoint"))
+        );
+        assert_eq!(
+            s.set(P, "gitlab.com", &with(url, "c\nid", None)),
+            Err(StoreError::Invalid("client id"))
+        );
+        assert_eq!(
+            s.set(P, "gitlab.com", &with(url, "cid", Some("r\nx"))),
+            Err(StoreError::Invalid("refresh token"))
+        );
+    }
+
+    #[test]
+    fn old_stored_json_without_oauth_fields_still_loads() {
+        let c: Credential = serde_json::from_str(r#"{"username":"ada","token":"t"}"#).unwrap();
+        assert_eq!(c, cred("t"));
+        // And plain tokens serialise without any oauth key.
+        assert!(!serde_json::to_string(&c).unwrap().contains("oauth"));
+    }
+
+    #[test]
+    fn debug_output_hides_every_secret() {
+        let mut c = cred("super-secret-token");
+        c.oauth = Some(OAuthState {
+            token_url: "https://gitlab.com/oauth/token".into(),
+            client_id: "cid".into(),
+            refresh_token: Some("super-secret-refresh".into()),
+            expires_at: None,
+        });
+        let shown = format!("{c:?}");
+        assert!(!shown.contains("super-secret"));
         assert!(shown.contains("redacted"));
     }
 
@@ -200,11 +298,15 @@ mod tests {
         s.delete(&profile, "test.invalid").unwrap();
         assert_eq!(s.get(&profile, "test.invalid").unwrap(), None);
 
-        s.set(&profile, "test.invalid", &cred("kr-token")).unwrap();
-        assert_eq!(
-            s.get(&profile, "test.invalid").unwrap(),
-            Some(cred("kr-token"))
-        );
+        let mut c = cred("kr-token");
+        c.oauth = Some(OAuthState {
+            token_url: "https://test.invalid/oauth/token".into(),
+            client_id: "cid".into(),
+            refresh_token: Some("kr-refresh".into()),
+            expires_at: Some(42),
+        });
+        s.set(&profile, "test.invalid", &c).unwrap();
+        assert_eq!(s.get(&profile, "test.invalid").unwrap(), Some(c));
 
         s.delete(&profile, "test.invalid").unwrap();
         assert_eq!(s.get(&profile, "test.invalid").unwrap(), None);

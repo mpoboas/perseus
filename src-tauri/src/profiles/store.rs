@@ -12,6 +12,9 @@ use crate::profiles::overrides::helper_path;
 pub struct CredentialMeta {
     pub host: String,
     pub username: String,
+    /// True when the token came from an OAuth sign-in (and may renew itself).
+    #[serde(default)]
+    pub oauth: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -211,10 +214,21 @@ impl ProfileStore {
         self.persist(&s)
     }
 
+    /// A pasted token (personal access token, API token).
     pub fn set_credential(&self, id: &str, host: &str, username: &str, token: &str) -> Result<()> {
+        let username = text("username", username, 100)?;
+        // The token is validated as-is (no trimming): what the user pasted is what is stored.
+        self.store_credential(id, host, Credential::new(username, token))
+    }
+
+    /// Tokens obtained by an OAuth sign-in, including their refresh state.
+    pub fn set_oauth_credential(&self, id: &str, host: &str, cred: Credential) -> Result<()> {
+        self.store_credential(id, host, cred)
+    }
+
+    fn store_credential(&self, id: &str, host: &str, cred: Credential) -> Result<()> {
         let host = validate::host(host)
             .ok_or_else(|| AppError::profile("host must be a plain hostname such as github.com"))?;
-        let username = text("username", username, 100)?;
         let mut s = self.lock()?;
         let profile = s
             .profiles
@@ -222,20 +236,16 @@ impl ProfileStore {
             .find(|p| p.id == id)
             .ok_or_else(|| AppError::profile("profile no longer exists"))?;
 
-        // The token is validated as-is (no trimming): what the user pasted is what is stored.
         self.secrets
-            .set(
-                id,
-                &host,
-                &Credential {
-                    username: username.clone(),
-                    token: token.to_string(),
-                },
-            )
+            .set(id, &host, &cred)
             .map_err(AppError::profile)?;
 
         profile.credentials.retain(|c| c.host != host);
-        profile.credentials.push(CredentialMeta { host, username });
+        profile.credentials.push(CredentialMeta {
+            host,
+            username: cred.username.clone(),
+            oauth: cred.oauth.is_some(),
+        });
         profile.credentials.sort_by(|a, b| a.host.cmp(&b.host));
         self.persist(&s)
     }

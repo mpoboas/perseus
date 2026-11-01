@@ -25,6 +25,9 @@ const COMMANDS: &[&str] = &[
     "set_credential",
     "remove_credential",
     "pick_ssh_key",
+    "oauth_presets",
+    "oauth_sign_in",
+    "oauth_cancel",
 ];
 
 fn main() {

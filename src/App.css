@@ -364,6 +364,49 @@ select {
   grid-column: 1 / -1;
 }
 
+.subhead {
+  margin: 16px 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.signin-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+}
+
+.signin-client {
+  width: 100%;
+  box-sizing: border-box;
+  margin-top: 8px;
+}
+
+.signin p {
+  margin: 6px 0;
+}
+
+.signin.waiting {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+}
+
+.device-code {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+}
+
+.device-code code {
+  font: 700 24px/32px ui-monospace, Consolas, monospace;
+  letter-spacing: 0.12em;
+}
+
 .error-text {
   margin: 12px 0 0;
   color: #c0392b;

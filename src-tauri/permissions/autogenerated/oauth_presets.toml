@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-oauth-presets"
+description = "Enables the oauth_presets command without any pre-configured scope."
+commands.allow = ["oauth_presets"]
+
+[[permission]]
+identifier = "deny-oauth-presets"
+description = "Denies the oauth_presets command without any pre-configured scope."
+commands.deny = ["oauth_presets"]

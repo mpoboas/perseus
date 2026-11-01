@@ -10,6 +10,7 @@ use serde::Serialize;
 use tauri::Manager;
 
 use ipc::channels::{self, AppState};
+use ipc::oauth_commands::{self, OAuthFlows};
 use ipc::{commands, profile_commands, protocol};
 use profiles::ProfileStore;
 
@@ -31,6 +32,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
+        .manage(OAuthFlows::default())
         .setup(|app| {
             // Profile metadata lives in the app data dir; tokens stay in the OS keychain.
             let path = app.path().app_data_dir()?.join("profiles.json");
@@ -68,6 +70,9 @@ pub fn run() {
             profile_commands::set_credential,
             profile_commands::remove_credential,
             profile_commands::pick_ssh_key,
+            oauth_commands::oauth_presets,
+            oauth_commands::oauth_sign_in,
+            oauth_commands::oauth_cancel,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

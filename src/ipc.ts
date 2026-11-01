@@ -182,6 +182,8 @@ export async function fetchPatch(
 export interface CredentialMeta {
   host: string;
   username: string;
+  /** True when the token came from an OAuth sign-in and renews itself. */
+  oauth: boolean;
 }
 
 export interface Profile {
@@ -224,6 +226,52 @@ export const removeCredential = (id: string, host: string) =>
   invoke<void>("remove_credential", { id, host });
 
 export const pickSshKey = () => invoke<string | null>("pick_ssh_key");
+
+// ---- OAuth sign-in (device flow) ----
+
+export type OAuthKind = "github" | "gitlab";
+
+export interface OAuthPreset {
+  kind: OAuthKind;
+  label: string;
+  host: string;
+  /** This build ships a client ID for the host; otherwise the user supplies one. */
+  configured: boolean;
+}
+
+export interface SignInCode {
+  event: "code";
+  user_code: string;
+  verification_uri: string;
+  expires_in: number;
+  /** Whether Perseus managed to open the page in the browser. */
+  opened: boolean;
+}
+
+export interface SignInRequest {
+  profile_id: string;
+  kind: OAuthKind;
+  host: string;
+  client_id?: string | null;
+}
+
+export const oauthPresets = () => invoke<OAuthPreset[]>("oauth_presets");
+
+export const oauthCancel = (flowId: number) => invoke<void>("oauth_cancel", { flowId });
+
+let nextFlowId = 1;
+
+/** Starts a sign-in. `done` resolves once the token is in the keychain. */
+export function oauthSignIn(
+  request: SignInRequest,
+  onCode: (code: SignInCode) => void,
+): { flowId: number; done: Promise<void> } {
+  const flowId = nextFlowId++;
+  const channel = new Channel<SignInCode>();
+  channel.onmessage = onCode;
+  const done = invoke<void>("oauth_sign_in", { request, flowId, onEvent: channel });
+  return { flowId, done };
+}
 
 let nextStreamId = 1;
 
