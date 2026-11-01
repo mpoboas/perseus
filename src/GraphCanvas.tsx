@@ -1,11 +1,22 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { CommitStore } from "./commitStore";
+import {
+  type Badge,
+  ROW_H,
+  type Subject,
+  isDrag,
+  rowAt,
+  sameSubject,
+  subjectAt,
+} from "./graphLayout";
 
-export const ROW_H = 26;
 const LANE_W = 14;
 const PAD = 10;
 const MAX_GRAPH_LANES = 16;
 const NODE_R = 4;
+const TOOLTIP_DELAY_MS = 450;
+const EDGE_SCROLL_ZONE = 28;
+const EDGE_SCROLL_STEP = 14;
 const PALETTE = [
   "#4e79a7",
   "#f28e2b",
@@ -51,9 +62,37 @@ interface Props {
   onSelect: (row: number) => void;
   /** Scrolls the given row into the middle of the view whenever `nonce` changes. */
   reveal: { row: number; nonce: number } | null;
+  /** A badge or commit was dragged onto another. */
+  onDrop: (source: Subject, target: Subject) => void;
+  /** Right-click (viewport coordinates). */
+  onMenu: (subject: Subject, x: number, y: number) => void;
+  /** Short text for the drag ghost. */
+  labelFor: (s: Subject) => string;
 }
 
-export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props) {
+interface DragState {
+  source: Subject;
+  x: number;
+  y: number;
+  target: Subject | null;
+}
+
+interface Tip {
+  row: number;
+  x: number;
+  y: number;
+}
+
+export function GraphCanvas({
+  store,
+  count,
+  selected,
+  onSelect,
+  reveal,
+  onDrop,
+  onMenu,
+  labelFor,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef({ w: 800, h: 600 });
@@ -61,6 +100,15 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
   const raf = useRef(0);
   const latest = useRef({ count, selected });
   latest.current = { count, selected };
+
+  /** Where each visible row's ref badges were painted, for hit-testing. */
+  const badges = useRef(new Map<number, Badge[]>());
+  const press = useRef<{ x: number; y: number; subject: Subject; pointerId: number } | null>(null);
+  const [drag, setDrag] = useState<DragState | null>(null);
+  const dragRef = useRef<DragState | null>(null);
+  const [tip, setTip] = useState<Tip | null>(null);
+  const tipTimer = useRef(0);
+  const tipRow = useRef<number | null>(null);
 
   const draw = useCallback(() => {
     raf.current = 0;
@@ -79,6 +127,7 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
+    badges.current.clear();
 
     const { count: n, selected: sel } = latest.current;
     const top = sc.scrollTop;
@@ -162,6 +211,7 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
       ctx.globalAlpha = 1;
 
       let x = graphW + 6;
+      const rowBadges: Badge[] = [];
       for (const ref of row.refs) {
         const tw = ctx.measureText(ref).width;
         ctx.fillStyle = ref === "HEAD" ? "#2f7d32" : "#3b5ea8";
@@ -170,8 +220,10 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
         ctx.fill();
         ctx.fillStyle = "#fff";
         ctx.fillText(ref, x + 5, cy);
+        rowBadges.push({ ref, x, w: tw + 10 });
         x += tw + 16;
       }
+      if (rowBadges.length) badges.current.set(r, rowBadges);
 
       ctx.save();
       ctx.beginPath();
@@ -226,15 +278,102 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
     sc.scrollTop = Math.max(0, reveal.row * ROW_H - sc.clientHeight / 2);
   }, [reveal]);
 
-  const onClick = (e: React.MouseEvent) => {
-    const sc = scroller.current;
-    if (!sc) return;
-    const y = e.clientY - sc.getBoundingClientRect().top + sc.scrollTop;
-    const row = Math.floor(y / ROW_H);
-    if (row >= 0 && row < count) onSelect(row);
+  useEffect(() => () => window.clearTimeout(tipTimer.current), []);
+
+  /** Pointer position relative to the scroller's visible area. */
+  const local = (e: { clientX: number; clientY: number }) => {
+    const r = scroller.current!.getBoundingClientRect();
+    return { x: e.clientX - r.left, y: e.clientY - r.top };
+  };
+
+  const subjectUnder = (x: number, y: number) =>
+    subjectAt(x, y, scroller.current?.scrollTop ?? 0, latest.current.count, badges.current);
+
+  const hideTip = () => {
+    window.clearTimeout(tipTimer.current);
+    tipRow.current = null;
+    setTip(null);
+  };
+
+  const endDrag = () => {
+    press.current = null;
+    dragRef.current = null;
+    setDrag(null);
+  };
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    const { x, y } = local(e);
+    if (x > size.current.w) return; // the scrollbar
+    const subject = subjectUnder(x, y);
+    if (!subject) return;
+    hideTip();
+    press.current = { x, y, subject, pointerId: e.pointerId };
+  };
+
+  const onPointerMove = (e: React.PointerEvent) => {
+    const { x, y } = local(e);
+    const p = press.current;
+
+    if (p && !dragRef.current && isDrag(x - p.x, y - p.y)) {
+      scroller.current?.setPointerCapture(p.pointerId);
+      dragRef.current = { source: p.subject, x, y, target: null };
+    }
+
+    if (dragRef.current) {
+      const sc = scroller.current!;
+      // Scroll while hovering near the top or bottom edge, so far-away targets are reachable.
+      if (y < EDGE_SCROLL_ZONE) sc.scrollTop -= EDGE_SCROLL_STEP;
+      else if (y > size.current.h - EDGE_SCROLL_ZONE) sc.scrollTop += EDGE_SCROLL_STEP;
+
+      const found = subjectUnder(x, y);
+      const target = sameSubject(found, dragRef.current.source) ? null : found;
+      dragRef.current = { ...dragRef.current, x, y, target };
+      setDrag(dragRef.current);
+      return;
+    }
+
+    // Plain hover: show a tooltip once the pointer rests on a row.
+    const row = rowAt(y, scroller.current?.scrollTop ?? 0, latest.current.count);
+    if (row !== tipRow.current) {
+      hideTip();
+      tipRow.current = row;
+      if (row !== null && x <= size.current.w) {
+        tipTimer.current = window.setTimeout(() => setTip({ row, x, y }), TOOLTIP_DELAY_MS);
+      }
+    }
+  };
+
+  const onPointerUp = (e: React.PointerEvent) => {
+    const p = press.current;
+    const d = dragRef.current;
+    if (d) {
+      if (scroller.current?.hasPointerCapture(e.pointerId)) {
+        scroller.current.releasePointerCapture(e.pointerId);
+      }
+      endDrag();
+      if (d.target) onDrop(d.source, d.target);
+      return;
+    }
+    press.current = null;
+    if (p) onSelect(p.subject.row); // a press without movement is a click
+  };
+
+  const onContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const { x, y } = local(e);
+    const subject = subjectUnder(x, y);
+    if (!subject) return;
+    hideTip();
+    onSelect(subject.row);
+    onMenu(subject, e.clientX, e.clientY);
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Escape" && dragRef.current) {
+      endDrag();
+      return;
+    }
     if (count === 0) return;
     const page = Math.max(1, Math.floor(size.current.h / ROW_H) - 1);
     const cur = selected ?? -1;
@@ -251,18 +390,66 @@ export function GraphCanvas({ store, count, selected, onSelect, reveal }: Props)
     onSelect(Math.min(count - 1, Math.max(0, next)));
   };
 
+  const top = scroller.current?.scrollTop ?? 0;
+  const targetBox = (() => {
+    const t = drag?.target;
+    if (!t) return null;
+    const y = t.row * ROW_H - top;
+    if (t.kind === "ref") {
+      const b = badges.current.get(t.row)?.find((x) => x.ref === t.name);
+      if (b) return { left: b.x - 2, top: y + 3, width: b.w + 4, height: ROW_H - 6 };
+    }
+    return { left: 0, top: y, width: size.current.w, height: ROW_H };
+  })();
+  const tipRowData = tip ? store.rows[tip.row] : undefined;
+
   return (
-    <div
-      ref={scroller}
-      className="graph-scroller"
-      tabIndex={0}
-      onScroll={schedule}
-      onClick={onClick}
-      onKeyDown={onKeyDown}
-    >
-      <canvas ref={canvas} className="graph-canvas" />
-      {/* Total scroll height = canvas height (sticky) + this spacer. */}
-      <div style={{ height: Math.max(0, count * ROW_H - viewH) }} />
+    <div className="graph-wrap">
+      <div
+        ref={scroller}
+        className={drag ? "graph-scroller dragging" : "graph-scroller"}
+        tabIndex={0}
+        onScroll={() => {
+          hideTip();
+          schedule();
+        }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={endDrag}
+        onPointerLeave={hideTip}
+        onContextMenu={onContextMenu}
+        onKeyDown={onKeyDown}
+      >
+        <canvas ref={canvas} className="graph-canvas" />
+        {/* Total scroll height = canvas height (sticky) + this spacer. */}
+        <div style={{ height: Math.max(0, count * ROW_H - viewH) }} />
+      </div>
+
+      {/* Interactive feedback lives in the DOM, above the canvas, and never takes pointer events. */}
+      <div className="graph-overlay" aria-hidden="true">
+        {targetBox && <div className="drop-target" style={targetBox} />}
+        {drag && (
+          <div className="drag-ghost" style={{ left: drag.x + 14, top: drag.y + 14 }}>
+            {labelFor(drag.source)}
+          </div>
+        )}
+        {tip && tipRowData && !drag && (
+          <div
+            className="graph-tooltip"
+            style={{ left: Math.min(tip.x + 14, Math.max(0, size.current.w - 340)), top: tip.y + 18 }}
+          >
+            <strong>{tipRowData.summary}</strong>
+            <div className="muted">
+              <code>{tipRowData.oid.slice(0, 10)}</code> · {tipRowData.author}
+            </div>
+            <div className="muted">{new Date(tipRowData.time * 1000).toLocaleString()}</div>
+            {tipRowData.parents.length > 1 && (
+              <div className="muted">Merge of {tipRowData.parents.length} parents</div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

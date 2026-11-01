@@ -4,8 +4,25 @@ on:
   push:
     branches: [main]
   pull_request:
+  # New advisories are published without any change to this repo, so re-check weekly.
+  schedule:
+    - cron: "17 5 * * 1"
 
 jobs:
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # Advisories (RustSec), licenses, duplicate versions and allowed sources: see deny.toml.
+      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level high
+
   check:
     strategy:
       fail-fast: false
@@ -28,6 +45,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - run: pnpm test
 
       - uses: dtolnay/rust-toolchain@stable
         with:

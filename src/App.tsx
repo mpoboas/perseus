@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { type Endpoint, type GraphAction, type Head, dropActions, menuActions } from "./actions";
 import { ChangesPanel } from "./ChangesPanel";
 import { CommitStore } from "./commitStore";
+import { ConfirmDialog } from "./ConfirmDialog";
+import { ContextMenu } from "./ContextMenu";
 import { DetailPanel } from "./DetailPanel";
 import { DiffView } from "./DiffView";
 import { GraphCanvas } from "./GraphCanvas";
+import type { Subject } from "./graphLayout";
 import {
   type CommitDetail,
   type DiffTarget,
@@ -56,12 +60,15 @@ function App() {
   const [reveal, setReveal] = useState<{ row: number; nonce: number } | null>(null);
   const [profiles, setProfiles] = useState<ProfilesSnapshot | null>(null);
   const [profilesOpen, setProfilesOpen] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; actions: GraphAction[] } | null>(null);
+  const [confirm, setConfirm] = useState<GraphAction[] | null>(null);
 
   // Rows live outside React state: chunks of 500 would otherwise trigger a re-render each.
   const store = useRef(new CommitStore());
   const streamId = useRef<number | null>(null);
   const frame = useRef(0);
   const detailSeq = useRef(0);
+  const wasInOperation = useRef(false);
   const repoRef = useRef<RepoInfo | null>(null);
   repoRef.current = repo;
 
@@ -76,7 +83,12 @@ function App() {
   const loadStatus = useCallback(async (info: RepoInfo) => {
     try {
       const s = await repoStatus(info.id);
-      if (repoRef.current?.id === info.id) setStatus(s);
+      if (repoRef.current?.id !== info.id) return;
+      // A merge/rebase/cherry-pick that stopped on conflicts needs the Changes tab: that is
+      // where Abort and Continue live. Only jump on the transition, not on every refresh.
+      if (s.operation && !wasInOperation.current) setTab("changes");
+      wasInOperation.current = !!s.operation;
+      setStatus(s);
     } catch (e) {
       setError(String(e));
     }
@@ -168,6 +180,83 @@ function App() {
 
   const gitOp = (label: string, op: GitOp) =>
     act(label, "all", (id) => runGitOp(id, op, setProgress));
+
+  // ---- Graph gestures: drag and drop, and the right-click menu ----
+
+  /** HEAD's branch and commit. The commit is found lazily: detached HEAD only shows in the graph rows. */
+  const currentHead = (): Head => {
+    const branch = status?.branch ?? null;
+    const byRef = branch ? refs.find((r) => r.kind === "branch" && r.name === branch)?.target : undefined;
+    const oid = byRef ?? store.current.rows.find((r) => r.refs.includes("HEAD"))?.oid ?? null;
+    return { branch, oid };
+  };
+
+  /** Turns what the pointer touched into something the action rules understand. */
+  const endpointFor = (s: Subject): Endpoint | null => {
+    const row = store.current.rows[s.row];
+    if (!row) return null;
+    const commit: Endpoint = { type: "commit", oid: row.oid, summary: row.summary };
+    if (s.kind === "commit") return commit;
+
+    // The green HEAD badge stands for the checked-out branch, or for the commit if detached.
+    const name = s.name === "HEAD" ? (status?.branch ?? null) : s.name;
+    const ref = name ? refs.find((r) => r.name === name) : undefined;
+    if (!ref) return commit;
+    return { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head };
+  };
+
+  const labelFor = (s: Subject): string => {
+    const e = endpointFor(s);
+    if (!e) return "";
+    if (e.type === "ref") return e.name;
+    return `${e.oid.slice(0, 7)} ${e.summary}`.slice(0, 60);
+  };
+
+  const hasTrackedChanges = !!status?.entries.some((e) => !e.untracked);
+
+  const execute = (action: GraphAction, name: string) => {
+    setConfirm(null);
+    setMenu(null);
+    const run = action.run;
+    switch (run.type) {
+      case "git":
+        void gitOp(`${action.confirmLabel}…`, run.op);
+        break;
+      case "switch":
+        void act("Switching…", "all", (id) => switchRef(id, run.target));
+        break;
+      case "new_branch":
+        void act("Creating branch…", "all", (id) => newBranch(id, name, run.start, true));
+        break;
+      case "copy":
+        navigator.clipboard.writeText(run.text).then(
+          () => setInfo("Copied to the clipboard"),
+          () => setError("Could not access the clipboard"),
+        );
+        break;
+    }
+  };
+
+  /** Quick actions run straight away; anything that changes history asks first. */
+  const choose = (action: GraphAction) => {
+    setMenu(null);
+    if (action.immediate) execute(action, "");
+    else setConfirm([action]);
+  };
+
+  const onDrop = (source: Subject, target: Subject) => {
+    const [s, t] = [endpointFor(source), endpointFor(target)];
+    if (!s || !t || busy) return;
+    const { actions, reason } = dropActions(s, t, currentHead());
+    if (actions.length > 0) setConfirm(actions);
+    else if (reason) setInfo(reason);
+  };
+
+  const onMenu = (subject: Subject, x: number, y: number) => {
+    const e = endpointFor(subject);
+    if (!e || busy) return;
+    setMenu({ x, y, actions: menuActions(e, currentHead()) });
+  };
 
   const open = async () => {
     try {
@@ -356,6 +445,9 @@ function App() {
             selected={selected}
             onSelect={select}
             reveal={reveal}
+            onDrop={onDrop}
+            onMenu={onMenu}
+            labelFor={labelFor}
           />
           {diff && repo && (
             <DiffView repoId={repo.id} target={diff} version={diffVersion} onClose={() => setDiff(null)} />
@@ -405,6 +497,23 @@ function App() {
           )}
         </div>
       </div>
+      {menu && (
+        <ContextMenu
+          x={menu.x}
+          y={menu.y}
+          actions={menu.actions}
+          onPick={choose}
+          onClose={() => setMenu(null)}
+        />
+      )}
+      {confirm && (
+        <ConfirmDialog
+          actions={confirm}
+          dirty={hasTrackedChanges}
+          onConfirm={execute}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
       {profilesOpen && profiles && (
         <ProfilesDialog
           snapshot={profiles}

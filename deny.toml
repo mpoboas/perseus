@@ -1,0 +1,59 @@
+# cargo-deny policy: security advisories, licenses, duplicate versions and sources.
+# Run locally with `cargo deny check`; CI runs it on every push and pull request.
+
+[graph]
+# Check the dependency tree for every platform we ship, not just the machine running CI.
+targets = [
+  "x86_64-pc-windows-msvc",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-unknown-linux-gnu",
+]
+
+[advisories]
+version = 2
+# Known-vulnerable crates always fail. The entries below are *warnings about maintenance*
+# on transitive dependencies we cannot replace ourselves; each one is revisited when the
+# parent crate (tauri, keyring) updates. New advisories are not covered and will fail.
+ignore = [
+  { id = "RUSTSEC-2024-0370", reason = "proc-macro-error is unmaintained; build-time macro only, pulled in by tauri's GTK stack (Linux)" },
+  { id = "RUSTSEC-2026-0370", reason = "zvariant unmaintained; pulled in by the Linux Secret Service keyring backend, awaiting an upstream replacement" },
+  { id = "RUSTSEC-2026-0371", reason = "zbus_names unmaintained; same Linux Secret Service dependency chain" },
+  { id = "RUSTSEC-2026-0372", reason = "zvariant_derive unmaintained; same Linux Secret Service dependency chain" },
+]
+
+[licenses]
+version = 2
+# Permissive licenses, plus MPL-2.0 (file-level copyleft: fine to depend on unmodified;
+# used by cssparser/selectors via tauri's HTML tooling).
+allow = [
+  "0BSD",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "CC0-1.0",
+  "CDLA-Permissive-2.0",
+  "ISC",
+  "MIT",
+  "MIT-0",
+  "MPL-2.0",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+]
+
+[licenses.private]
+# Perseus's own crates are `publish = false` and have no license field yet: choosing the
+# project license is the owner's decision. Revisit when one is picked.
+ignore = true
+
+[bans]
+# Tauri's tree legitimately contains several versions of some crates; surface them without failing.
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

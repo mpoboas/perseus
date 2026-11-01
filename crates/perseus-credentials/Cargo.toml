@@ -3,6 +3,7 @@ name = "perseus-credentials"
 version = "0.1.0"
 description = "Credential storage and the git credential-helper protocol for Perseus"
 edition = "2024"
+publish = false
 
 [dependencies]
 keyring = "4.2.0"
