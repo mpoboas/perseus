@@ -1,52 +1,63 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CommitStore } from "./commitStore";
+import { DetailPanel } from "./DetailPanel";
+import { GraphCanvas } from "./GraphCanvas";
 import {
-  type CommitRow,
+  type CommitDetail,
+  type RefInfo,
   type RepoInfo,
   cancelStream,
   closeRepo,
+  commitDetail,
+  listRefs,
   pickAndOpenRepo,
   streamCommits,
 } from "./ipc";
+import { Sidebar } from "./Sidebar";
 import "./App.css";
-
-const ROW_HEIGHT = 22;
-const OVERSCAN = 10;
 
 function App() {
   const [repo, setRepo] = useState<RepoInfo | null>(null);
+  const [refs, setRefs] = useState<RefInfo[]>([]);
   const [count, setCount] = useState(0);
-  const [status, setStatus] = useState<string>("");
-  const [scrollTop, setScrollTop] = useState(0);
-  const [viewHeight, setViewHeight] = useState(600);
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [detail, setDetail] = useState<CommitDetail | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
+  const [reveal, setReveal] = useState<{ row: number; nonce: number } | null>(null);
 
   // Rows live outside React state: chunks of 500 would otherwise trigger a re-render each.
-  const rows = useRef<CommitRow[]>([]);
+  const store = useRef(new CommitStore());
   const streamId = useRef<number | null>(null);
-  const listRef = useRef<HTMLDivElement>(null);
   const frame = useRef(0);
+  const detailSeq = useRef(0);
 
   const scheduleCount = useCallback(() => {
     if (frame.current) return;
     frame.current = requestAnimationFrame(() => {
       frame.current = 0;
-      setCount(rows.current.length);
+      setCount(store.current.length);
     });
   }, []);
 
   const load = useCallback(
     async (info: RepoInfo) => {
-      rows.current = [];
+      store.current.clear();
       setCount(0);
+      setSelected(null);
+      setDetail(null);
       setStatus("Loading…");
+      setLoading(true);
       const started = performance.now();
       const { streamId: id, done } = streamCommits(info.id, (chunk) => {
-        for (const r of chunk) rows.current.push(r);
+        store.current.push(chunk);
         scheduleCount();
       });
       streamId.current = id;
       try {
         const summary = await done;
-        setCount(rows.current.length);
+        setCount(store.current.length);
         const secs = ((performance.now() - started) / 1000).toFixed(2);
         setStatus(
           `${summary.cancelled ? "Cancelled after" : "Loaded"} ${summary.total.toLocaleString()} commits in ${secs}s`,
@@ -54,7 +65,10 @@ function App() {
       } catch (e) {
         setStatus(`Error: ${String(e)}`);
       } finally {
-        if (streamId.current === id) streamId.current = null;
+        if (streamId.current === id) {
+          streamId.current = null;
+          setLoading(false);
+        }
       }
     },
     [scheduleCount],
@@ -67,57 +81,73 @@ function App() {
       if (streamId.current !== null) await cancelStream(streamId.current);
       if (repo) await closeRepo(repo.id);
       setRepo(info);
+      setRefs([]);
       void load(info);
+      listRefs(info.id).then(setRefs, (e) => setStatus(`Error: ${String(e)}`));
     } catch (e) {
       setStatus(`Error: ${String(e)}`);
     }
   };
 
-  useEffect(() => {
-    const el = listRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(() => setViewHeight(el.clientHeight));
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
+  const select = useCallback(
+    (row: number) => {
+      setSelected(row);
+      const commit = store.current.rows[row];
+      if (!repo || !commit) return;
+      const seq = ++detailSeq.current;
+      commitDetail(repo.id, commit.oid).then(
+        (d) => {
+          if (seq !== detailSeq.current) return; // a newer selection superseded this one
+          setDetail(d);
+          setDetailError(null);
+        },
+        (e) => {
+          if (seq !== detailSeq.current) return;
+          setDetail(null);
+          setDetailError(String(e));
+        },
+      );
+    },
+    [repo],
+  );
 
-  const first = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN);
-  const last = Math.min(count, Math.ceil((scrollTop + viewHeight) / ROW_HEIGHT) + OVERSCAN);
-  const visible = rows.current.slice(first, last);
+  const jumpTo = useCallback(
+    (oid: string) => {
+      const row = store.current.index.get(oid);
+      if (row === undefined) {
+        setStatus("That commit has not loaded yet");
+        return;
+      }
+      select(row);
+      setReveal((r) => ({ row, nonce: (r?.nonce ?? 0) + 1 }));
+    },
+    [select],
+  );
+
+  useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
   return (
     <main className="app">
       <header className="toolbar">
         <button onClick={open}>Open repository…</button>
-        {streamId.current !== null && (
-          <button onClick={() => cancelStream(streamId.current!)}>Cancel</button>
+        {loading && (
+          <button onClick={() => streamId.current !== null && cancelStream(streamId.current)}>
+            Cancel
+          </button>
         )}
         <span className="repo-name">{repo?.name}</span>
         <span className="status">{status}</span>
       </header>
-      <div
-        ref={listRef}
-        className="commit-list"
-        onScroll={(e) => setScrollTop(e.currentTarget.scrollTop)}
-      >
-        <div style={{ height: count * ROW_HEIGHT, position: "relative" }}>
-          {visible.map((r, i) => (
-            <div
-              key={r.oid}
-              className="commit-row"
-              style={{ top: (first + i) * ROW_HEIGHT, height: ROW_HEIGHT }}
-            >
-              <code>{r.oid.slice(0, 7)}</code>
-              {r.refs.map((ref) => (
-                <span key={ref} className="ref">
-                  {ref}
-                </span>
-              ))}
-              <span className="summary">{r.summary}</span>
-              <span className="author">{r.author}</span>
-            </div>
-          ))}
-        </div>
+      <div className="panes">
+        <Sidebar refs={refs} onJump={jumpTo} />
+        <GraphCanvas
+          store={store.current}
+          count={count}
+          selected={selected}
+          onSelect={select}
+          reveal={reveal}
+        />
+        <DetailPanel detail={detail} error={detailError} onJump={jumpTo} />
       </div>
     </main>
   );

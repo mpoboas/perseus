@@ -6,6 +6,7 @@ use gix::traverse::commit::topo::{Builder, Sorting};
 use serde::Serialize;
 
 use crate::error::{AppError, Result};
+use crate::git::lanes::{LaneAllocator, LaneRow};
 
 pub const DEFAULT_CHUNK_SIZE: usize = 500;
 
@@ -19,6 +20,8 @@ pub struct CommitRow {
     pub summary: String,
     /// Short ref names (`main`, `origin/main`, `v1.0`) pointing at this commit.
     pub refs: Vec<String>,
+    /// Lane geometry for drawing this row of the graph.
+    pub graph: LaneRow,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
@@ -27,9 +30,9 @@ pub struct WalkSummary {
     pub cancelled: bool,
 }
 
-/// Collects every ref (plus HEAD) that peels to a commit, grouped by commit id.
 type RefsByCommit = HashMap<ObjectId, Vec<String>>;
 
+/// Collects every ref (plus HEAD) that peels to a commit, grouped by commit id.
 fn collect_tips(repo: &gix::Repository) -> Result<(Vec<ObjectId>, RefsByCommit)> {
     let mut by_id: HashMap<ObjectId, Vec<String>> = HashMap::new();
 
@@ -60,8 +63,9 @@ fn collect_tips(repo: &gix::Repository) -> Result<(Vec<ObjectId>, RefsByCommit)>
 fn read_row(
     repo: &gix::Repository,
     id: ObjectId,
-    parents: impl Iterator<Item = ObjectId>,
+    parents: &[ObjectId],
     refs: Option<&Vec<String>>,
+    graph: LaneRow,
 ) -> Result<CommitRow> {
     let commit = repo.find_commit(id).map_err(AppError::git)?;
     let author = commit.author().map_err(AppError::git)?;
@@ -69,11 +73,12 @@ fn read_row(
     let message = commit.message().map_err(AppError::git)?;
     Ok(CommitRow {
         oid: id.to_string(),
-        parents: parents.map(|p| p.to_string()).collect(),
+        parents: parents.iter().map(|p| p.to_string()).collect(),
         author: author.name.to_string(),
         time: committer.time().map(|t| t.seconds).unwrap_or_default(),
         summary: message.summary().to_string(),
         refs: refs.cloned().unwrap_or_default(),
+        graph,
     })
 }
 
@@ -105,6 +110,7 @@ pub fn walk_commits(
         .build()
         .map_err(AppError::git)?;
 
+    let mut lanes = LaneAllocator::new();
     let mut batch = Vec::with_capacity(chunk_size);
     let mut total = 0;
     for info in walk {
@@ -115,11 +121,13 @@ pub fn walk_commits(
             });
         }
         let info = info.map_err(AppError::git)?;
+        let graph = lanes.push(info.id, &info.parent_ids);
         batch.push(read_row(
             repo,
             info.id,
-            info.parent_ids.iter().copied(),
+            &info.parent_ids,
             refs.get(&info.id),
+            graph,
         )?);
         total += 1;
         if batch.len() == chunk_size {

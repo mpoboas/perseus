@@ -9,6 +9,8 @@
     "allow-pick-and-open-repo",
     "allow-close-repo",
     "allow-stream-commits",
-    "allow-cancel-stream"
+    "allow-cancel-stream",
+    "allow-list-refs",
+    "allow-commit-detail"
   ]
 }

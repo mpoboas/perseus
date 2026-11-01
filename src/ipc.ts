@@ -6,6 +6,17 @@ export interface RepoInfo {
   name: string;
 }
 
+/** `[lane, color]` */
+export type Segment = [number, number];
+
+export interface LaneRow {
+  lane: number;
+  color: number;
+  incoming: Segment[];
+  through: Segment[];
+  outgoing: Segment[];
+}
+
 export interface CommitRow {
   oid: string;
   parents: string[];
@@ -13,6 +24,7 @@ export interface CommitRow {
   time: number;
   summary: string;
   refs: string[];
+  graph: LaneRow;
 }
 
 interface CommitChunk {
@@ -25,11 +37,37 @@ export interface WalkSummary {
   cancelled: boolean;
 }
 
+export interface RefInfo {
+  name: string;
+  kind: "branch" | "remote" | "tag";
+  target: string;
+  is_head: boolean;
+}
+
+export interface Person {
+  name: string;
+  email: string;
+  time: number;
+}
+
+export interface CommitDetail {
+  oid: string;
+  parents: string[];
+  author: Person;
+  committer: Person;
+  message: string;
+}
+
 export const pickAndOpenRepo = () => invoke<RepoInfo | null>("pick_and_open_repo");
 
 export const closeRepo = (repoId: number) => invoke<void>("close_repo", { repoId });
 
 export const cancelStream = (streamId: number) => invoke<void>("cancel_stream", { streamId });
+
+export const listRefs = (repoId: number) => invoke<RefInfo[]>("list_refs", { repoId });
+
+export const commitDetail = (repoId: number, oid: string) =>
+  invoke<CommitDetail>("commit_detail", { repoId, oid });
 
 let nextStreamId = 1;
 

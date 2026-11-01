@@ -1,7 +1,12 @@
 :root {
+  --border: #d0d0d0;
+  --muted: #666;
+  --panel: #fbfbfb;
+  --accent-bg: #d9e6ff;
+
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 14px;
-  line-height: 22px;
+  line-height: 20px;
   font-weight: 400;
 
   color: #0f0f0f;
@@ -20,6 +25,11 @@ body,
   margin: 0;
 }
 
+button {
+  font: inherit;
+  color: inherit;
+}
+
 .app {
   display: flex;
   flex-direction: column;
@@ -31,7 +41,7 @@ body,
   align-items: center;
   gap: 12px;
   padding: 8px 12px;
-  border-bottom: 1px solid #d0d0d0;
+  border-bottom: 1px solid var(--border);
 }
 
 .repo-name {
@@ -39,69 +49,155 @@ body,
 }
 
 .status {
-  color: #666;
+  color: var(--muted);
 }
 
-.commit-list {
+.panes {
   flex: 1;
-  overflow-y: auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) 340px;
 }
 
-.commit-row {
-  position: absolute;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 12px;
+/* Sidebar */
+.sidebar {
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  padding: 4px 0;
+}
+
+.sidebar h2 {
+  margin: 10px 12px 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sidebar .count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.sidebar ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ref-item {
+  display: block;
+  width: 100%;
+  padding: 2px 12px;
+  border: 0;
+  background: none;
+  text-align: left;
   white-space: nowrap;
   overflow: hidden;
-}
-
-.commit-row code {
-  color: #7a5c00;
-}
-
-.ref {
-  padding: 0 6px;
-  border-radius: 8px;
-  background: #d9e6ff;
-  color: #1c3d7a;
-  font-size: 12px;
-}
-
-.summary {
-  flex: 1;
-  overflow: hidden;
   text-overflow: ellipsis;
+  cursor: pointer;
 }
 
-.author {
-  color: #666;
+.ref-item:hover {
+  background: var(--accent-bg);
+}
+
+.ref-item.head {
+  font-weight: 700;
+}
+
+/* Graph */
+.graph-scroller {
+  position: relative;
+  overflow-y: auto;
+  overflow-x: hidden;
+  outline: none;
+}
+
+.graph-canvas {
+  position: sticky;
+  top: 0;
+  display: block;
+}
+
+/* Detail panel */
+.detail {
+  overflow-y: auto;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
+  padding: 12px 16px;
+}
+
+.detail.empty,
+.detail.error {
+  color: var(--muted);
+}
+
+.detail.error {
+  color: #c0392b;
+}
+
+.detail-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 22px;
+}
+
+.detail-body {
+  margin: 0 0 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: inherit;
+}
+
+.detail dl {
+  margin: 0;
+}
+
+.detail dt {
+  margin-top: 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.detail dd {
+  margin: 2px 0 0;
+  word-break: break-all;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.link {
+  margin-right: 8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: ui-monospace, Consolas, monospace;
+  color: #2f6fdb;
+  cursor: pointer;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --border: #444;
+    --muted: #aaa;
+    --panel: #292929;
+    --accent-bg: #28406b;
+
     color: #f6f6f6;
     background-color: #2f2f2f;
   }
 
-  .toolbar {
-    border-bottom-color: #444;
+  .link {
+    color: #7fb0ff;
   }
 
-  .status,
-  .author {
-    color: #aaa;
-  }
-
-  .commit-row code {
-    color: #e6c34d;
-  }
-
-  .ref {
-    background: #28406b;
-    color: #cfe0ff;
+  .detail.error {
+    color: #ff7b6b;
   }
 }

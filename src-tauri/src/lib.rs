@@ -1,10 +1,11 @@
 mod error;
-mod git;
+pub mod git;
 mod ipc;
 
 use serde::Serialize;
 
 use ipc::channels::{self, AppState};
+use ipc::commands;
 
 #[derive(Serialize)]
 struct AppInfo {
@@ -30,6 +31,8 @@ pub fn run() {
             channels::close_repo,
             channels::stream_commits,
             channels::cancel_stream,
+            commands::list_refs,
+            commands::commit_detail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -30,4 +30,9 @@ panic = "abort"
 strip = true
 
 [dev-dependencies]
+criterion = { version = "0.8.2", default-features = false }
 tempfile = "3.27.0"
+
+[[bench]]
+name = "lanes"
+harness = false

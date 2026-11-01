@@ -8,6 +8,8 @@ const COMMANDS: &[&str] = &[
     "close_repo",
     "stream_commits",
     "cancel_stream",
+    "list_refs",
+    "commit_detail",
 ];
 
 fn main() {
