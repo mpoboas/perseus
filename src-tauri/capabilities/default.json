@@ -1,10 +1,14 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window: core IPC plus explicitly listed app commands only. No fs, shell, or opener grants.",
+  "description": "Main window: core IPC plus explicitly listed app commands only. No fs, shell, opener, or dialog grants (the folder picker is invoked from Rust).",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "allow-app-info"
+    "allow-app-info",
+    "allow-pick-and-open-repo",
+    "allow-close-repo",
+    "allow-stream-commits",
+    "allow-cancel-stream"
   ]
 }

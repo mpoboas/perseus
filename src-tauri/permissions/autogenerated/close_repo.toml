@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-close-repo"
+description = "Enables the close_repo command without any pre-configured scope."
+commands.allow = ["close_repo"]
+
+[[permission]]
+identifier = "deny-close-repo"
+description = "Denies the close_repo command without any pre-configured scope."
+commands.deny = ["close_repo"]
