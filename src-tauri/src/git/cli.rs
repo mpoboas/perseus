@@ -30,16 +30,37 @@ const SCRUBBED_ENV: &[&str] = &[
     "GIT_PREFIX",
     "GIT_EXTERNAL_DIFF",
     "GIT_PAGER",
+    // Set by us per profile; a stale inherited value must never select a profile.
+    "PERSEUS_PROFILE",
 ];
+
+/// Per-profile settings injected into one git invocation. They live only on the
+/// command line and in the child's environment, so the user's `~/.gitconfig` and
+/// the repository's `.git/config` are never modified.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GitOverrides {
+    /// Passed as `-c key=value`, in order (repeated keys are allowed).
+    pub config: Vec<(String, String)>,
+    pub env: Vec<(String, String)>,
+}
 
 #[derive(Debug, Clone)]
 pub struct Git {
     root: PathBuf,
+    overrides: GitOverrides,
 }
 
 impl Git {
     pub fn new(root: impl Into<PathBuf>) -> Self {
-        Self { root: root.into() }
+        Self {
+            root: root.into(),
+            overrides: GitOverrides::default(),
+        }
+    }
+
+    pub fn with_overrides(mut self, overrides: GitOverrides) -> Self {
+        self.overrides = overrides;
+        self
     }
 
     pub fn root(&self) -> &Path {
@@ -62,6 +83,12 @@ impl Git {
                 "-c",
                 "protocol.ext.allow=never",
             ])
+            .args(
+                self.overrides
+                    .config
+                    .iter()
+                    .flat_map(|(k, v)| ["-c".to_string(), format!("{k}={v}")]),
+            )
             .args(args)
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_LITERAL_PATHSPECS", "1")
@@ -74,6 +101,10 @@ impl Git {
             .stderr(Stdio::piped());
         for var in SCRUBBED_ENV {
             cmd.env_remove(var);
+        }
+        // After the scrub, so profile values win over anything inherited.
+        for (k, v) in &self.overrides.env {
+            cmd.env(k, v);
         }
         #[cfg(windows)]
         {

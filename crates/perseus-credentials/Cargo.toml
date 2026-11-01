@@ -1,0 +1,10 @@
+[package]
+name = "perseus-credentials"
+version = "0.1.0"
+description = "Credential storage and the git credential-helper protocol for Perseus"
+edition = "2024"
+
+[dependencies]
+keyring = "4.2.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"

@@ -5,6 +5,8 @@ interface Props {
   status: RepoStatus | null;
   busy: boolean;
   activeDiff: DiffTarget | null;
+  /** "Name <email>" of the active profile, or null to use git's own configuration. */
+  identity: string | null;
   onOpenDiff: (t: DiffTarget) => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
@@ -50,6 +52,7 @@ export function ChangesPanel({
   status,
   busy,
   activeDiff,
+  identity,
   onOpenDiff,
   onStage,
   onUnstage,
@@ -179,6 +182,9 @@ export function ChangesPanel({
           void submit();
         }}
       >
+        <p className="identity muted" title="Change the active profile in the toolbar">
+          Committing as {identity ?? "your Git default identity"}
+        </p>
         <textarea
           placeholder="Commit message (Ctrl+Enter to commit)"
           value={message}

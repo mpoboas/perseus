@@ -15,6 +15,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+perseus-credentials = { path = "../crates/perseus-credentials" }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -22,13 +23,7 @@ tauri-plugin-dialog = "2.8.4"
 thiserror = "2.0.21"
 gix = "0.90.0"
 url = "2.5.8"
-
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = 3
-panic = "abort"
-strip = true
+uuid = { version = "1", features = ["v4"] }
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }

@@ -1,0 +1,8 @@
+[package]
+name = "perseus-credential-helper"
+version = "0.1.0"
+description = "Git credential helper that serves Perseus profile tokens from the OS keychain"
+edition = "2024"
+
+[dependencies]
+perseus-credentials = { path = "../perseus-credentials" }

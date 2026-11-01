@@ -11,22 +11,26 @@ import {
   type GitOp,
   type RefInfo,
   type RepoInfo,
+  type ProfilesSnapshot,
   type RepoStatus,
   cancelStream,
   closeRepo,
   commitDetail,
   commitFiles,
   createCommit,
+  listProfiles,
   listRefs,
   newBranch,
   pickAndOpenRepo,
   repoStatus,
   runGitOp,
+  setActiveProfile,
   stagePaths,
   streamCommits,
   switchRef,
   unstagePaths,
 } from "./ipc";
+import { ProfilesDialog } from "./ProfilesDialog";
 import { Sidebar } from "./Sidebar";
 import "./App.css";
 
@@ -50,6 +54,8 @@ function App() {
   const [diff, setDiff] = useState<DiffTarget | null>(null);
   const [diffVersion, setDiffVersion] = useState(0);
   const [reveal, setReveal] = useState<{ row: number; nonce: number } | null>(null);
+  const [profiles, setProfiles] = useState<ProfilesSnapshot | null>(null);
+  const [profilesOpen, setProfilesOpen] = useState(false);
 
   // Rows live outside React state: chunks of 500 would otherwise trigger a re-render each.
   const store = useRef(new CommitStore());
@@ -231,6 +237,31 @@ function App() {
 
   useEffect(() => () => cancelAnimationFrame(frame.current), []);
 
+  const reloadProfiles = useCallback(async () => {
+    try {
+      setProfiles(await listProfiles());
+    } catch (e) {
+      setError(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void reloadProfiles();
+  }, [reloadProfiles]);
+
+  const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active) ?? null;
+  const identity = activeProfile ? `${activeProfile.user_name} <${activeProfile.user_email}>` : null;
+
+  const switchProfile = async (id: string | null) => {
+    try {
+      await setActiveProfile(id);
+      await reloadProfiles();
+      setError(null);
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   const changeCount = status?.entries.length ?? 0;
   const publish = !!status?.branch && !status.upstream;
 
@@ -239,6 +270,24 @@ function App() {
       <header className="toolbar">
         <button onClick={open} disabled={!!busy}>
           Open repository…
+        </button>
+        <select
+          className="profile-select"
+          aria-label="Active profile"
+          title={identity ?? "Using your Git configuration"}
+          value={profiles?.active ?? ""}
+          disabled={!!busy || !profiles}
+          onChange={(e) => void switchProfile(e.target.value || null)}
+        >
+          <option value="">System default</option>
+          {profiles?.profiles.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.name}
+            </option>
+          ))}
+        </select>
+        <button className="mini" disabled={!!busy} onClick={() => setProfilesOpen(true)}>
+          Profiles…
         </button>
         {loading && (
           <button onClick={() => streamId.current !== null && cancelStream(streamId.current)}>
@@ -337,6 +386,7 @@ function App() {
               status={status}
               busy={!!busy}
               activeDiff={diff}
+              identity={identity}
               onOpenDiff={setDiff}
               onStage={(paths) =>
                 act("Staging…", "status", (id) => stagePaths(id, paths))
@@ -355,6 +405,17 @@ function App() {
           )}
         </div>
       </div>
+      {profilesOpen && profiles && (
+        <ProfilesDialog
+          snapshot={profiles}
+          onChanged={reloadProfiles}
+          onClose={() => {
+            setProfilesOpen(false);
+            // Credentials or identity may have changed what git operations will do.
+            if (repoRef.current) void loadStatus(repoRef.current);
+          }}
+        />
+      )}
     </main>
   );
 }

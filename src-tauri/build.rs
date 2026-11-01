@@ -18,6 +18,13 @@ const COMMANDS: &[&str] = &[
     "switch_ref",
     "new_branch",
     "run_git_op",
+    "list_profiles",
+    "save_profile",
+    "delete_profile",
+    "set_active_profile",
+    "set_credential",
+    "remove_credential",
+    "pick_ssh_key",
 ];
 
 fn main() {

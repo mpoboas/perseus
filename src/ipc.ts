@@ -175,6 +175,56 @@ export async function fetchPatch(
   return { text: await res.text(), truncated: res.headers.get("x-perseus-truncated") === "1" };
 }
 
+// ---- Profiles (identity, SSH key, host tokens) ----
+// Tokens are write-only from the UI's point of view: they are sent once to be put in
+// the OS keychain, and only non-secret metadata (host, username) ever comes back.
+
+export interface CredentialMeta {
+  host: string;
+  username: string;
+}
+
+export interface Profile {
+  id: string;
+  name: string;
+  user_name: string;
+  user_email: string;
+  ssh_key: string | null;
+  credentials: CredentialMeta[];
+}
+
+export interface ProfilesSnapshot {
+  profiles: Profile[];
+  active: string | null;
+  /** False when the credential helper binary is missing next to the app. */
+  helper_available: boolean;
+}
+
+export interface ProfileInput {
+  id?: string | null;
+  name: string;
+  user_name: string;
+  user_email: string;
+  ssh_key: string | null;
+}
+
+export const listProfiles = () => invoke<ProfilesSnapshot>("list_profiles");
+
+export const saveProfile = (input: ProfileInput) => invoke<Profile>("save_profile", { input });
+
+export const deleteProfile = (id: string) => invoke<void>("delete_profile", { id });
+
+export const setActiveProfile = (id: string | null) =>
+  invoke<void>("set_active_profile", { id });
+
+export const setCredential = (id: string, host: string, username: string, token: string) =>
+  invoke<void>("set_credential", { id, host, username, token });
+
+export const removeCredential = (id: string, host: string) =>
+  invoke<void>("remove_credential", { id, host });
+
+export const pickSshKey = () => invoke<string | null>("pick_ssh_key");
+
 let nextStreamId = 1;
 
 /** Starts a commit stream. Chunks arrive in order via `onChunk`; returns the stream id for cancelling. */

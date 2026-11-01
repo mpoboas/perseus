@@ -19,6 +19,13 @@
     "allow-create-commit",
     "allow-switch-ref",
     "allow-new-branch",
-    "allow-run-git-op"
+    "allow-run-git-op",
+    "allow-list-profiles",
+    "allow-save-profile",
+    "allow-delete-profile",
+    "allow-set-active-profile",
+    "allow-set-credential",
+    "allow-remove-credential",
+    "allow-pick-ssh-key"
   ]
 }

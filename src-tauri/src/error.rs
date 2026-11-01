@@ -7,12 +7,18 @@ pub enum AppError {
     #[error("{0}")]
     Git(String),
     #[error("{0}")]
+    Profile(String),
+    #[error("{0}")]
     Internal(String),
 }
 
 impl AppError {
     pub fn git(e: impl std::fmt::Display) -> Self {
         Self::Git(e.to_string())
+    }
+
+    pub fn profile(e: impl std::fmt::Display) -> Self {
+        Self::Profile(e.to_string())
     }
 }
 
