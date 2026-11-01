@@ -22,7 +22,11 @@ to approve the app.
 1. GitLab > User Settings > Applications > Add new application (or a group/instance app).
 2. Untick **Confidential**. Select the scopes `read_user`, `read_repository`,
    `write_repository`. The redirect URI is unused by the device flow (`http://127.0.0.1`).
-3. Copy the **Application ID** (this is the client ID).
+3. Tick **Device authorization grant** ("Enable to allow Device authorization grant flow").
+   **This is easy to miss and is off by default.** Without it gitlab.com answers every
+   sign-in request with a bare `access_denied`, whatever scopes are requested. It can be
+   ticked later by editing the application.
+4. Copy the **Application ID** (this is the client ID).
 
 Tokens expire after two hours; the credential helper renews them automatically using the
 refresh token. Self-hosted GitLab (17.9+, where the device grant is generally available)

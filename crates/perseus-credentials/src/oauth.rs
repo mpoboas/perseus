@@ -198,10 +198,20 @@ fn request_device_code(http: &dyn Http, p: &Provider) -> Result<DeviceCode, OAut
         .map_err(OAuthError::Transport)?;
     let v = json(&resp.body)?;
     if let Some(err) = v.get("error").and_then(Value::as_str) {
-        let hint = match err {
-            "unauthorized_client" | "invalid_client" | "access_denied" => {
-                " (the provider refused this client ID: check that it is right, that the OAuth \
-                 app is not marked Confidential, and that the device flow is enabled for it)"
+        // The provider answered but refused this client: say which setting to look at, since
+        // the error codes alone (`access_denied`!) point nowhere useful.
+        let refused = matches!(
+            err,
+            "unauthorized_client" | "invalid_client" | "access_denied"
+        );
+        let hint = match (refused, p.kind) {
+            (true, Kind::GitLab) => {
+                " (GitLab refused this client ID. Edit the application on GitLab, tick \
+                 \"Device authorization grant\" and untick \"Confidential\")"
+            }
+            (true, Kind::GitHub) => {
+                " (GitHub refused this client ID. Check it is right and that \"Enable Device \
+                 Flow\" is ticked on the OAuth app)"
             }
             _ => "",
         };
@@ -649,15 +659,25 @@ mod tests {
 
     #[test]
     fn setup_errors_come_with_a_useful_hint() {
-        // GitHub says unauthorized_client; GitLab answers access_denied to the same mistake.
-        for error in ["unauthorized_client", "access_denied"] {
+        // Each provider gets advice about its own setting, not a generic message.
+        let cases = [
+            (github(), "unauthorized_client", "Enable Device Flow"),
+            (gitlab(), "access_denied", "Device authorization grant"),
+            (gitlab(), "invalid_client", "untick \"Confidential\""),
+        ];
+        for (provider, error, advice) in cases {
             let http = FakeHttp::default().json(400, &format!(r#"{{"error":"{error}"}}"#));
-            match run(&http, &github()).0.unwrap_err() {
-                OAuthError::Provider(m) => {
-                    assert!(m.contains(error) && m.contains("Confidential"), "{m}")
-                }
+            match run(&http, &provider).0.unwrap_err() {
+                OAuthError::Provider(m) => assert!(m.contains(error) && m.contains(advice), "{m}"),
                 e => panic!("{e:?}"),
             }
+        }
+
+        // Unrelated errors stay unadorned.
+        let http = FakeHttp::default().json(400, r#"{"error":"invalid_scope"}"#);
+        match run(&http, &gitlab()).0.unwrap_err() {
+            OAuthError::Provider(m) => assert_eq!(m, "invalid_scope"),
+            e => panic!("{e:?}"),
         }
     }
 
