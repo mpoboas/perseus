@@ -11,6 +11,14 @@
     "allow-stream-commits",
     "allow-cancel-stream",
     "allow-list-refs",
-    "allow-commit-detail"
+    "allow-commit-detail",
+    "allow-commit-files",
+    "allow-repo-status",
+    "allow-stage-paths",
+    "allow-unstage-paths",
+    "allow-create-commit",
+    "allow-switch-ref",
+    "allow-new-branch",
+    "allow-run-git-op"
   ]
 }

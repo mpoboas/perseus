@@ -6,6 +6,7 @@ use std::sync::{Arc, RwLock};
 use serde::Serialize;
 
 use crate::error::{AppError, Result};
+use crate::git::cli::Git;
 
 pub type RepoId = u32;
 
@@ -54,6 +55,16 @@ impl RepoRegistry {
             .map_err(|_| AppError::Internal("repo registry poisoned".into()))?
             .get(&id)
             .map(|(_, r)| Arc::clone(r))
+            .ok_or(AppError::UnknownRepo(id))
+    }
+
+    /// A hardened git runner rooted at the repository's working directory.
+    pub fn git(&self, id: RepoId) -> Result<Git> {
+        self.repos
+            .read()
+            .map_err(|_| AppError::Internal("repo registry poisoned".into()))?
+            .get(&id)
+            .map(|(info, _)| Git::new(&info.path))
             .ok_or(AppError::UnknownRepo(id))
     }
 

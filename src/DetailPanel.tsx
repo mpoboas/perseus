@@ -1,16 +1,19 @@
-import type { CommitDetail, Person } from "./ipc";
+import type { CommitDetail, DiffTarget, FileChange, Person } from "./ipc";
 
 interface Props {
   detail: CommitDetail | null;
+  files: FileChange[];
   error: string | null;
+  activeDiff: DiffTarget | null;
   onJump: (oid: string) => void;
+  onOpenFile: (oid: string, file: FileChange) => void;
 }
 
 function when(p: Person) {
   return new Date(p.time * 1000).toLocaleString();
 }
 
-export function DetailPanel({ detail, error, onJump }: Props) {
+export function DetailPanel({ detail, files, error, activeDiff, onJump, onOpenFile }: Props) {
   if (error) return <aside className="detail error">{error}</aside>;
   if (!detail) return <aside className="detail empty">Select a commit</aside>;
 
@@ -59,6 +62,30 @@ export function DetailPanel({ detail, error, onJump }: Props) {
           </>
         )}
       </dl>
+
+      <h3 className="files-title">
+        Files changed <span className="count">{files.length}</span>
+      </h3>
+      <ul className="files">
+        {files.map((f) => {
+          const active =
+            activeDiff?.kind === "commit" &&
+            activeDiff.oid === detail.oid &&
+            activeDiff.path === f.path;
+          return (
+            <li key={f.path} className={active ? "change active" : "change"}>
+              <span className={`st st-${f.status}`}>{f.status}</span>
+              <button
+                className="path"
+                title={f.path}
+                onClick={() => onOpenFile(detail.oid, f)}
+              >
+                {f.orig_path ? `${f.orig_path} → ${f.path}` : f.path}
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </aside>
   );
 }

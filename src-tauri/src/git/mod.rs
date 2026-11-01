@@ -1,5 +1,10 @@
+pub mod cli;
 pub mod detail;
+pub mod diff;
 pub mod graph;
 pub mod lanes;
+pub mod ops;
 pub mod refs;
 pub mod repo;
+pub mod status;
+pub mod validate;

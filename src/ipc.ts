@@ -1,4 +1,4 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
 
 export interface RepoInfo {
   id: number;
@@ -68,6 +68,112 @@ export const listRefs = (repoId: number) => invoke<RefInfo[]>("list_refs", { rep
 
 export const commitDetail = (repoId: number, oid: string) =>
   invoke<CommitDetail>("commit_detail", { repoId, oid });
+
+// ---- Working tree, writes and diffs ----
+
+export interface StatusEntry {
+  path: string;
+  orig_path: string | null;
+  /** Staged change code: M, A, D, R, C, T. */
+  index: string | null;
+  /** Unstaged change code. */
+  worktree: string | null;
+  untracked: boolean;
+  conflicted: boolean;
+}
+
+export type Operation = "merge" | "cherry_pick" | "rebase" | "revert";
+
+export interface RepoStatus {
+  branch: string | null;
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  entries: StatusEntry[];
+  operation: Operation | null;
+}
+
+export interface FileChange {
+  path: string;
+  orig_path: string | null;
+  status: string;
+}
+
+export type SwitchTarget = { kind: "branch"; name: string } | { kind: "detached"; oid: string };
+
+export type GitOp =
+  | { op: "fetch" }
+  | { op: "pull" }
+  | { op: "push"; set_upstream?: boolean; remote?: string }
+  | { op: "merge"; rev: string }
+  | { op: "cherry_pick"; oid: string }
+  | { op: "rebase"; onto: string }
+  | { op: "abort" }
+  | { op: "continue" };
+
+export type WorkSide = "unstaged" | "staged" | "untracked";
+
+export type DiffTarget =
+  | { kind: "commit"; oid: string; path: string; orig?: string | null }
+  | { kind: "work"; side: WorkSide; path: string; orig?: string | null };
+
+export const repoStatus = (repoId: number) => invoke<RepoStatus>("repo_status", { repoId });
+
+export const commitFiles = (repoId: number, oid: string) =>
+  invoke<FileChange[]>("commit_files", { repoId, oid });
+
+export const stagePaths = (repoId: number, paths: string[]) =>
+  invoke<void>("stage_paths", { repoId, paths });
+
+export const unstagePaths = (repoId: number, paths: string[]) =>
+  invoke<void>("unstage_paths", { repoId, paths });
+
+export const createCommit = (repoId: number, message: string, amend: boolean) =>
+  invoke<void>("create_commit", { repoId, message, amend });
+
+export const switchRef = (repoId: number, target: SwitchTarget) =>
+  invoke<void>("switch_ref", { repoId, target });
+
+export const newBranch = (repoId: number, name: string, start: string | null, checkout: boolean) =>
+  invoke<void>("new_branch", { repoId, name, start, checkout });
+
+/** Runs fetch/pull/push/merge/…; `onProgress` receives git's progress lines as they arrive. */
+export function runGitOp(
+  repoId: number,
+  op: GitOp,
+  onProgress: (line: string) => void,
+): Promise<string> {
+  const channel = new Channel<string>();
+  channel.onmessage = onProgress;
+  return invoke<string>("run_git_op", { repoId, op, onProgress: channel });
+}
+
+export interface Patch {
+  text: string;
+  /** The backend cut the patch off at its size cap. */
+  truncated: boolean;
+}
+
+/**
+ * Fetches a unified patch over the `perseus://` protocol: raw bytes, no JSON/Base64
+ * wrapping. `convertFileSrc` yields the right URL form per platform
+ * (`http://perseus.localhost` on Windows, `perseus://localhost` elsewhere).
+ */
+export async function fetchPatch(
+  repoId: number,
+  target: DiffTarget,
+  signal?: AbortSignal,
+): Promise<Patch> {
+  const params = new URLSearchParams({ repo: String(repoId), path: target.path });
+  if (target.orig) params.set("orig", target.orig);
+  if (target.kind === "commit") params.set("oid", target.oid);
+  else params.set("side", target.side);
+
+  const base = convertFileSrc(target.kind === "commit" ? "diff" : "wdiff", "perseus");
+  const res = await fetch(`${base}?${params}`, { signal });
+  if (!res.ok) throw new Error((await res.text()) || `request failed (${res.status})`);
+  return { text: await res.text(), truncated: res.headers.get("x-perseus-truncated") === "1" };
+}
 
 let nextStreamId = 1;
 

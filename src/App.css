@@ -182,6 +182,298 @@ button {
   cursor: pointer;
 }
 
+/* Toolbar extras */
+.toolbar .sep {
+  width: 1px;
+  align-self: stretch;
+  background: var(--border);
+}
+
+.branch {
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 12px;
+  padding: 1px 8px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+}
+
+.status {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status.error {
+  color: #c0392b;
+}
+
+.mini {
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: none;
+  cursor: pointer;
+}
+
+.mini:hover:not(:disabled) {
+  background: var(--accent-bg);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Center column: graph above diff */
+.center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.center .graph-scroller {
+  flex: 1;
+  min-height: 0;
+}
+
+.diff-view {
+  flex: 0 0 45%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.diff-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.diff-head strong {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.warn {
+  color: #b9770e;
+}
+
+.diff-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.diff-empty {
+  padding: 16px;
+  color: var(--muted);
+}
+
+.diff-empty.error {
+  color: #c0392b;
+}
+
+.diff-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  padding: 0 12px;
+  font: 12px/18px ui-monospace, Consolas, monospace;
+  white-space: pre;
+}
+
+.diff-line.add {
+  background: rgba(46, 160, 67, 0.2);
+}
+
+.diff-line.del {
+  background: rgba(248, 81, 73, 0.2);
+}
+
+.diff-line.hunk {
+  background: rgba(90, 140, 255, 0.18);
+  color: var(--muted);
+}
+
+.diff-line.meta {
+  color: var(--muted);
+}
+
+/* Right column: tabs over commit/changes panels */
+.right {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-left: 1px solid var(--border);
+}
+
+.right .detail {
+  flex: 1;
+  min-height: 0;
+  border-left: 0;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.tabs button {
+  flex: 1;
+  padding: 6px 0;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+}
+
+.tabs button[aria-selected="true"] {
+  border-bottom-color: #2f6fdb;
+  font-weight: 600;
+}
+
+.badge {
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--accent-bg);
+  font-size: 11px;
+}
+
+/* File lists (commit files and working-tree changes) */
+.files,
+.changes ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.files-title,
+.changes h3 {
+  margin: 14px 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.count {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+.bulk {
+  float: right;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.change {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 4px;
+  border-radius: 4px;
+}
+
+.change.active,
+.change:hover {
+  background: var(--accent-bg);
+}
+
+.change .path {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.st {
+  width: 14px;
+  text-align: center;
+  font: 700 11px ui-monospace, Consolas, monospace;
+}
+
+.st-A,
+.st-\? {
+  color: #2e9e45;
+}
+
+.st-D {
+  color: #d1453b;
+}
+
+.st-M,
+.st-R,
+.st-C,
+.st-T {
+  color: #c98a12;
+}
+
+.st-U {
+  color: #d1453b;
+}
+
+.sidebar-actions {
+  padding: 6px 12px 0;
+}
+
+.sidebar-actions input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Commit composer and operation banner */
+.composer {
+  margin-top: 16px;
+}
+
+.composer textarea {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+  font: inherit;
+}
+
+.composer-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.banner {
+  margin-bottom: 12px;
+  padding: 8px 10px;
+  border: 1px solid #c98a12;
+  border-radius: 6px;
+  background: rgba(201, 138, 18, 0.15);
+}
+
+.banner-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --border: #444;

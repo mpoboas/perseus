@@ -10,6 +10,14 @@ const COMMANDS: &[&str] = &[
     "cancel_stream",
     "list_refs",
     "commit_detail",
+    "commit_files",
+    "repo_status",
+    "stage_paths",
+    "unstage_paths",
+    "create_commit",
+    "switch_ref",
+    "new_branch",
+    "run_git_op",
 ];
 
 fn main() {

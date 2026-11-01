@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-run-git-op"
+description = "Enables the run_git_op command without any pre-configured scope."
+commands.allow = ["run_git_op"]
+
+[[permission]]
+identifier = "deny-run-git-op"
+description = "Denies the run_git_op command without any pre-configured scope."
+commands.deny = ["run_git_op"]
