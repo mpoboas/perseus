@@ -199,8 +199,9 @@ fn request_device_code(http: &dyn Http, p: &Provider) -> Result<DeviceCode, OAut
     let v = json(&resp.body)?;
     if let Some(err) = v.get("error").and_then(Value::as_str) {
         let hint = match err {
-            "unauthorized_client" | "invalid_client" => {
-                " (is the client ID right, and is the device flow enabled for the app?)"
+            "unauthorized_client" | "invalid_client" | "access_denied" => {
+                " (the provider refused this client ID: check that it is right, that the OAuth \
+                 app is not marked Confidential, and that the device flow is enabled for it)"
             }
             _ => "",
         };
@@ -648,10 +649,15 @@ mod tests {
 
     #[test]
     fn setup_errors_come_with_a_useful_hint() {
-        let http = FakeHttp::default().json(404, r#"{"error":"unauthorized_client"}"#);
-        match run(&http, &github()).0.unwrap_err() {
-            OAuthError::Provider(m) => assert!(m.contains("device flow")),
-            e => panic!("{e:?}"),
+        // GitHub says unauthorized_client; GitLab answers access_denied to the same mistake.
+        for error in ["unauthorized_client", "access_denied"] {
+            let http = FakeHttp::default().json(400, &format!(r#"{{"error":"{error}"}}"#));
+            match run(&http, &github()).0.unwrap_err() {
+                OAuthError::Provider(m) => {
+                    assert!(m.contains(error) && m.contains("Confidential"), "{m}")
+                }
+                e => panic!("{e:?}"),
+            }
         }
     }
 
