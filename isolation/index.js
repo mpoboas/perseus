@@ -34,7 +34,9 @@ const ALLOWED = new Set([
 
 window.__TAURI_ISOLATION_HOOK__ = (payload) => {
   if (typeof payload.cmd !== "string" || !ALLOWED.has(payload.cmd)) {
-    // Dropping the message makes the caller's promise reject; nothing reaches Rust.
+    // The message is dropped, so nothing reaches Rust. The caller's promise simply never
+    // settles; this log line is how a developer finds out why. Arguments are not logged.
+    console.error("Perseus blocked an IPC call to a command that is not on the allowlist:", String(payload.cmd));
     throw new Error("Perseus blocked an IPC call to an unknown command");
   }
   return payload;

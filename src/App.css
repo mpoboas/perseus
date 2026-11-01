@@ -26,6 +26,15 @@ body,
   margin: 0;
 }
 
+/*
+ * Tauri's isolation iframe hides itself with an inline style, which the production
+ * Content-Security-Policy (style-src 'self') blocks. Hide it from here instead of
+ * loosening the policy; a hidden iframe still loads and relays messages.
+ */
+body > iframe {
+  display: none !important;
+}
+
 button {
   font: inherit;
   color: inherit;
