@@ -12,6 +12,7 @@ import {
 } from "./graphLayout";
 import type { RefInfo } from "./ipc";
 import { absoluteTime, avatarColor, initials, relativeTime } from "./lib/format";
+import { scrollMap } from "./lib/scrollMap";
 import { avatarImage, ownerImage, subscribeAvatars } from "./lib/avatars";
 import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
 
@@ -228,13 +229,19 @@ export function GraphCanvas({
   const hover = useRef<number | null>(null);
 
   const offset = wip ? 1 : 0;
+  // A very long list outgrows what a browser can scroll: the scroll bar is stretched (see scrollMap),
+  // so a real scroll position is `scale` list pixels each. Everything below reads it through `top`.
+  const { range: scrollRange, scale } = scrollMap(count + offset, ROW_H, viewH);
   // Everything the draw loop needs, kept in a ref so `draw` stays stable between renders.
   // A hidden column has no width: the others close up around it.
   const refsEff = showRefs ? refsW : 0;
   const authEff = showAuthor ? authorW : 0;
   const dateEff = showDate ? dateW : 0;
-  const latest = useRef({ count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset });
-  latest.current = { count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset };
+  const latest = useRef({ count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset, scale });
+  latest.current = { count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset, scale };
+
+  /** The scroll position in list pixels (a real one, times the stretch). */
+  const listTop = () => (scroller.current?.scrollTop ?? 0) * latest.current.scale;
 
   /** Where each visible commit's ref chips were painted, for hit-testing. */
   const badges = useRef(new Map<number, Badge[]>());
@@ -273,7 +280,7 @@ export function GraphCanvas({
     const base = latest.current.refsW;
     const absolute = latest.current.dateStyle === "absolute";
     const laneX = (ln: number) => base + PAD + ln * LANE_W + LANE_W / 2;
-    const top = sc.scrollTop;
+    const top = sc.scrollTop * latest.current.scale;
     const total = n + off;
     const firstDisplay = Math.max(0, Math.floor(top / ROW_H));
     const lastDisplay = Math.min(total - 1, Math.ceil((top + h) / ROW_H));
@@ -645,17 +652,35 @@ export function GraphCanvas({
     if (!sc || selected === null) return;
     const display = selected === "wip" ? 0 : selected + offset;
     const y = display * ROW_H;
-    if (y < sc.scrollTop) sc.scrollTop = y;
-    else if (y + ROW_H > sc.scrollTop + sc.clientHeight) sc.scrollTop = y + ROW_H - sc.clientHeight;
+    const k = latest.current.scale;
+    const top = sc.scrollTop * k;
+    if (y < top) sc.scrollTop = y / k;
+    else if (y + ROW_H > top + sc.clientHeight) sc.scrollTop = (y + ROW_H - sc.clientHeight) / k;
   }, [selected, offset]);
 
   useEffect(() => {
     const sc = scroller.current;
     if (!sc || !reveal) return;
-    sc.scrollTop = Math.max(0, (reveal.row + offset) * ROW_H - sc.clientHeight / 2);
+    sc.scrollTop = Math.max(0, (reveal.row + offset) * ROW_H - sc.clientHeight / 2) / latest.current.scale;
     // Only a new reveal request should scroll, not a change in the WIP offset.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal]);
+
+  // With a stretched scroll bar the wheel moves a fixed number of rows, not a fixed number of real pixels
+  // (which would be many rows each); a list that fits scrolls natively.
+  useEffect(() => {
+    const sc = scroller.current;
+    if (!sc) return;
+    const onWheel = (e: WheelEvent) => {
+      const k = latest.current.scale;
+      if (k <= 1 || e.ctrlKey) return;
+      e.preventDefault();
+      const dy = e.deltaMode === 1 ? e.deltaY * ROW_H : e.deltaMode === 2 ? e.deltaY * sc.clientHeight : e.deltaY;
+      sc.scrollTop = Math.max(0, sc.scrollTop * k + dy) / k;
+    };
+    sc.addEventListener("wheel", onWheel, { passive: false });
+    return () => sc.removeEventListener("wheel", onWheel);
+  }, []);
 
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
   useEffect(() => subscribeAvatars(schedule), [schedule]);
@@ -667,7 +692,7 @@ export function GraphCanvas({
   };
 
   const subjectUnder = (x: number, y: number) =>
-    subjectAt(x, y, scroller.current?.scrollTop ?? 0, latest.current.count, badges.current, latest.current.offset);
+    subjectAt(x, y, listTop(), latest.current.count, badges.current, latest.current.offset);
 
   const hideTip = () => {
     window.clearTimeout(tipTimer.current);
@@ -700,7 +725,7 @@ export function GraphCanvas({
   const onPointerMove = (e: React.PointerEvent) => {
     const { x, y } = local(e);
     const p = press.current;
-    const top = scroller.current?.scrollTop ?? 0;
+    const top = listTop();
 
     if (p && !dragRef.current && p.subject.kind !== "wip" && isDrag(x - p.x, y - p.y)) {
       scroller.current?.setPointerCapture(p.pointerId);
@@ -710,8 +735,10 @@ export function GraphCanvas({
     if (dragRef.current) {
       const sc = scroller.current!;
       // Scroll while hovering near the top or bottom edge, so far-away targets are reachable.
-      if (y < EDGE_SCROLL_ZONE) sc.scrollTop -= EDGE_SCROLL_STEP;
-      else if (y > size.current.h - EDGE_SCROLL_ZONE) sc.scrollTop += EDGE_SCROLL_STEP;
+      // The same speed in rows however stretched the scroll bar is.
+      const step = EDGE_SCROLL_STEP / latest.current.scale;
+      if (y < EDGE_SCROLL_ZONE) sc.scrollTop -= step;
+      else if (y > size.current.h - EDGE_SCROLL_ZONE) sc.scrollTop += step;
 
       const found = subjectUnder(x, y);
       const target = sameSubject(found, dragRef.current.source) ? null : found;
@@ -798,7 +825,7 @@ export function GraphCanvas({
     else onSelect(display - offset);
   };
 
-  const top = scroller.current?.scrollTop ?? 0;
+  const top = listTop();
   const targetBox = (() => {
     const t = drag?.target;
     if (!t || t.kind === "wip") return null;
@@ -891,7 +918,7 @@ export function GraphCanvas({
         >
           <canvas ref={canvas} className="graph-canvas" />
           {/* Total scroll height = canvas height (sticky) + this spacer. */}
-          <div style={{ height: Math.max(0, (count + offset) * ROW_H - viewH) }} />
+          <div style={{ height: scrollRange }} />
         </div>
 
         {showSkeleton && (

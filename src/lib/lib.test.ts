@@ -4,7 +4,39 @@ import { buildFileTree } from "./fileTree";
 import { fuzzyMatch } from "./fuzzy";
 import { folderFromUrl, hueOf, initials, relativeTime, splitPath } from "./format";
 import { buildRefTree } from "./refTree";
+import { MAX_SCROLL_PX, scrollMap, toList, toScroll } from "./scrollMap";
 import { arrived, newTally, waitForRows } from "./streamWait";
+
+describe("scrollMap", () => {
+  it("is the identity while the list fits under the cap", () => {
+    expect(scrollMap(1_000, 28, 600)).toEqual({ range: 27_400, scale: 1 });
+    expect(scrollMap(0, 28, 600)).toEqual({ range: 0, scale: 1 });
+    expect(scrollMap(5, 28, 600)).toEqual({ range: 0, scale: 1 });
+  });
+
+  it("stretches the scroll bar once the list is taller than the cap", () => {
+    const m = scrollMap(2_000_000, 28, 600);
+    expect(m.range).toBe(MAX_SCROLL_PX);
+    expect(m.scale).toBeCloseTo((2_000_000 * 28 - 600) / MAX_SCROLL_PX, 6);
+    // The two ends of the scroll bar are the two ends of the list.
+    expect(toList(0, m.scale)).toBe(0);
+    expect(toList(m.range, m.scale)).toBeCloseTo(2_000_000 * 28 - 600, 3);
+  });
+
+  it("converts back and forth without drifting", () => {
+    const { scale } = scrollMap(1_500_000, 28, 700);
+    for (const row of [0, 1, 777_777, 1_499_999]) {
+      const listTop = row * 28;
+      expect(toList(toScroll(listTop, scale), scale)).toBeCloseTo(listTop, 6);
+    }
+    // One real pixel is never more than a few rows, so every row can be reached.
+    expect(scale * 1).toBeLessThan(28);
+  });
+
+  it("honours a smaller cap", () => {
+    expect(scrollMap(100, 10, 100, 450)).toEqual({ range: 450, scale: 900 / 450 });
+  });
+});
 
 describe("format", () => {
   it("makes initials from names, emails and single words", () => {

@@ -489,6 +489,68 @@ describe("Perseus with a long history", () => {
   });
 });
 
+// 320,000 rows of 28 px are taller (8.96 M px) than the 8 M px the graph asks a browser to scroll,
+// so the scroll bar is stretched. The oldest commit must still be reachable, and nothing may
+// ask the browser for an area it would silently cut off.
+describe("Perseus with a history taller than the scroll limit", () => {
+  let app;
+
+  before(async () => {
+    const dir = join(scratchDir("perseus-huge-"), "huge");
+    execFileSync("node", ["scripts/make-perf-repo.mjs", dir, "320000"], { stdio: "ignore", timeout: 300000 });
+    app = await launch({ recents: [{ path: dir, name: "huge" }], port: 9452 });
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  it("reaches the oldest commit and scrolls back", async () => {
+    const page = app.page;
+    await page.locator(".recent-main", { hasText: "huge" }).click();
+    await page.getByText(/320.?\d{3} commits/).waitFor({ timeout: 120000 });
+    const extent = await page.evaluate(() => {
+      const sc = document.querySelector(".graph-scroller");
+      return { height: sc.scrollHeight, view: sc.clientHeight };
+    });
+    assert.ok(extent.height <= 8_100_000, `the scroll area stays under the cap (${extent.height})`);
+
+    await page.locator(".graph-scroller").focus();
+    await page.keyboard.press("End");
+    await page.locator(".detail-title", { hasText: "Commit 1 on main" }).waitFor({ timeout: 20000 });
+    const atEnd = await page.evaluate(() => {
+      const sc = document.querySelector(".graph-scroller");
+      return sc.scrollTop + sc.clientHeight >= sc.scrollHeight - 2;
+    });
+    assert.ok(atEnd, "the scroll bar is at its end with the oldest commit selected");
+    // The last rows are really drawn there.
+    const painted = await page.evaluate(() => {
+      const c = document.querySelector(".graph-canvas");
+      const data = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+      let n = 0;
+      for (let i = 3; i < data.length; i += 4 * 97) if (data[i] > 0) n++;
+      return n;
+    });
+    assert.ok(painted > 50, `rows are painted at the end (${painted})`);
+
+    await page.keyboard.press("Home");
+    await page.locator(".detail-title", { hasText: /Merge feature|Commit 320/ }).waitFor({ timeout: 20000 });
+    const atStart = await page.evaluate(() => document.querySelector(".graph-scroller").scrollTop);
+    assert.equal(atStart, 0);
+  });
+
+  it("scrolls by rows with the wheel, not by thousands", async () => {
+    const page = app.page;
+    const { x, y } = await rowPoint(page, 3);
+    await page.mouse.move(x, y);
+    await page.mouse.wheel(0, 300);
+    await new Promise((r) => setTimeout(r, 300));
+    // 300 px of wheel is about 11 rows of 28 px, in list pixels: a few real pixels at most.
+    const real = await page.evaluate(() => document.querySelector(".graph-scroller").scrollTop);
+    assert.ok(real > 0 && real < 300, `the wheel moved the list by rows, not by the whole stretch (${real})`);
+  });
+});
+
 describe("Perseus resolving a merge conflict", () => {
   let app;
   let page;
