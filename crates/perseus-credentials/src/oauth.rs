@@ -113,10 +113,11 @@ impl Provider {
         }
     }
 
-    /// Enough for git over HTTPS and nothing else.
+    /// Enough for git over HTTPS and nothing else. GitHub also wants `workflow` before it lets a
+    /// push create or change a file under `.github/workflows`.
     pub fn scope(&self) -> &'static str {
         match self.kind {
-            Kind::GitHub => "repo",
+            Kind::GitHub => "repo workflow",
             Kind::GitLab => "read_repository write_repository",
         }
     }
@@ -520,7 +521,7 @@ mod tests {
         // The first request asks for device code with our scope; polls carry the grant type.
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].0, "https://github.com/login/device/code");
-        assert!(reqs[0].1.contains(&("scope".into(), "repo".into())));
+        assert!(reqs[0].1.contains(&("scope".into(), "repo workflow".into())));
         assert_eq!(reqs[1].0, "https://github.com/login/oauth/access_token");
         assert!(
             reqs[1]

@@ -13,7 +13,7 @@ so the only thing Perseus needs is each provider's public **client ID**.
 3. Open the app and tick **Enable Device Flow**.
 4. Copy the **Client ID**.
 
-Scope requested: `repo` (GitHub offers nothing narrower for private repositories).
+Scopes requested: `repo` (GitHub offers nothing narrower for private repositories) and `workflow`, without which GitHub rejects any push that creates or changes a file under `.github/workflows`. Signing in again is needed for a token issued before this was added.
 GitHub OAuth app tokens do not expire. For organisation repositories an owner may need
 to approve the app.
 
