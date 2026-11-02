@@ -26,6 +26,8 @@ const AVATAR_D = 18;
 /** Gap kept between the ref column's text and its edge. */
 const REF_PAD = 8;
 const ICON = 12;
+/** Space above and below each row's colour band. */
+const BAND_GAP = 3;
 
 // Icon outlines from the lucide set (24x24), painted straight onto the canvas.
 const PATH_LAPTOP = new Path2D(
@@ -255,16 +257,16 @@ export function GraphCanvas({
     const now = Date.now();
     const yOf = (display: number) => display * ROW_H - top;
 
-    // Pass 0: each commit's row is washed with its branch colour, strongest beside the graph, so a
-    // branch can be followed across the message and author columns.
+    // Pass 0: each commit gets a band in its branch colour that starts at its avatar and ends where
+    // the message begins, with a small gap above and below so neighbouring rows stay separate.
     for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
       const row = store.rows[d - off];
       if (!row) break;
-      const grad = ctx.createLinearGradient(base, 0, Math.min(w, base + gW + 520), 0);
-      grad.addColorStop(0, rgba(lane(row.graph.color), 0.17));
-      grad.addColorStop(1, rgba(lane(row.graph.color), 0));
-      ctx.fillStyle = grad;
-      ctx.fillRect(base, yOf(d), w - base, ROW_H);
+      const x0 = laneX(row.graph.lane);
+      const x1 = base + gW;
+      if (x1 <= x0) continue;
+      ctx.fillStyle = rgba(lane(row.graph.color), 0.3);
+      ctx.fillRect(x0, yOf(d) + BAND_GAP, x1 - x0, ROW_H - BAND_GAP * 2);
     }
 
     // Pass 1: row backgrounds (hover and selection).
