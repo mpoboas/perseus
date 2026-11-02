@@ -75,6 +75,16 @@ export function splitPath(path: string): { dir: string; name: string } {
   return i < 0 ? { dir: "", name: path } : { dir: path.slice(0, i + 1), name: path.slice(i + 1) };
 }
 
+/** The folder a clone of `url` would get by default: `https://host/org/lib.git` becomes `lib`. */
+export function folderFromUrl(url: string): string {
+  const last = url
+    .trim()
+    .replace(/[\\/]+$/, "")
+    .split(/[\\/:]/)
+    .pop();
+  return (last ?? "").replace(/\.git$/i, "");
+}
+
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }

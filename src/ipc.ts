@@ -755,6 +755,10 @@ export interface LogEntry {
   read_only: boolean;
 }
 
+/** Adds a submodule from a URL or a folder on this computer; the result is staged, not committed. */
+export const addSubmodule = (repoId: number, url: string, path: string) =>
+  invoke<void>("add_submodule", { repoId, url, path });
+
 export const listSubmodules = (repoId: number) => invoke<Submodule[]>("list_submodules", { repoId });
 export const updateSubmodules = (repoId: number, path: string | null) =>
   invoke<void>("update_submodules", { repoId, path });

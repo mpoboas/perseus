@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-add-submodule"
+description = "Enables the add_submodule command without any pre-configured scope."
+commands.allow = ["add_submodule"]
+
+[[permission]]
+identifier = "deny-add-submodule"
+description = "Denies the add_submodule command without any pre-configured scope."
+commands.deny = ["add_submodule"]

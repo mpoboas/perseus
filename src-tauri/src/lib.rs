@@ -136,6 +136,7 @@ pub fn run() {
             askpass_commands::answer_askpass,
             extras_commands::list_submodules,
             extras_commands::update_submodules,
+            extras_commands::add_submodule,
             extras_commands::open_nested_repo,
             extras_commands::list_worktrees,
             extras_commands::add_worktree,

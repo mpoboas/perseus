@@ -13,6 +13,7 @@ import {
   Download,
   FolderPlus,
   Keyboard,
+  Package,
   Search,
   Settings,
   Moon,
@@ -120,6 +121,7 @@ import {
   removeWorktree,
   unwatchRepo,
   updateSubmodules,
+  addSubmodule,
   watchAskpass,
   watchRepo,
 } from "./ipc";
@@ -138,6 +140,7 @@ import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
 import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
+import { AddSubmoduleDialog } from "./AddSubmoduleDialog";
 import { CherryPickDialog, type PickCommit } from "./CherryPickDialog";
 import { profileFor, type ProfileRule } from "./lib/profileRules";
 import { ProfilesDialog, RULES_KEY } from "./ProfilesDialog";
@@ -191,6 +194,7 @@ function App() {
   const defaultRemote = remotes.some((r) => r.name === "origin") ? "origin" : (remotes[0]?.name ?? "origin");
   const [cancellable, setCancellable] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
+  const [addSubmoduleOpen, setAddSubmoduleOpen] = useState(false);
   /** Commit rows picked with Ctrl/Shift+click (two or more; a single one is just the selection). */
   const [picked, setPicked] = useState<number[]>([]);
   const pickedSet = useMemo(() => new Set(picked), [picked]);
@@ -1625,6 +1629,7 @@ function App() {
       add({ id: "patch-export-staged", title: "Export staged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: true }) });
       add({ id: "patch-apply", title: "Apply a patch file…", group: "Actions", icon: Archive, run: () => void doApplyPatch(false) });
       add({ id: "patch-apply-index", title: "Apply a patch file and stage it…", group: "Actions", icon: Archive, run: () => void doApplyPatch(true) });
+      add({ id: "add-submodule", title: "Add a submodule…", group: "Actions", icon: Package, run: () => setAddSubmoduleOpen(true) });
       add({ id: "remotes", title: "Manage remotes…", group: "Actions", icon: Cable, run: () => setRemotesOpen(true) });
       if (status?.upstream) {
         add({ id: "pull-merge", title: "Pull (merge)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "merge" }, { done: "Pulled", fail: "Pull failed" }) });
@@ -1810,6 +1815,7 @@ function App() {
                       version={refs}
                       busy={!!busy}
                       onOpen={(p) => void openNested(p)}
+                      onAddSubmodule={() => setAddSubmoduleOpen(true)}
                       onUpdateSubmodules={(p) =>
                         void act("Updating submodules…", "all", (id) => updateSubmodules(id, p), {
                           done: "Submodules updated",
@@ -2060,6 +2066,18 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {addSubmoduleOpen && (
+        <AddSubmoduleDialog
+          onClose={() => setAddSubmoduleOpen(false)}
+          onAdd={(url, path) => {
+            setAddSubmoduleOpen(false);
+            void act("Adding the submodule…", "all", (id) => addSubmodule(id, url, path), {
+              done: "Submodule added: commit it to keep it",
+              fail: "Could not add the submodule",
+            });
+          }}
+        />
+      )}
       {pickCommits && (
         <CherryPickDialog
           commits={pickCommits}

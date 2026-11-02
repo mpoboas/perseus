@@ -35,6 +35,19 @@ pub async fn update_submodules(
     blocking(move || extras::update_submodules(&git, path.as_deref())).await
 }
 
+/// Adds a submodule (using the active profile's login for a private remote); the change is staged.
+#[tauri::command]
+pub async fn add_submodule(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    url: String,
+    path: String,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || extras::add_submodule(&git, &url, &path)).await
+}
+
 /// Opens a folder inside the repository (a submodule or a linked worktree of it) as its own
 /// repository. Only paths the repository itself reports are accepted.
 #[tauri::command]

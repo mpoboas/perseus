@@ -12,6 +12,7 @@ interface Props {
   /** Opens a submodule (relative path) or worktree (absolute path) as its own repository. */
   onOpen: (path: string) => void;
   onUpdateSubmodules: (path: string | null) => void;
+  onAddSubmodule: () => void;
   onRemoveWorktree: (w: Worktree) => void;
   onTrackLfs: (pattern: string) => void;
 }
@@ -24,7 +25,7 @@ const STATE_HINT: Record<Submodule["state"], string> = {
 };
 
 /** Submodules, linked worktrees and Git LFS: shown only for repositories that use them. */
-export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodules, onRemoveWorktree, onTrackLfs }: Props) {
+export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodules, onAddSubmodule, onRemoveWorktree, onTrackLfs }: Props) {
   const [submodules, setSubmodules] = useState<Submodule[]>([]);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [lfs, setLfs] = useState<LfsStatus | null>(null);
@@ -80,6 +81,11 @@ export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodul
               <li className="side-note">
                 <button className="link-btn" disabled={busy} onClick={() => onUpdateSubmodules(null)}>
                   <RefreshCw size={12} /> Update all submodules
+                </button>
+              </li>
+              <li className="side-note">
+                <button className="link-btn" disabled={busy} onClick={onAddSubmodule}>
+                  <Package size={12} /> Add a submodule…
                 </button>
               </li>
             </ul>

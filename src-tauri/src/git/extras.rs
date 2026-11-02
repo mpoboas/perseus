@@ -76,6 +76,24 @@ pub fn update_submodules(git: &Git, path: Option<&str>) -> Result<()> {
     Ok(())
 }
 
+/// Adds a submodule: clones `url` into `path`, records it in `.gitmodules` and stages both. The
+/// commit that makes it part of the project is left to the user.
+pub fn add_submodule(git: &Git, url: &str, path: &str) -> Result<()> {
+    let url = validate::remote_url(url)?;
+    let path = validate::rel_path(path.trim_end_matches('/'))?;
+    // Git blocks the `file` transport for submodules by default, so that a hostile `.gitmodules`
+    // cannot make a clone read other repositories on this disk. A folder the user typed here is
+    // their own choice, so it is allowed for this one command and the default stays for the rest.
+    let local = url.starts_with("file://") || std::path::Path::new(url).is_dir();
+    let git = if local {
+        git.clone().with_config("protocol.file.allow", "always")
+    } else {
+        git.clone()
+    };
+    git.output(["submodule", "add", "--", url, path])?;
+    Ok(())
+}
+
 // ---------------------------------------------------------------- worktrees
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -331,6 +349,46 @@ mod tests {
             SubmoduleState::Clean
         );
         assert!(update_submodules(&git, Some("../x")).is_err());
+    }
+
+    #[test]
+    fn a_submodule_can_be_added_from_a_folder_or_url() {
+        let (src_dir, _src) = source();
+        let (_d, git) = init_repo();
+        commit_file(&git, "a.txt", "a\n", "base");
+
+        add_submodule(&git, src_dir.path().to_str().unwrap(), "libs/lib/").unwrap();
+        let listed = list_submodules(&git).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].path, "libs/lib");
+        assert!(git.root().join("libs/lib/lib.txt").exists(), "cloned");
+        let staged =
+            String::from_utf8_lossy(&git.output(["diff", "--cached", "--name-only"]).unwrap())
+                .lines()
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+        assert_eq!(staged, [".gitmodules", "libs/lib"], "staged, not committed");
+
+        // Adding on top of an existing path is git's error, passed on.
+        assert!(add_submodule(&git, src_dir.path().to_str().unwrap(), "libs/lib").is_err());
+    }
+
+    #[test]
+    fn hostile_submodule_input_is_refused() {
+        let (_d, git) = init_repo();
+        commit_file(&git, "a.txt", "a\n", "base");
+        for (url, path) in [
+            ("--upload-pack=touch /tmp/x", "libs/a"),
+            ("ext::sh -c touch% /tmp/x", "libs/a"),
+            ("https://example.com/r.git", "../escape"),
+            ("https://example.com/r.git", "/abs/path"),
+            ("https://example.com/r.git", ""),
+            ("", "libs/a"),
+        ] {
+            assert!(add_submodule(&git, url, path).is_err(), "{url:?} {path:?}");
+        }
+        assert!(list_submodules(&git).unwrap().is_empty());
+        assert!(!git.root().join(".gitmodules").exists());
     }
 
     #[test]

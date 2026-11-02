@@ -50,6 +50,7 @@
     "allow-answer-askpass",
     "allow-list-submodules",
     "allow-update-submodules",
+    "allow-add-submodule",
     "allow-open-nested-repo",
     "allow-list-worktrees",
     "allow-add-worktree",

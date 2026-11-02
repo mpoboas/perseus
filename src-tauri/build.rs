@@ -48,6 +48,7 @@ const COMMANDS: &[&str] = &[
     "answer_askpass",
     "list_submodules",
     "update_submodules",
+    "add_submodule",
     "open_nested_repo",
     "list_worktrees",
     "add_worktree",

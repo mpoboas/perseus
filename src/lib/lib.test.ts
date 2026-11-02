@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { hunkChecksum, parseDiff } from "./diffParse";
 import { buildFileTree } from "./fileTree";
 import { fuzzyMatch } from "./fuzzy";
-import { hueOf, initials, relativeTime, splitPath } from "./format";
+import { folderFromUrl, hueOf, initials, relativeTime, splitPath } from "./format";
 import { buildRefTree } from "./refTree";
 import { arrived, newTally, waitForRows } from "./streamWait";
 
@@ -13,6 +13,14 @@ describe("format", () => {
     expect(initials("Jean-Luc Picard <jl@x.org>")).toBe("JP");
     expect(initials("")).toBe("?");
     expect(initials("   ")).toBe("?");
+  });
+
+  it("names the folder of a clone after its address", () => {
+    expect(folderFromUrl("https://github.com/owner/lib.git")).toBe("lib");
+    expect(folderFromUrl("git@github.com:owner/other-lib.git")).toBe("other-lib");
+    expect(folderFromUrl("C:\\Users\\me\\projects\\tool\\")).toBe("tool");
+    expect(folderFromUrl("/home/me/src/thing")).toBe("thing");
+    expect(folderFromUrl("")).toBe("");
   });
 
   it("gives the same person the same hue", () => {

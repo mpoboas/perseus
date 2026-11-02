@@ -813,4 +813,26 @@ describe("Perseus with worktrees, submodules and big files", () => {
     await page.getByRole("button", { name: "Exit Settings" }).click();
     await page.locator(".gh-cell", { hasText: "Author" }).waitFor();
   });
+
+  it("adds a submodule from a folder on this computer", async () => {
+    const second = join(repo, "..", "second-lib");
+    mkdirSync(second, { recursive: true });
+    git(second, "init", "-q", "-b", "main");
+    writeFileSync(join(second, "s.txt"), "second\n");
+    git(second, "add", "-A");
+    git(second, "commit", "-q", "-m", "second lib");
+    // Unstage the earlier big file so only the submodule shows up as staged.
+    git(repo, "reset", "-q");
+
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill("add a submodule");
+    await page.keyboard.press("Enter");
+    await page.getByLabel("Repository address").fill(second);
+    assert.equal(await page.getByLabel("Folder inside this repository").inputValue(), "second-lib", "named after the address");
+    await page.getByRole("button", { name: "Add submodule" }).click();
+    await page.getByText(/Submodule added/).waitFor({ timeout: 20000 });
+
+    assert.deepEqual(git(repo, "diff", "--cached", "--name-only").trim().split("\n").sort(), [".gitmodules", "second-lib"]);
+    await page.locator(".side-row", { hasText: "second-lib" }).waitFor();
+  });
 });

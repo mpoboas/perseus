@@ -236,6 +236,12 @@ impl Git {
         self
     }
 
+    /// Adds one `-c key=value` for this runner's commands, keeping the ones already set.
+    pub fn with_config(mut self, key: &str, value: &str) -> Self {
+        self.overrides.config.push((key.into(), value.into()));
+        self
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
