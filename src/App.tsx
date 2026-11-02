@@ -1735,6 +1735,10 @@ function App() {
                 onSelectWip={selectWip}
                 reveal={reveal}
                 onDrop={onDrop}
+                onActivateRef={(name) => {
+                  const r = refs.find((x) => x.name === name);
+                  if (r && r.kind !== "tag" && !r.is_head && !busy) void checkout(r);
+                }}
                 onMenu={onMenu}
                 labelFor={labelFor}
                 wip={wip}

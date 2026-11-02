@@ -139,6 +139,8 @@ interface Props {
   reveal: { row: number; nonce: number } | null;
   /** A chip or commit was dragged onto another. */
   onDrop: (source: Subject, target: Subject) => void;
+  /** A branch or tag label was double-clicked. */
+  onActivateRef: (name: string) => void;
   /** Right-click (viewport coordinates). */
   onMenu: (subject: Subject, x: number, y: number) => void;
   /** Short text for the drag ghost. */
@@ -183,6 +185,7 @@ export function GraphCanvas({
   onSelectWip,
   reveal,
   onDrop,
+  onActivateRef,
   onMenu,
   labelFor,
   wip,
@@ -725,6 +728,13 @@ export function GraphCanvas({
     else onSelect(p.subject.row); // a press without movement is a click
   };
 
+  const onDoubleClick = (e: React.MouseEvent) => {
+    const { x, y } = local(e);
+    if (x > size.current.w) return;
+    const subject = subjectUnder(x, y);
+    if (subject?.kind === "ref") onActivateRef(subject.name);
+  };
+
   const onContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     const { x, y } = local(e);
@@ -843,6 +853,7 @@ export function GraphCanvas({
             setHover(null);
           }}
           onContextMenu={onContextMenu}
+          onDoubleClick={onDoubleClick}
           onKeyDown={onKeyDown}
         >
           <canvas ref={canvas} className="graph-canvas" />

@@ -237,6 +237,21 @@ describe("Perseus", () => {
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
   });
 
+  it("checks out a branch when its label in the graph is double-clicked", async () => {
+    const before = git(repo, "branch", "--show-current").trim();
+    // The label sits at the left of its commit's row; try the first few rows for the one on "topic".
+    for (let i = 1; i <= 5 && git(repo, "branch", "--show-current").trim() === before; i++) {
+      const { x, y } = await rowPoint(page, i);
+      await page.mouse.dblclick(x - 400 + 30, y);
+      for (let n = 0; n < 15 && git(repo, "branch", "--show-current").trim() === before; n++) {
+        await new Promise((r) => setTimeout(r, 100));
+      }
+    }
+    assert.notEqual(git(repo, "branch", "--show-current").trim(), before, "a branch was checked out");
+    git(repo, "switch", "-q", before);
+    await new Promise((r) => setTimeout(r, 1500));
+  });
+
   it("undoes and redoes creating a branch", async () => {
     const before = git(repo, "branch", "--show-current").trim();
     await page.getByRole("button", { name: "Branch", exact: true }).click();
