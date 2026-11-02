@@ -10,6 +10,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::error::{AppError, Result};
 use crate::git::graph::{self, CommitRow, DEFAULT_CHUNK_SIZE, WalkSummary};
 use crate::git::repo::{RepoId, RepoInfo, RepoRegistry};
+use crate::recents::RecentStore;
 
 #[derive(Default)]
 pub struct AppState {
@@ -70,6 +71,7 @@ pub struct CommitChunk {
 pub async fn pick_and_open_repo(
     app: AppHandle,
     state: State<'_, AppState>,
+    recents: State<'_, RecentStore>,
 ) -> Result<Option<RepoInfo>> {
     let picked =
         tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
@@ -82,7 +84,9 @@ pub async fn pick_and_open_repo(
     let path = path
         .into_path()
         .map_err(|e| AppError::Internal(e.to_string()))?;
-    state.repos.open(&path).map(Some)
+    let info = state.repos.open(&path)?;
+    recents.touch(&info.path.to_string_lossy(), &info.name)?;
+    Ok(Some(info))
 }
 
 #[tauri::command]

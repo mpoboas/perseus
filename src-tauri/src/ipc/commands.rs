@@ -37,7 +37,13 @@ fn git_for(state: &AppState, profiles: &ProfileStore, repo_id: RepoId) -> Result
 #[tauri::command]
 pub async fn list_refs(state: State<'_, AppState>, repo_id: RepoId) -> Result<Vec<RefInfo>> {
     let repo = state.repos.get(repo_id)?;
-    blocking(move || refs::list_refs(&repo.to_thread_local())).await
+    let git = state.repos.git(repo_id)?;
+    blocking(move || {
+        let mut list = refs::list_refs(&repo.to_thread_local())?;
+        refs::attach_upstreams(&git, &mut list);
+        Ok(list)
+    })
+    .await
 }
 
 #[tauri::command]

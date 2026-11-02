@@ -30,6 +30,9 @@ const ALLOWED = new Set([
   "oauth_presets",
   "oauth_sign_in",
   "oauth_cancel",
+  "list_recent_repos",
+  "open_recent_repo",
+  "remove_recent_repo",
 ]);
 
 window.__TAURI_ISOLATION_HOOK__ = (payload) => {

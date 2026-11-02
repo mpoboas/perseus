@@ -29,6 +29,9 @@
     "allow-pick-ssh-key",
     "allow-oauth-presets",
     "allow-oauth-sign-in",
-    "allow-oauth-cancel"
+    "allow-oauth-cancel",
+    "allow-list-recent-repos",
+    "allow-open-recent-repo",
+    "allow-remove-recent-repo"
   ]
 }

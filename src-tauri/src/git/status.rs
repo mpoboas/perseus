@@ -2,6 +2,7 @@ use serde::Serialize;
 
 use crate::error::{AppError, Result};
 use crate::git::cli::Git;
+use crate::git::diff::{LineStats, worktree_stats};
 use crate::git::ops::{self, Operation};
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -15,6 +16,10 @@ pub struct StatusEntry {
     pub worktree: Option<char>,
     pub untracked: bool,
     pub conflicted: bool,
+    /// Line counts of the staged change (`None` when there is none).
+    pub index_stats: Option<LineStats>,
+    /// Line counts of the unstaged change.
+    pub worktree_stats: Option<LineStats>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, PartialEq, Eq)]
@@ -92,6 +97,8 @@ pub fn parse(raw: &[u8]) -> Result<RepoStatus> {
                     worktree: None,
                     untracked: false,
                     conflicted: true,
+                    index_stats: None,
+                    worktree_stats: None,
                 });
             }
             '?' => {
@@ -103,6 +110,8 @@ pub fn parse(raw: &[u8]) -> Result<RepoStatus> {
                     worktree: None,
                     untracked: true,
                     conflicted: false,
+                    index_stats: None,
+                    worktree_stats: None,
                 });
             }
             _ => {} // ignored entries and unknown record types
@@ -124,6 +133,8 @@ fn entry(path: &str, orig_path: Option<String>, xy: &str, conflicted: bool) -> R
         worktree: code(y),
         untracked: false,
         conflicted,
+        index_stats: None,
+        worktree_stats: None,
     })
 }
 
@@ -136,6 +147,13 @@ pub fn read(git: &Git) -> Result<RepoStatus> {
         "--untracked-files=all",
     ])?;
     let mut status = parse(&raw)?;
+
+    // Line counts are a nicety: a failure here must not hide the file list.
+    let (staged, unstaged) = (worktree_stats(git, true), worktree_stats(git, false));
+    for e in &mut status.entries {
+        e.index_stats = staged.get(&e.path).copied();
+        e.worktree_stats = unstaged.get(&e.path).copied();
+    }
     status.operation = ops::in_progress(git);
     Ok(status)
 }

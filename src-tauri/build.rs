@@ -28,6 +28,9 @@ const COMMANDS: &[&str] = &[
     "oauth_presets",
     "oauth_sign_in",
     "oauth_cancel",
+    "list_recent_repos",
+    "open_recent_repo",
+    "remove_recent_repo",
 ];
 
 fn main() {
