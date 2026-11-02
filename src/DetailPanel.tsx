@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Download, FileText, Folder, GitCommitVertical, History, List, ListTree } from "lucide-react";
 import { FileRow } from "./FileRow";
 import type { CommitDetail, DiffTarget, FileChange, Person, Signature } from "./ipc";
-import { relativeTime, shortSha } from "./lib/format";
+import { absoluteTime, relativeTime, shortSha } from "./lib/format";
 import { type FileNode, buildFileTree } from "./lib/fileTree";
 import { usePref } from "./lib/prefs";
 import { Avatar, Badge, EmptyState, IconButton, Segmented, Skeleton, useToast } from "./ui";
@@ -116,54 +116,73 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
   return (
     <div className="detail">
       <div className="detail-head">
-        <h2 className="detail-title selectable">{title}</h2>
-        {body && <pre className="detail-body">{body}</pre>}
+        <section className="detail-message" aria-label="Commit message">
+          <h2 className="detail-title selectable">{title}</h2>
+          {body && <pre className="detail-body selectable">{body}</pre>}
+        </section>
 
-        <div className="person">
-          <Avatar name={detail.author.name} size={28} />
-          <div className="person-text">
-            <strong>{detail.author.name}</strong>
-            <span className="muted" title={when(detail.author)}>
-              {detail.author.email} · {relativeTime(detail.author.time)}
-            </span>
+        <section className="detail-people" aria-label="People">
+          <div className="person">
+            <Avatar name={detail.author.name} email={detail.author.email} size={34} />
+            <div className="person-text">
+              <strong>{detail.author.name}</strong>
+              <span className="muted" title={detail.author.email}>
+                {detail.author.email}
+              </span>
+              <span className="person-when" title={when(detail.author)}>
+                authored {absoluteTime(detail.author.time)} · {relativeTime(detail.author.time)}
+              </span>
+            </div>
           </div>
-        </div>
-        {!sameAsAuthor && (
-          <p className="muted small">
-            Committed by {detail.committer.name} · {relativeTime(detail.committer.time)}
-          </p>
-        )}
+          {!sameAsAuthor && (
+            <div className="person person-secondary">
+              <Avatar name={detail.committer.name} email={detail.committer.email} size={26} />
+              <div className="person-text">
+                <strong>{detail.committer.name}</strong>
+                <span className="person-when" title={when(detail.committer)}>
+                  committed {absoluteTime(detail.committer.time)} · {relativeTime(detail.committer.time)}
+                </span>
+              </div>
+            </div>
+          )}
+        </section>
 
-        {signature && signature.status !== "none" && (
-          <div className="chips-row">
-            <span className="meta-label">Signature</span>
-            {signature.status === "good" && <Badge tone="success">Verified{signature.signer ? ` · ${signature.signer}` : ""}</Badge>}
-            {signature.status === "unknown" && <Badge tone="warn">Signed by a key you have not trusted</Badge>}
-            {signature.status === "expired" && <Badge tone="warn">Signature expired</Badge>}
-            {signature.status === "bad" && <Badge tone="danger">Bad signature</Badge>}
-            {signature.status === "error" && <Badge tone="warn">Signed — could not be checked</Badge>}
-          </div>
-        )}
-        <div className="chips-row">
-          <span className="meta-label">Commit</span>
-          <button className="sha-chip" onClick={() => void copy(detail.oid, "commit id")} title="Copy full commit id">
-            <code>{shortSha(detail.oid)}</code>
-            <Copy size={11} />
-          </button>
-          <button className="sha-chip" onClick={() => onExportPatch(detail.oid)} title="Save this commit as a patch file">
-            <Download size={11} /> Patch
-          </button>
+        <dl className="detail-facts">
+          <dt>Commit</dt>
+          <dd>
+            <button className="sha-chip" onClick={() => void copy(detail.oid, "commit id")} title="Copy full commit id">
+              <code>{shortSha(detail.oid)}</code>
+              <Copy size={11} />
+            </button>
+            <button className="sha-chip" onClick={() => onExportPatch(detail.oid)} title="Save this commit as a patch file">
+              <Download size={11} /> Patch
+            </button>
+          </dd>
           {detail.parents.length > 0 && (
             <>
-              <span className="meta-label">{detail.parents.length > 1 ? "Parents" : "Parent"}</span>
-              {detail.parents.map((p) => (
-                <button key={p} className="sha-chip link" onClick={() => onJump(p)} title="Jump to parent">
-                  <code>{shortSha(p)}</code>
-                </button>
-              ))}
+              <dt>{detail.parents.length > 1 ? "Parents" : "Parent"}</dt>
+              <dd>
+                {detail.parents.map((p) => (
+                  <button key={p} className="sha-chip link" onClick={() => onJump(p)} title="Jump to parent">
+                    <code>{shortSha(p)}</code>
+                  </button>
+                ))}
+              </dd>
             </>
           )}
-        </div>
+          {signature && signature.status !== "none" && (
+            <>
+              <dt>Signature</dt>
+              <dd>
+                {signature.status === "good" && <Badge tone="success">Verified{signature.signer ? ` · ${signature.signer}` : ""}</Badge>}
+                {signature.status === "unknown" && <Badge tone="warn">Signed by a key you have not trusted</Badge>}
+                {signature.status === "expired" && <Badge tone="warn">Signature expired</Badge>}
+                {signature.status === "bad" && <Badge tone="danger">Bad signature</Badge>}
+                {signature.status === "error" && <Badge tone="warn">Signed — could not be checked</Badge>}
+              </dd>
+            </>
+          )}
+        </dl>
       </div>
 
       <div className="files-head">

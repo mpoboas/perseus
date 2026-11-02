@@ -237,6 +237,31 @@ describe("Perseus", () => {
     await page.waitForFunction(() => document.documentElement.dataset.theme === "dark");
   });
 
+  it("undoes and redoes creating a branch", async () => {
+    const before = git(repo, "branch", "--show-current").trim();
+    await page.getByRole("button", { name: "Branch", exact: true }).click();
+    await page.getByLabel("Branch name").fill("undo-me");
+    await page.getByRole("button", { name: "Create and check out" }).click();
+    await page.getByText("Created undo-me").waitFor();
+    assert.equal(git(repo, "branch", "--show-current").trim(), "undo-me");
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByText("Undid new branch").waitFor();
+    assert.equal(git(repo, "branch", "--show-current").trim(), before, "back on the original branch");
+    assert.doesNotMatch(git(repo, "branch", "--list"), /undo-me/, "the branch is gone");
+
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await page.getByText("Redid new branch").waitFor();
+    assert.equal(git(repo, "branch", "--show-current").trim(), "undo-me");
+
+    // The first toast may still be on screen, so wait for git itself rather than for the text.
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    for (let i = 0; i < 50 && git(repo, "branch", "--show-current").trim() !== before; i++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(git(repo, "branch", "--show-current").trim(), before);
+  });
+
   it("logs nothing worse than the known isolation-iframe CSP entries", async () => {
     const unexpected = app.consoleErrors.filter((m) => !/Applying inline style violates/.test(m));
     assert.deepEqual(unexpected, []);

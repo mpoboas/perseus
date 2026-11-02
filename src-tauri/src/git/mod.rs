@@ -16,4 +16,5 @@ pub mod repo;
 pub mod search;
 pub mod signing;
 pub mod status;
+pub mod undo;
 pub mod validate;

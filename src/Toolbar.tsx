@@ -4,6 +4,8 @@ import {
   ArrowUp,
   ArrowUpFromLine,
   ArchiveRestore,
+  Redo2,
+  Undo2,
   GitBranchPlus,
   ChevronDown,
   CircleHelp,
@@ -28,6 +30,7 @@ import {
   Terminal,
 } from "lucide-react";
 import type { ProfilesSnapshot, PullMode, RecentRepo, RepoInfo, RepoStatus } from "./ipc";
+import { undoName } from "./lib/format";
 import type { ThemePref } from "./lib/theme";
 import { Avatar, Button, IconButton, MenuButton, type MenuItem, Shortcut, Tooltip } from "./ui";
 
@@ -55,6 +58,11 @@ interface Props {
   onRemotes: () => void;
   onStash: () => void;
   onNewBranch: () => void;
+  /** What the next undo or redo would act on (null when there is nothing to do). */
+  undoLabel: string | null;
+  redoLabel: string | null;
+  onUndo: () => void;
+  onRedo: () => void;
   /** Applies the newest stash and removes it. */
   onPop: () => void;
   stashCount: number;
@@ -191,6 +199,17 @@ export function Toolbar(p: Props) {
 
       {repo && (
         <div className="tb-group tb-actions" role="group" aria-label="Remote actions">
+          <Tooltip label={p.undoLabel ? `Undo ${undoName(p.undoLabel)} (Ctrl+Z)` : "Nothing to undo"}>
+            <Button icon={Undo2} disabled={busy || !p.undoLabel} onClick={p.onUndo}>
+              Undo
+            </Button>
+          </Tooltip>
+          <Tooltip label={p.redoLabel ? `Redo ${undoName(p.redoLabel)} (Ctrl+Shift+Z)` : "Nothing to redo"}>
+            <Button icon={Redo2} disabled={busy || !p.redoLabel} onClick={p.onRedo}>
+              Redo
+            </Button>
+          </Tooltip>
+          <div className="tb-sep" aria-hidden="true" />
           <Button icon={RefreshCw} disabled={busy} onClick={p.onFetch}>
             Fetch
           </Button>
@@ -285,7 +304,7 @@ export function Toolbar(p: Props) {
           }}
           render={({ open, ...props }) => (
             <button className={open ? "chip-btn open" : "chip-btn"} disabled={busy} aria-label="Active profile" {...props}>
-              <Avatar name={activeProfile?.user_name ?? "Git"} size={20} />
+              <Avatar name={activeProfile?.user_name ?? "Git"} email={activeProfile?.user_email} size={20} />
               <span className="chip-text">{activeProfile ? activeProfile.name : "System default"}</span>
               <ChevronDown size={13} />
             </button>

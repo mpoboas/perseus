@@ -14,6 +14,25 @@ export function relativeTime(seconds: number, now = Date.now()): string {
   });
 }
 
+/** Names the thing an action did, for "Undo merge": `Merging…` → `merge`. */
+export function undoName(label: string): string {
+  const words: Record<string, string> = {
+    committing: "commit",
+    amending: "amend",
+    merging: "merge",
+    switching: "checkout",
+    "creating branch": "new branch",
+    pulling: "pull",
+    rebasing: "rebase",
+    "cherry picking": "cherry-pick",
+    "cherry pick": "cherry-pick",
+    reverting: "revert",
+    resetting: "reset",
+  };
+  const plain = label.replace(/…$/, "").trim().toLowerCase();
+  return words[plain] ?? plain;
+}
+
 /** `07/10/2026 @ 14:37` in the user's own date order; the 24-hour clock keeps it short. */
 export function absoluteTime(seconds: number): string {
   const d = new Date(seconds * 1000);

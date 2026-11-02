@@ -42,6 +42,8 @@ pub struct CommitRow {
     pub oid: String,
     pub parents: Vec<String>,
     pub author: String,
+    /// The author's address, used to look up a profile picture.
+    pub author_email: String,
     /// Committer time, seconds since the Unix epoch.
     pub time: i64,
     pub summary: String,
@@ -129,6 +131,7 @@ fn read_row(
         oid: id.to_string(),
         parents: parents.iter().map(|p| p.to_string()).collect(),
         author: author.name.to_string(),
+        author_email: author.email.to_string(),
         time: committer.time().map(|t| t.seconds).unwrap_or_default(),
         summary: message.summary().to_string(),
         refs: refs.cloned().unwrap_or_default(),

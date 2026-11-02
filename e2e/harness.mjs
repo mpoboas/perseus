@@ -55,6 +55,8 @@ export async function launch({ recents = [], port = 9444 } = {}) {
     env: {
       ...process.env,
       PERSEUS_DATA_DIR: join(appdata, "dev.perseus.app"),
+      // Its own browser profile too: panel sizes and collapsed sections must not leak in from real use.
+      WEBVIEW2_USER_DATA_FOLDER: join(root, "webview"),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
     },
     stdio: "ignore",

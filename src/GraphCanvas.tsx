@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { GitCommitVertical } from "lucide-react";
+import { Cloud, GitCommitVertical, Laptop } from "lucide-react";
 import type { CommitStore } from "./commitStore";
 import {
   type Badge,
@@ -12,6 +12,7 @@ import {
 } from "./graphLayout";
 import type { RefInfo } from "./ipc";
 import { absoluteTime, avatarColor, initials, relativeTime } from "./lib/format";
+import { avatarImage, subscribeAvatars } from "./lib/avatars";
 import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
 
 const LANE_W = 22;
@@ -24,6 +25,36 @@ const CHIP_H = 18;
 const AVATAR_D = 18;
 /** Gap kept between the ref column's text and its edge. */
 const REF_PAD = 8;
+const ICON = 12;
+
+// Icon outlines from the lucide set (24x24), painted straight onto the canvas.
+const PATH_LAPTOP = new Path2D(
+  "M20 16V7a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9m16 0H4m16 0 1.28 2.55a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45L4 16",
+);
+const PATH_CLOUD = new Path2D("M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z");
+const PATH_CHECK = new Path2D("M20 6 9 17l-5-5");
+
+function icon(ctx: CanvasRenderingContext2D, path: Path2D, x: number, y: number, color: string) {
+  const k = ICON / 24;
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(k, k);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  ctx.setLineDash([]);
+  ctx.stroke(path);
+  ctx.restore();
+}
+
+/** `#rrggbb` plus an alpha as an `rgba()` string (the lane tokens are plain hex). */
+function rgba(hex: string, alpha: number): string {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!m) return hex;
+  const n = parseInt(m[1], 16);
+  return `rgba(${(n >> 16) & 255}, ${(n >> 8) & 255}, ${n & 255}, ${alpha})`;
+}
 const TOOLTIP_DELAY_MS = 450;
 const EDGE_SCROLL_ZONE = 28;
 const EDGE_SCROLL_STEP = 14;
@@ -137,6 +168,8 @@ interface Tip {
   row: number;
   x: number;
   y: number;
+  /** Over the branch/tag column: list the row's refs instead of the commit. */
+  refs: boolean;
 }
 
 export function GraphCanvas({
@@ -184,7 +217,7 @@ export function GraphCanvas({
   const dragRef = useRef<DragState | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
   const tipTimer = useRef(0);
-  const tipRow = useRef<number | null>(null);
+  const tipKey = useRef<string | null>(null);
 
   const draw = useCallback(() => {
     raf.current = 0;
@@ -222,6 +255,18 @@ export function GraphCanvas({
     const now = Date.now();
     const yOf = (display: number) => display * ROW_H - top;
 
+    // Pass 0: each commit's row is washed with its branch colour, strongest beside the graph, so a
+    // branch can be followed across the message and author columns.
+    for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
+      const row = store.rows[d - off];
+      if (!row) break;
+      const grad = ctx.createLinearGradient(base, 0, Math.min(w, base + gW + 520), 0);
+      grad.addColorStop(0, rgba(lane(row.graph.color), 0.17));
+      grad.addColorStop(1, rgba(lane(row.graph.color), 0));
+      ctx.fillStyle = grad;
+      ctx.fillRect(base, yOf(d), w - base, ROW_H);
+    }
+
     // Pass 1: row backgrounds (hover and selection).
     const selDisplay = sel === "wip" ? 0 : sel === null ? null : sel + off;
     for (let d = firstDisplay; d <= lastDisplay; d++) {
@@ -251,6 +296,13 @@ export function GraphCanvas({
       const row = store.rows[d - off];
       if (!row || row.refs.length === 0) continue;
       chipLayouts.set(d, layoutChips(ctx, chipsFor(row.refs, headName, kinds), base - REF_PAD * 2));
+    }
+
+    // Hovering a commit that carries no label shows (faded) the branch it belongs to.
+    const hoverDisplay = hover.current;
+    if (hoverDisplay !== null && hoverDisplay >= off && !chipLayouts.has(hoverDisplay)) {
+      const ghost = ghostChip(store, hoverDisplay - off, headName, kinds);
+      if (ghost) chipLayouts.set(hoverDisplay, { ...layoutChips(ctx, [ghost], base - REF_PAD * 2), ghost: true });
     }
 
     // Pass 2: edges and nodes, clipped to the refs and graph columns.
@@ -341,18 +393,29 @@ export function GraphCanvas({
         ctx.stroke();
         ctx.lineWidth = 2;
       } else {
+        const picture = avatarImage(row.author_email);
         ctx.beginPath();
         ctx.arc(nx, cy, radius, 0, Math.PI * 2);
         ctx.fillStyle = avatarColor(row.author);
         ctx.fill();
+        if (picture) {
+          ctx.save();
+          ctx.clip();
+          ctx.drawImage(picture, nx - radius, cy - radius, radius * 2, radius * 2);
+          ctx.restore();
+        }
+        ctx.beginPath();
+        ctx.arc(nx, cy, radius, 0, Math.PI * 2);
         ctx.strokeStyle = lane(g.color);
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.font = `700 8px ${pal.font}`;
-        ctx.fillStyle = "#fff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(initials(row.author), nx, cy + 0.5);
+        if (!picture) {
+          ctx.font = `700 8px ${pal.font}`;
+          ctx.fillStyle = "#fff";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(initials(row.author), nx, cy + 0.5);
+        }
       }
     }
     ctx.restore();
@@ -411,14 +474,22 @@ export function GraphCanvas({
 
       // Author: avatar + name
       ctx.textAlign = "left";
+      const authorPicture = avatarImage(row.author_email);
       ctx.beginPath();
       ctx.arc(authorX + 12 + AVATAR_D / 2, cy, AVATAR_D / 2, 0, Math.PI * 2);
       ctx.fillStyle = avatarColor(row.author);
       ctx.fill();
-      ctx.font = `700 9px ${pal.font}`;
-      ctx.fillStyle = "#fff";
-      ctx.textAlign = "center";
-      ctx.fillText(initials(row.author), authorX + 12 + AVATAR_D / 2, cy + 0.5);
+      if (authorPicture) {
+        ctx.save();
+        ctx.clip();
+        ctx.drawImage(authorPicture, authorX + 12, cy - AVATAR_D / 2, AVATAR_D, AVATAR_D);
+        ctx.restore();
+      } else {
+        ctx.font = `700 9px ${pal.font}`;
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.fillText(initials(row.author), authorX + 12 + AVATAR_D / 2, cy + 0.5);
+      }
       ctx.textAlign = "left";
       ctx.font = `12px ${pal.font}`;
       ctx.fillStyle = pal.dim;
@@ -430,33 +501,46 @@ export function GraphCanvas({
       const rowBadges: Badge[] = [];
       if (layout) {
         ctx.font = `600 11px ${pal.font}`;
+        const laneColor = lane(row.graph.color);
+        if (layout.ghost) ctx.globalAlpha = 0.5;
         for (const it of layout.items) {
-          const color =
-            it.chip.kind === "head" ? pal.head
-            : it.chip.kind === "remote" ? pal.remote
-            : it.chip.kind === "tag" ? pal.tag
-            : pal.branch;
           const x = REF_PAD + it.x;
+          const head = it.chip.kind === "head";
+          const tag = it.chip.kind === "tag";
+          const accent = tag ? pal.tag : laneColor;
           ctx.beginPath();
           ctx.roundRect(x, cy - CHIP_H / 2, it.w, CHIP_H, 5);
-          if (it.chip.kind === "remote" || it.chip.kind === "tag") {
-            ctx.globalAlpha = 0.18;
-            ctx.fillStyle = color;
+          let ink: string;
+          if (head) {
+            ctx.fillStyle = pal.head;
             ctx.fill();
-            ctx.globalAlpha = 1;
-            ctx.strokeStyle = color;
+            ink = pal.onChip;
+          } else {
+            ctx.fillStyle = rgba(accent, 0.24);
+            ctx.fill();
+            ctx.strokeStyle = rgba(accent, 0.7);
             ctx.lineWidth = 1;
             ctx.stroke();
-            ctx.fillStyle = color;
-          } else {
-            ctx.fillStyle = color;
-            ctx.fill();
-            ctx.fillStyle = pal.onChip;
+            ink = pal.text;
           }
+          let tx = x + 6;
+          if (head) {
+            icon(ctx, PATH_CHECK, tx, cy - ICON / 2, ink);
+            tx += ICON + 3;
+          }
+          ctx.fillStyle = ink;
           ctx.textAlign = "left";
-          ctx.fillText(it.label, x + 6, cy + 0.5);
-          rowBadges.push({ ref: it.chip.ref, x, w: it.w });
+          ctx.fillText(it.label, tx, cy + 0.5);
+          tx += ctx.measureText(it.label).width + 5;
+          // A laptop means the branch exists on this computer; a cloud, on a remote.
+          if (it.chip.local) {
+            icon(ctx, PATH_LAPTOP, tx, cy - ICON / 2, ink);
+            tx += ICON + 3;
+          }
+          if (it.chip.remotes.length > 0) icon(ctx, PATH_CLOUD, tx, cy - ICON / 2, ink);
+          if (!layout.ghost) rowBadges.push({ ref: it.chip.ref, x, w: it.w });
         }
+        ctx.globalAlpha = 1;
         if (layout.more > 0) {
           ctx.fillStyle = pal.faint;
           ctx.textAlign = "left";
@@ -534,6 +618,7 @@ export function GraphCanvas({
   }, [reveal]);
 
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
+  useEffect(() => subscribeAvatars(schedule), [schedule]);
 
   /** Pointer position relative to the scroller's visible area. */
   const local = (e: { clientX: number; clientY: number }) => {
@@ -546,7 +631,7 @@ export function GraphCanvas({
 
   const hideTip = () => {
     window.clearTimeout(tipTimer.current);
-    tipRow.current = null;
+    tipKey.current = null;
     setTip(null);
   };
 
@@ -600,11 +685,13 @@ export function GraphCanvas({
 
     // Plain hover: show a tooltip once the pointer rests on a commit row.
     const row = display === null || display < latest.current.offset ? null : display - latest.current.offset;
-    if (row !== tipRow.current) {
+    const inRefs = x < latest.current.refsW;
+    const key = row === null ? null : `${row}:${inRefs}`;
+    if (key !== tipKey.current) {
       hideTip();
-      tipRow.current = row;
+      tipKey.current = key;
       if (row !== null && x <= size.current.w) {
-        tipTimer.current = window.setTimeout(() => setTip({ row, x, y }), TOOLTIP_DELAY_MS);
+        tipTimer.current = window.setTimeout(() => setTip({ row, x, y, refs: inRefs }), TOOLTIP_DELAY_MS);
       }
     }
   };
@@ -674,6 +761,7 @@ export function GraphCanvas({
     return { left: 0, top: y, width: size.current.w, height: ROW_H };
   })();
   const tipRowData = tip ? store.rows[tip.row] : undefined;
+  const tipChips = tip?.refs && tipRowData ? chipsFor(tipRowData.refs, headBranch, refKinds) : [];
   const showSkeleton = loading && count === 0;
 
   return (
@@ -772,7 +860,35 @@ export function GraphCanvas({
               {labelFor(drag.source)}
             </div>
           )}
-          {tip && tipRowData && !drag && (
+          {tip && tipRowData && !drag && tip.refs && tipChips.length > 0 && (
+            <div
+              className="graph-tooltip refs-tip"
+              style={{
+                left: Math.min(tip.x + 14, Math.max(0, size.current.w - 340)),
+                top: Math.min(tip.y + 18, Math.max(0, size.current.h - 40 - tipChips.length * 44)),
+              }}
+            >
+              {tipChips.map((c) => (
+                <div key={c.ref} className="rt-row">
+                  <strong>{c.label}</strong>
+                  <span className="rt-where">
+                    {c.local && (
+                      <span>
+                        <Laptop size={12} /> on this computer
+                      </span>
+                    )}
+                    {c.remotes.map((r) => (
+                      <span key={r}>
+                        <Cloud size={12} /> {r}
+                      </span>
+                    ))}
+                    {c.kind === "tag" && <span>tag</span>}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+          {tip && tipRowData && !drag && !tip.refs && (
             <div
               className="graph-tooltip"
               style={{
@@ -781,7 +897,7 @@ export function GraphCanvas({
               }}
             >
               <div className="gt-author">
-                <Avatar name={tipRowData.author} size={22} />
+                <Avatar name={tipRowData.author} email={tipRowData.author_email} size={22} />
                 <div>
                   <strong>{tipRowData.author}</strong>
                   <span>{new Date(tipRowData.time * 1000).toLocaleString()}</span>
@@ -802,33 +918,82 @@ export function GraphCanvas({
 }
 
 interface Chip {
-  /** The ref name this chip stands for (what drag and drop acts on). */
+  /** The ref name this chip stands for (what drag and drop acts on): the local branch if there is one. */
   ref: string;
   label: string;
   kind: "head" | "branch" | "remote" | "tag";
+  /** The branch exists on this computer. */
+  local: boolean;
+  /** Remotes that have a branch of this name (`origin`). */
+  remotes: string[];
 }
 
 /**
- * The chips for a commit's refs. The checked-out branch absorbs the separate "HEAD" token and
- * is drawn green; a detached HEAD keeps its own chip. Order: HEAD, branches, remotes, tags.
+ * One chip per branch name: a local branch and its remote copies (`main`, `origin/main`) share a
+ * chip that shows a laptop and/or a cloud. The checked-out branch absorbs the separate "HEAD"
+ * token and is drawn green; a detached HEAD keeps its own chip. `origin/HEAD` is noise and is
+ * dropped. Order: checked out, local, remote-only, tags.
  */
 function chipsFor(
   refs: readonly string[],
   headBranch: string | null,
   kinds: ReadonlyMap<string, RefInfo["kind"]>,
 ): Chip[] {
+  const byName = new Map<string, Chip>();
   const out: Chip[] = [];
   const hasHeadBranch = headBranch !== null && refs.includes(headBranch);
   for (const ref of refs) {
     if (ref === "HEAD") {
-      if (!hasHeadBranch) out.push({ ref, label: "HEAD", kind: "head" });
+      if (!hasHeadBranch) out.push({ ref, label: "HEAD", kind: "head", local: false, remotes: [] });
       continue;
     }
-    const kind = ref === headBranch ? "head" : (kinds.get(ref) ?? "branch");
-    out.push({ ref, label: ref, kind });
+    const kind = kinds.get(ref) ?? "branch";
+    if (kind === "tag") {
+      out.push({ ref, label: ref, kind: "tag", local: false, remotes: [] });
+      continue;
+    }
+    const slash = ref.indexOf("/");
+    const isRemote = kind === "remote" && slash > 0;
+    const name = isRemote ? ref.slice(slash + 1) : ref;
+    if (isRemote && name === "HEAD") continue;
+    let chip = byName.get(name);
+    if (!chip) {
+      chip = { ref, label: name, kind: "remote", local: false, remotes: [] };
+      byName.set(name, chip);
+      out.push(chip);
+    }
+    if (isRemote) {
+      chip.remotes.push(ref.slice(0, slash));
+    } else {
+      chip.local = true;
+      chip.ref = ref;
+      chip.kind = ref === headBranch ? "head" : "branch";
+    }
   }
   const rank = { head: 0, branch: 1, remote: 2, tag: 3 } as const;
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
+}
+
+/**
+ * The branch a commit without a label of its own belongs to: the nearest labelled commit above it
+ * (newer) drawn in the same branch colour. Only a guess for display, shown faded.
+ */
+function ghostChip(
+  store: CommitStore,
+  r: number,
+  headBranch: string | null,
+  kinds: ReadonlyMap<string, RefInfo["kind"]>,
+): Chip | null {
+  const row = store.rows[r];
+  if (!row || row.refs.length > 0) return null;
+  const color = row.graph.color;
+  for (let i = r - 1; i >= Math.max(0, r - 4000); i--) {
+    const above = store.rows[i];
+    if (!above || above.graph.color !== color || above.refs.length === 0) continue;
+    const chip = chipsFor(above.refs, headBranch, kinds).find((c) => c.kind !== "tag" && c.label !== "HEAD");
+    if (chip) return { ...chip, kind: "branch" };
+  }
+  return null;
 }
 
 interface ChipLayout {
@@ -837,7 +1002,13 @@ interface ChipLayout {
   more: number;
   /** Right edge of the last chip (relative to the column's padding). */
   end: number;
+  /** A guess shown while hovering an unlabelled commit. */
+  ghost?: boolean;
 }
+
+/** Width a chip needs besides its label: padding, the check mark, and one icon per place it lives. */
+const chipExtras = (c: Chip) =>
+  12 + (c.kind === "head" ? ICON + 3 : 0) + (c.local ? ICON + 3 : 0) + (c.remotes.length > 0 ? ICON + 3 : 0) + (c.local || c.remotes.length ? 2 : 0);
 
 /**
  * Lays chips out left to right inside `maxW`. The first chip is always shown, shortened with an
@@ -849,12 +1020,14 @@ function layoutChips(ctx: CanvasRenderingContext2D, chips: Chip[], maxW: number)
   const reserve = 26;
   for (const chip of chips) {
     let label = chip.label;
-    let w = ctx.measureText(label).width + 12;
-    if (items.length === 0 && w > maxW - (chips.length > 1 ? reserve : 0)) {
-      const room = Math.max(24, maxW - (chips.length > 1 ? reserve : 0)) - 12;
+    const extras = chipExtras(chip);
+    let w = ctx.measureText(label).width + extras;
+    const limit = maxW - (chips.length > 1 ? reserve : 0);
+    if (items.length === 0 && w > limit) {
+      const room = Math.max(24, limit) - extras;
       while (label.length > 1 && ctx.measureText(`${label}…`).width > room) label = label.slice(0, -1);
       label = `${label}…`;
-      w = ctx.measureText(label).width + 12;
+      w = ctx.measureText(label).width + extras;
     }
     const more = chips.length - items.length - 1;
     if (items.length > 0 && x + w > maxW - (more > 0 ? reserve : 0)) break;

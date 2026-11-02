@@ -327,7 +327,7 @@ export function ChangesPanel({
         }}
       >
         <div className="identity" title="Change the active profile from the toolbar">
-          {identity ? <Avatar name={identity.name} size={20} /> : <Avatar name="Git" size={20} />}
+          {identity ? <Avatar name={identity.name} email={identity.email} size={20} /> : <Avatar name="Git" size={20} />}
           <span>
             Committing as <strong>{identity ? identity.name : "your Git default identity"}</strong>
             {identity && <span className="muted"> &lt;{identity.email}&gt;</span>}

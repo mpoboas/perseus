@@ -7,6 +7,7 @@ use crate::error::{AppError, Result};
 use crate::git::cli::{self, LogEntry};
 use crate::git::extras::{self, LargeFile, LfsAction, LfsStatus, Submodule, Worktree};
 use crate::git::repo::{RepoId, RepoInfo};
+use crate::git::undo;
 use crate::git::validate;
 use crate::ipc::channels::AppState;
 use crate::ipc::commands::{blocking, git_for};
@@ -150,4 +151,24 @@ pub async fn large_staged_files(
 #[tauri::command]
 pub fn activity_log() -> Vec<LogEntry> {
     cli::recent_commands()
+}
+
+/// Where every local branch points and which one is checked out, for undo and redo.
+#[tauri::command]
+pub async fn undo_snapshot(state: State<'_, AppState>, repo_id: RepoId) -> Result<undo::Snapshot> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || undo::snapshot(&git)).await
+}
+
+/// Puts the local branches back as `snapshot` describes (see `git::undo`).
+#[tauri::command]
+pub async fn undo_restore(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    snapshot: undo::Snapshot,
+    keep_changes: bool,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || undo::restore(&git, &snapshot, keep_changes)).await
 }

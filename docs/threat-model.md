@@ -40,6 +40,8 @@ external review. It is not a substitute for one.
 | Hostile file content in the diff/blame/conflict views | Rendered as text through React (no `dangerouslySetInnerHTML`), size-capped and virtualized |
 | Patch apply / submodule / worktree paths escaping the repository | Patches are applied by `git apply`, which refuses paths outside the work tree; `open_nested_repo` accepts only paths the repository itself reports as submodules or worktrees; worktree names and refs validated |
 | Supply chain | `cargo deny` (advisories, licenses, sources) and `pnpm audit` in CI and weekly; every ignored advisory documents a reason; lockfiles committed |
+| Profile pictures as a tracking or SSRF channel | Pictures come only from GitHub (`avatars.rs`): URLs are assembled in Rust from a validated account id or login found in a `…@users.noreply.github.com` address (or from the signed-in account), never from webview input; no Gravatar; downloads are size-capped, must be images, and reach the webview only as `data:` URLs, so the CSP gains no remote image source. A preference turns it off |
+| Undo and redo moving the wrong refs | `git/undo.rs` only touches local branches and HEAD, validates every name and commit id, refuses while a merge, rebase, cherry-pick or revert is in progress, uses `reset --keep` so uncommitted work is never overwritten, and has tests with real repositories |
 | Destructive operations by accident | A confirmation step with an explanation for anything that rewrites history or discards work; force push uses `--force-with-lease`; cancellation kills the whole process tree |
 
 ## Known residual risks

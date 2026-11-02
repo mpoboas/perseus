@@ -20,7 +20,7 @@ interactive rebase, a conflict resolver, pull requests for GitHub and GitLab, SS
 submodules, worktrees, a command palette and themes. It is ahead on cost, privacy and weight.
 
 It is **still not at parity**. What is missing is mostly depth and polish rather than whole
-areas: **undo/redo**, **syntax highlighting and side-by-side diff**, **image diffs**, **workspaces**
+areas: **syntax highlighting and side-by-side diff**, **image diffs**, **workspaces**
 (multi-repo), **Gitflow helpers**, **auto-fetch**, **Bitbucket and Azure DevOps**, **GPG
 signing**, **customizable shortcuts**, an **integrated terminal**, AI helpers, and a signed,
 auto-updating installer. Section 3 ranks what is left.
@@ -50,7 +50,7 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Visual commit graph with lanes, merge nodes, ref badges | Free | ✅ canvas, virtualized, streamed |
 | Handles very large histories | Slow reports on huge repos (Electron) | ✅ ➕ measured: 500,000 commits ready in 5.5 s, 131 fps scroll (`docs/performance.md`) |
-| Ghost branches (show a commit's containing branch) | Free | ❌ |
+| Ghost branches (show a commit's containing branch) | Free | 🟡 hovering an unlabelled commit shows a faded label of the branch above it in the same colour (a guess for display) |
 | Hover highlight of a branch's commits | Free | ❌ (row hover and selection only) |
 | Hover tooltip with commit details | Free | ✅ |
 | Configurable columns (author, date, sha), resize/reorder, saved per repo | Free | 🟡 branch/tag, author and date columns resize and are saved; not reorderable or toggleable. Same layout as GitKraken: refs left of the graph, avatar nodes |
@@ -58,7 +58,7 @@ was tested, not that it matches GitKraken's polish.
 | Hide and solo branches/tags/remotes | Free | ✅ remembered per repository |
 | Search commits by message, sha, author | Free | ✅ message, author, date range, path |
 | Keyboard navigation of the graph | Free | ✅ arrows, page, home/end |
-| Selected-commit detail (message, ids, parents, files) | Free | ✅ with a signature badge |
+| Selected-commit detail (message, ids, parents, files) | Free | ✅ message card, author and committer with pictures, fact table, signature badge |
 | Jump to parent commit | Free | ✅ |
 
 ### Diff, blame, files
@@ -104,7 +104,7 @@ was tested, not that it matches GitKraken's polish.
 | Drag-and-drop branch operations | Free | ✅ ➕ explicit rules, refusal messages, conflict forecast in the dialog |
 | Detached HEAD checkout | Free | ✅ |
 | Gitflow (start/finish features, releases, hotfixes) | Free for public repos only | ❌ |
-| Undo / redo of Git actions | Free | ❌ |
+| Undo / redo of Git actions | Free | ✅ local branch moves (commit, merge, rebase, checkout, branch create/delete…), toolbar and `Ctrl+Z`; not stash, tags or pushes |
 | Conflict-state banner with abort / continue | Free | ✅ merge, rebase, cherry-pick, revert |
 
 ### Conflict resolution
@@ -204,7 +204,7 @@ was tested, not that it matches GitKraken's polish.
 
 ## 2. What the numbers say
 
-Counting the 112 rows in section 1: Perseus has **63 ✅ or ➕**, **18 🟡** and **31 ❌**
+Counting the 112 rows in section 1: Perseus has **64 ✅ or ➕**, **19 🟡** and **29 ❌**
 (the first version of this document had 35, 8 and 66 out of 109). Roughly ten of the ❌ rows are
 deliberately out of scope (Kepler, Insights, Boards, team services, cloud patches, the
 vendor-account features, AI); the rest are real gaps, ranked below. The counts treat every row
@@ -215,7 +215,7 @@ the large ones (diff rendering, workspaces, hosting depth).
 
 **Tier 1: noticeable in daily use**
 1. **Syntax highlighting and side-by-side diff**, with word-level highlights and image diffs.
-2. **Undo** for local ref moves (reflog-based) and a way to see what the last operation did.
+2. Undo for stashes, tags and file edits (today it covers local branch moves).
 3. **Auto-fetch** on an interval, and **push tags** (including deleting a tag on the remote).
 4. **Cherry-pick several commits**, **submodule add**, **Gitflow helpers**.
 5. A graph that scrolls past a few hundred thousand rows (browser scroll-height limit).

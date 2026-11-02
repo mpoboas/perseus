@@ -25,6 +25,13 @@
 
 ## Branches, merging and history editing
 
+- **Undo** and **Redo** (toolbar, palette, `Ctrl+Z` / `Ctrl+Shift+Z`) put your local branches back as they were
+  before the last action: a commit (its changes stay staged), merge, rebase, checkout, branch delete and so
+  on. Nothing that was pushed is touched, and an undo that would overwrite uncommitted work is refused.
+  The history lasts until you close Perseus.
+- In the graph a **laptop** on a branch label means the branch exists on this computer and a **cloud** means a
+  remote has it too; hover a label for the full names. Hovering a commit with no label shows, faded, the
+  branch it belongs to.
 - The toolbar has **Fetch, Pull, Push, Branch, Stash and Pop** (Pop applies the newest stash and removes it).
 - Double-click a branch to check it out; right-click for more (merge, rebase, rename, delete,
   hide from graph, show alone, open in a new worktree, create a pull request).
@@ -84,6 +91,10 @@ open it in the browser or merge it; use the branch menu to create one.
 The gear in the toolbar (or *Preferences and activity log…* in the palette) holds how the graph shows
 dates (`07/10/2026 @ 14:37` or `26d ago`), the large-file threshold and the **activity log**: every git command Perseus ran, with timing and the first line of
 any error. Passwords embedded in URLs are replaced by `***`. The log lives in memory only.
+
+Profile pictures: GitHub pictures are shown for people whose commits use a GitHub private address
+(`…@users.noreply.github.com`) and for your own signed-in account. There is no Gravatar lookup; a preference
+turns pictures off.
 
 Themes (light, dark, follow system) are in the toolbar and the palette.
 

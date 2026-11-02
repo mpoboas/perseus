@@ -212,6 +212,10 @@
   color: var(--danger);
 }
 
+.avatar-img {
+  object-fit: cover;
+  background: var(--surface-3);
+}
 .avatar {
   flex: none;
   display: inline-grid;

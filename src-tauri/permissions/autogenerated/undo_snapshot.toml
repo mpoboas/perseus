@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-undo-snapshot"
+description = "Enables the undo_snapshot command without any pre-configured scope."
+commands.allow = ["undo_snapshot"]
+
+[[permission]]
+identifier = "deny-undo-snapshot"
+description = "Denies the undo_snapshot command without any pre-configured scope."
+commands.deny = ["undo_snapshot"]

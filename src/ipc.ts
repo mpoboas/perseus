@@ -22,6 +22,7 @@ export interface CommitRow {
   oid: string;
   parents: string[];
   author: string;
+  author_email: string;
   time: number;
   summary: string;
   refs: string[];
@@ -742,3 +743,21 @@ export const lfsTrack = (repoId: number, pattern: string) => invoke<void>("lfs_t
 export const largeStagedFiles = (repoId: number, megabytes: number) =>
   invoke<LargeFile[]>("large_staged_files", { repoId, megabytes });
 export const activityLog = () => invoke<LogEntry[]>("activity_log");
+
+/** A `data:` URL with the author's GitHub picture, or null when there is none (see `avatars.rs`). */
+export const authorAvatar = (email: string) => invoke<string | null>("author_avatar", { email });
+
+// ---- Undo and redo ----
+
+/** Where every local branch points and which one is checked out. */
+export interface UndoSnapshot {
+  branch: string | null;
+  head: string | null;
+  branches: { name: string; oid: string }[];
+}
+
+export const undoSnapshot = (repoId: number) => invoke<UndoSnapshot>("undo_snapshot", { repoId });
+
+/** `keepChanges` moves the checked-out branch with a soft reset (an undone commit stays staged). */
+export const undoRestore = (repoId: number, snapshot: UndoSnapshot, keepChanges: boolean) =>
+  invoke<void>("undo_restore", { repoId, snapshot, keepChanges });

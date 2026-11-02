@@ -8,6 +8,7 @@ const GROUPS: { title: string; rows: [string, string][] }[] = [
       ["Open repository", "Ctrl+O"],
       ["Toggle sidebar", "Ctrl+B"],
       ["Refresh", "F5"],
+      ["Undo / redo the last action", "Ctrl+Z / Ctrl+Shift+Z"],
       ["Keyboard shortcuts", "?"],
     ],
   },

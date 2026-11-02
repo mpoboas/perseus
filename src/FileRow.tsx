@@ -1,24 +1,27 @@
+import { ArrowRight, Pencil, Plus, Minus, Replace, TriangleAlert, type LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import type { LineStats } from "./ipc";
 import { splitPath } from "./lib/format";
 
-const STATUS: Record<string, { label: string; cls: string }> = {
-  A: { label: "Added", cls: "add" },
-  M: { label: "Modified", cls: "mod" },
-  D: { label: "Deleted", cls: "del" },
-  R: { label: "Renamed", cls: "ren" },
-  C: { label: "Copied", cls: "ren" },
-  T: { label: "Type changed", cls: "other" },
-  U: { label: "Conflicted", cls: "conflict" },
-  "?": { label: "Untracked", cls: "add" },
+const STATUS: Record<string, { label: string; cls: string; icon: LucideIcon }> = {
+  A: { label: "Added", cls: "add", icon: Plus },
+  M: { label: "Modified", cls: "mod", icon: Pencil },
+  D: { label: "Deleted", cls: "del", icon: Minus },
+  R: { label: "Renamed", cls: "ren", icon: ArrowRight },
+  C: { label: "Copied", cls: "ren", icon: ArrowRight },
+  T: { label: "Type changed", cls: "other", icon: Replace },
+  U: { label: "Conflicted", cls: "conflict", icon: TriangleAlert },
+  "?": { label: "Untracked", cls: "add", icon: Plus },
 };
 
-/** A small colored square with the change letter; the color is the quick-scan signal. */
+/** A small colored icon (pencil, plus, minus…); the color is the quick-scan signal. */
 export function StatusIcon({ code }: { code: string }) {
-  const s = STATUS[code] ?? { label: code, cls: "other" };
+  const s = STATUS[code];
+  const Icon = s?.icon ?? Replace;
+  const label = s?.label ?? code;
   return (
-    <span className={`st-icon st-${s.cls}`} title={s.label} aria-label={s.label}>
-      {code}
+    <span className={`st-icon st-${s?.cls ?? "other"}`} title={label} aria-label={label}>
+      <Icon size={13} strokeWidth={2.4} />
     </span>
   );
 }

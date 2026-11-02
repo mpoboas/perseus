@@ -1,5 +1,6 @@
-import { type ComponentType, type ReactNode, forwardRef, useId } from "react";
+import { type ComponentType, type ReactNode, forwardRef, useEffect, useId, useState } from "react";
 import { Loader2 } from "lucide-react";
+import { avatarUrl, subscribeAvatars } from "../lib/avatars";
 import { avatarColor, initials } from "../lib/format";
 import { Tooltip } from "./Tooltip";
 
@@ -39,7 +40,13 @@ export function Badge({ tone = "neutral", children, title }: { tone?: BadgeTone;
 }
 
 /** Initials on a color derived from the name, so every person is recognizable at a glance. */
-export function Avatar({ name, size = 24 }: { name: string; size?: number }) {
+export function Avatar({ name, size = 24, email }: { name: string; size?: number; email?: string }) {
+  const [, redraw] = useState(0);
+  useEffect(() => subscribeAvatars(() => redraw((n) => n + 1)), []);
+  const picture = avatarUrl(email);
+  if (picture) {
+    return <img className="avatar avatar-img" alt="" aria-hidden="true" src={picture} style={{ width: size, height: size }} />;
+  }
   return (
     <span
       className="avatar"

@@ -17,6 +17,7 @@ use tauri::Manager;
 use ipc::askpass_commands;
 use ipc::channels::{self, AppState};
 use ipc::extras_commands;
+mod avatars;
 use ipc::hosting_commands::{self, HostingState};
 use ipc::oauth_commands::{self, OAuthFlows};
 use ipc::signing_commands::{self, DataDir};
@@ -143,6 +144,9 @@ pub fn run() {
             extras_commands::lfs_track,
             extras_commands::large_staged_files,
             extras_commands::activity_log,
+            extras_commands::undo_snapshot,
+            avatars::author_avatar,
+            extras_commands::undo_restore,
             commands::commit_signature,
             signing_commands::generate_ssh_key,
             patch_commands::export_patch,

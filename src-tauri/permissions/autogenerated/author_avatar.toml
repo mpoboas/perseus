@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-author-avatar"
+description = "Enables the author_avatar command without any pre-configured scope."
+commands.allow = ["author_avatar"]
+
+[[permission]]
+identifier = "deny-author-avatar"
+description = "Denies the author_avatar command without any pre-configured scope."
+commands.deny = ["author_avatar"]

@@ -21,6 +21,8 @@ import {
   User,
   Users,
   X,
+  Redo2,
+  Undo2,
 } from "lucide-react";
 import { type Endpoint, type GraphAction, type Head, dropActions, menuActions } from "./actions";
 import { ChangesPanel } from "./ChangesPanel";
@@ -90,6 +92,9 @@ import {
   createCommit,
   exportPatch,
   gitAction,
+  undoRestore,
+  undoSnapshot,
+  type UndoSnapshot,
   listProfiles,
   listRecentRepos,
   listRefs,
@@ -136,6 +141,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { Toolbar } from "./Toolbar";
+import { undoName } from "./lib/format";
 import { layoutMenu } from "./menuLayout";
 import { Badge, Menu, type MenuItem, Splitter, useToast } from "./ui";
 import { Welcome } from "./Welcome";
@@ -148,6 +154,19 @@ interface ActOptions {
   /** Title of the error toast. */
   fail?: string;
 }
+
+/** One step of the undo history: the branches before and after an action. */
+interface UndoEntry {
+  label: string;
+  before: UndoSnapshot;
+  after: UndoSnapshot;
+  /** Moving back keeps the changes staged (commits and amends) instead of restoring the files. */
+  soft: boolean;
+}
+
+const lastOf = <T,>(list: T[]): T | undefined => list[list.length - 1];
+
+const sameSnapshot = (a: UndoSnapshot, b: UndoSnapshot) => JSON.stringify(a) === JSON.stringify(b);
 
 function App() {
   const toast = useToast();
@@ -226,6 +245,8 @@ function App() {
   /** The selection at the moment a reload started, to tell whether the user changed it meanwhile. */
   const keepSel = useRef<number | "wip" | null>(null);
   const watchId = useRef<number | null>(null);
+  const undoStacks = useRef(new Map<string, { undo: UndoEntry[]; redo: UndoEntry[] }>());
+  const [, setUndoTick] = useState(0);
   const opIdRef = useRef<number | null>(null);
   const filterRef = useRef<GraphFilter>({ hidden: [], solo: [] });
   const busyRef = useRef<string | null>(null);
@@ -426,6 +447,7 @@ function App() {
       if (!info) return false;
       setBusy(label);
       setProgress("");
+      const before = scope === "all" ? await undoSnapshot(info.id).catch(() => null) : null;
       let ok = true;
       try {
         await fn(info.id);
@@ -436,6 +458,16 @@ function App() {
         setBusy(null);
         setProgress("");
       }
+      if (before) {
+        // Whatever changed local branches, even a failed or half-finished action, can be undone.
+        const after = await undoSnapshot(info.id).catch(() => null);
+        if (after && !sameSnapshot(before, after)) {
+          const stack = undoStack(info.path);
+          stack.undo.push({ label, before, after, soft: /^(Committing|Amending)/.test(label) });
+          stack.redo = [];
+          setUndoTick((n) => n + 1);
+        }
+      }
       await refresh(scope);
       // The watcher also sees our own writes; the refresh above already covered them.
       lastActEnd.current = Date.now();
@@ -445,6 +477,36 @@ function App() {
     },
     [refresh, report, toast],
   );
+
+  /** Undo and redo history of the open repository (kept in memory; it ends when the app closes). */
+  const undoStack = (path: string) => {
+    let s = undoStacks.current.get(path);
+    if (!s) undoStacks.current.set(path, (s = { undo: [], redo: [] }));
+    return s;
+  };
+
+  const stepHistory = async (direction: "undo" | "redo") => {
+    const info = repoRef.current;
+    if (!info || busyRef.current) return;
+    const stack = undoStack(info.path);
+    const from = direction === "undo" ? stack.undo : stack.redo;
+    const entry = from.pop();
+    if (!entry) return;
+    setBusy(direction === "undo" ? "Undoing…" : "Redoing…");
+    try {
+      await undoRestore(info.id, direction === "undo" ? entry.before : entry.after, entry.soft);
+      (direction === "undo" ? stack.redo : stack.undo).push(entry);
+      toast.success(`${direction === "undo" ? "Undid" : "Redid"} ${undoName(entry.label)}`);
+    } catch (e) {
+      from.push(entry);
+      report(direction === "undo" ? "Could not undo" : "Could not redo", e);
+    } finally {
+      setBusy(null);
+      setUndoTick((n) => n + 1);
+    }
+    await refresh("all");
+    lastActEnd.current = Date.now();
+  };
 
   const gitOp = (label: string, op: GitOp, opts?: ActOptions) =>
     act(
@@ -1380,6 +1442,12 @@ function App() {
     } else if (mod && key === "f" && repo) {
       e.preventDefault();
       setSearchOpen(true);
+    } else if (mod && key === "z" && repo && !typing) {
+      e.preventDefault();
+      void stepHistory(e.shiftKey ? "redo" : "undo");
+    } else if (mod && key === "y" && repo && !typing) {
+      e.preventDefault();
+      void stepHistory("redo");
     } else if (mod && key === "b" && repo) {
       e.preventDefault();
       setSidebarOpen((o) => !o);
@@ -1434,6 +1502,8 @@ function App() {
         add({ id: "pull-rebase", title: "Pull (rebase)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "rebase" }, { done: "Pulled", fail: "Pull failed" }) });
       }
       if (cancellable) add({ id: "cancel", title: "Cancel the running operation", group: "Actions", icon: X, run: cancelRunning });
+      add({ id: "undo", title: "Undo", subtitle: lastOf(undoStack(repo.path).undo)?.label, group: "Actions", icon: Undo2, shortcut: "Ctrl+Z", run: () => void stepHistory("undo") });
+      add({ id: "redo", title: "Redo", subtitle: lastOf(undoStack(repo.path).redo)?.label, group: "Actions", icon: Redo2, shortcut: "Ctrl+Shift+Z", run: () => void stepHistory("redo") });
       add({ id: "refresh", title: "Refresh", group: "Actions", icon: History, shortcut: "F5", run: () => void refresh("all") });
       add({ id: "newbranch", title: "New branch…", group: "Actions", icon: GitBranchPlus, run: () => setNewBranchOpen(true) });
       add({ id: "sidebar", title: sidebarOpen ? "Hide sidebar" : "Show sidebar", group: "Actions", icon: PanelLeft, shortcut: "Ctrl+B", run: () => setSidebarOpen((o) => !o) });
@@ -1483,6 +1553,16 @@ function App() {
 
   return (
     <div className="app">
+      {tabs.length > 0 && repo && (
+        <RepoTabs
+          tabs={tabs}
+          activePath={repo.path}
+          onSelect={(t) => t.path !== repo.path && void openRecent(t.path)}
+          onClose={(t) => void closeTab(t)}
+          onNew={() => void open()}
+        />
+      )}
+
       <Toolbar
         repo={repo}
         status={status}
@@ -1550,21 +1630,15 @@ function App() {
         onShortcuts={() => setShortcutsOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
         onNewBranch={() => setNewBranchOpen(true)}
+        undoLabel={repo ? (lastOf(undoStack(repo.path).undo)?.label ?? null) : null}
+        redoLabel={repo ? (lastOf(undoStack(repo.path).redo)?.label ?? null) : null}
+        onUndo={() => void stepHistory("undo")}
+        onRedo={() => void stepHistory("redo")}
         onPop={() =>
           void doAction("Popping the stash…", { action: "stash_pop", index: 0 }, { done: "Stash applied and removed", fail: "Could not pop the stash" })
         }
         stashCount={stashes.length}
       />
-
-      {tabs.length > 0 && repo && (
-        <RepoTabs
-          tabs={tabs}
-          activePath={repo.path}
-          onSelect={(t) => t.path !== repo.path && void openRecent(t.path)}
-          onClose={(t) => void closeTab(t)}
-          onNew={() => void open()}
-        />
-      )}
 
       {repo ? (
         <div className="workspace">
