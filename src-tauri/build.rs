@@ -93,7 +93,33 @@ const COMMANDS: &[&str] = &[
     "unwatch_repo",
 ];
 
+/// Variables taken from `.env` at the repository root and compiled into the app.
+const DOTENV_KEYS: &[&str] = &["PERSEUS_GITHUB_CLIENT_ID", "PERSEUS_GITLAB_CLIENT_ID"];
+
+/// Makes the OAuth client IDs in `../.env` visible to `option_env!` in the app. A variable that is
+/// already set in the real environment wins, and a missing file or blank value changes nothing.
+fn load_dotenv() {
+    println!("cargo:rerun-if-changed=../.env");
+    for key in DOTENV_KEYS {
+        println!("cargo:rerun-if-env-changed={key}");
+    }
+    let Ok(text) = std::fs::read_to_string("../.env") else {
+        return;
+    };
+    for line in text.lines() {
+        let line = line.trim();
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let (key, value) = (key.trim(), value.trim().trim_matches(['"', '\'']));
+        if DOTENV_KEYS.contains(&key) && !value.is_empty() && std::env::var_os(key).is_none() {
+            println!("cargo:rustc-env={key}={value}");
+        }
+    }
+}
+
 fn main() {
+    load_dotenv();
     tauri_build::try_build(Attributes::new().app_manifest(AppManifest::new().commands(COMMANDS)))
         .expect("failed to run tauri-build");
 }

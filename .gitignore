@@ -15,6 +15,9 @@ dist-ssr
 /target/
 *.local
 
+# Personal OAuth client IDs (see .env.example)
+.env
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

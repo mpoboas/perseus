@@ -35,13 +35,18 @@ sign-in form.
 
 ## Telling Perseus the client IDs
 
-For the built-in hosts (`github.com`, `gitlab.com`) set these before launching, or at
-build time to ship them in a release:
+For the built-in hosts (`github.com`, `gitlab.com`) put the two IDs in a `.env` file at the
+repository root (copy `.env.example`; `.env` itself is not committed):
 
 ```
 PERSEUS_GITHUB_CLIENT_ID=<client id>
 PERSEUS_GITLAB_CLIENT_ID=<application id>
 ```
+
+`src-tauri/build.rs` reads that file at build time and compiles the values into the app, so a
+built copy signs in without anything else being set, wherever it is launched from. An environment
+variable of the same name takes priority over the file, both when building and when running, which
+is handy for trying another OAuth app.
 
 Client IDs are public identifiers, not secrets, so compiling them in is fine. For any
 other host (GitHub Enterprise Server, self-hosted GitLab) paste the client ID into the
