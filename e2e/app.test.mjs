@@ -188,6 +188,24 @@ describe("Perseus", () => {
     assert.match(git(repo, "tag", "--list"), /e2e-tag/);
   });
 
+  it("keeps the graph after many outside ref changes in a row", async () => {
+    // Each change triggers a quiet reload; the result of a reload can arrive before its last rows.
+    for (let n = 0; n < 15; n++) {
+      git(repo, "tag", `churn-${n}`);
+      await new Promise((r) => setTimeout(r, 450));
+      git(repo, "tag", "-d", `churn-${n}`);
+      await new Promise((r) => setTimeout(r, 450));
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+    assert.equal(await page.getByText("No commits yet").count(), 0, "the graph did not blank");
+    const painted = await page.evaluate(() => {
+      const c = document.querySelector(".graph-canvas");
+      const px = c.getContext("2d").getImageData(0, 0, c.width, 200).data;
+      return px.some((v, i) => i % 4 === 3 && v > 0);
+    });
+    assert.ok(painted, "the canvas still has painted rows");
+  });
+
   it("opens a context menu on right-click", async () => {
     const { x, y } = await rowPoint(page, 2);
     await page.mouse.click(x, y, { button: "right" });

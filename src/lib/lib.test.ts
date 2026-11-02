@@ -4,6 +4,7 @@ import { buildFileTree } from "./fileTree";
 import { fuzzyMatch } from "./fuzzy";
 import { hueOf, initials, relativeTime, splitPath } from "./format";
 import { buildRefTree } from "./refTree";
+import { arrived, newTally, waitForRows } from "./streamWait";
 
 describe("format", () => {
   it("makes initials from names, emails and single words", () => {
@@ -174,5 +175,32 @@ describe("hunk addressing for staging", () => {
     ]);
     expect(d.hunks[0].checksum).toBe(hunkChecksum([" keep", "-old", "+new", marker]));
     expect(d.hunks[1].checksum).toBe(hunkChecksum(["-x", "+y"]));
+  });
+});
+
+describe("streamWait", () => {
+  it("resolves at once when every row has already arrived", async () => {
+    const t = newTally();
+    arrived(t, 106);
+    await expect(waitForRows(t, 106)).resolves.toBeUndefined();
+  });
+
+  it("waits for a chunk that arrives after the result", async () => {
+    const t = newTally();
+    let settled = false;
+    const wait = waitForRows(t, 106).then(() => (settled = true));
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    arrived(t, 100);
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    arrived(t, 6);
+    await wait;
+    expect(settled).toBe(true);
+  });
+
+  it("gives up after the timeout instead of hanging", async () => {
+    const t = newTally();
+    await expect(waitForRows(t, 5, 20)).resolves.toBeUndefined();
   });
 });

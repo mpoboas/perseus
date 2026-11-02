@@ -1,4 +1,5 @@
 import { Channel, convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { arrived, newTally, waitForRows } from "./lib/streamWait";
 
 export interface RepoInfo {
   id: number;
@@ -379,8 +380,19 @@ export function streamCommits(
 ): { streamId: number; done: Promise<WalkSummary> } {
   const streamId = nextStreamId++;
   const channel = new Channel<CommitChunk>();
-  channel.onmessage = (chunk) => onChunk(chunk.rows);
-  const done = invoke<WalkSummary>("stream_commits", { repoId, streamId, filter, onChunk: channel });
+  const tally = newTally();
+  channel.onmessage = (chunk) => {
+    arrived(tally, chunk.rows.length);
+    onChunk(chunk.rows);
+  };
+  // The result can overtake the last chunk: resolve only once every row has been handed over,
+  // or a silent reload would swap in a store that is still empty.
+  const done = invoke<WalkSummary>("stream_commits", { repoId, streamId, filter, onChunk: channel }).then(
+    async (summary) => {
+      if (!summary.cancelled) await waitForRows(tally, summary.total);
+      return summary;
+    },
+  );
   return { streamId, done };
 }
 
