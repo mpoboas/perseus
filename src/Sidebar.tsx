@@ -41,6 +41,8 @@ interface Props {
   onPrMenu: (pr: PullRequest, x: number, y: number) => void;
   onOpenIssue: (issue: Issue) => void;
   onStashMenu: (entry: StashEntry, x: number, y: number) => void;
+  /** Submodules, worktrees and LFS, rendered below the stashes. */
+  extras?: React.ReactNode;
   busy: boolean;
   onJump: (target: string) => void;
   onCheckout: (ref: RefInfo) => void;
@@ -76,7 +78,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{parts}</>;
 }
 
-export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, ci, hostingError, onPrMenu, onOpenIssue, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
+export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, ci, hostingError, onPrMenu, onOpenIssue, onStashMenu, extras, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -278,6 +280,7 @@ export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, c
             )}
           </section>
         )}
+        {!filtering && extras}
         {filtering && !SECTIONS.some((s) => refs.some((r) => r.kind === s.kind && fuzzyMatch(filter, r.name))) && (
           <EmptyState icon={Search} title="No matches" hint={`Nothing is named like “${filter.trim()}”.`}>
             <button className="link-btn" onClick={() => setFilter("")}>

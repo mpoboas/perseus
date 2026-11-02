@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-large-staged-files"
+description = "Enables the large_staged_files command without any pre-configured scope."
+commands.allow = ["large_staged_files"]
+
+[[permission]]
+identifier = "deny-large-staged-files"
+description = "Denies the large_staged_files command without any pre-configured scope."
+commands.deny = ["large_staged_files"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-lfs-status"
+description = "Enables the lfs_status command without any pre-configured scope."
+commands.allow = ["lfs_status"]
+
+[[permission]]
+identifier = "deny-lfs-status"
+description = "Denies the lfs_status command without any pre-configured scope."
+commands.deny = ["lfs_status"]

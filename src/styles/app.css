@@ -2081,3 +2081,93 @@ mark {
   grid-template-columns: 1fr 1fr auto;
   gap: 8px;
 }
+
+/* ---------- Phase 14: extras, preferences ---------- */
+
+.side-state {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--surface-3, var(--surface-2));
+  color: var(--text-dim);
+  font-size: 11px;
+}
+.side-state.state-modified,
+.side-state.state-conflicted {
+  color: var(--warn);
+}
+.side-row-wrap {
+  display: flex;
+  align-items: center;
+}
+.side-row-wrap > .side-row {
+  flex: 1;
+  min-width: 0;
+}
+.lfs-add {
+  display: flex;
+  gap: 6px;
+}
+.prefs {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.prefs section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.prefs h3 {
+  font-size: 13px;
+}
+.prefs-number {
+  width: 84px;
+  margin: 0 8px;
+}
+.prefs-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.prefs-head h3 {
+  flex: 1;
+}
+.activity-log {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  font: 12px/18px var(--font-mono);
+}
+.activity-log li {
+  display: flex;
+  gap: 10px;
+  padding: 2px 10px;
+  align-items: baseline;
+}
+.activity-log li code {
+  flex: 1;
+  min-width: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+.activity-log li.failed code,
+.activity-log li em {
+  color: var(--danger);
+  font-style: normal;
+}
+.large-files {
+  margin: 4px 0;
+  padding: 0;
+  list-style: none;
+}
+.large-files li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}

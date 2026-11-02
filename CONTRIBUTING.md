@@ -24,7 +24,7 @@ TypeScript on the front end. The rules that keep it safe and fast are short.
    Content-Security-Policy is stricter than the development one.
 6. Commit messages are a single subject line.
 
-See `docs/roadmap.md` for what is planned and `docs/security.md` for the threat model.
+See `docs/roadmap.md` for what is planned and `docs/security.md` and `docs/threat-model.md` for the security rules.
 
 ## License
 

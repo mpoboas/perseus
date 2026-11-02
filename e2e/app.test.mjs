@@ -416,3 +416,72 @@ describe("Perseus asking for a login", () => {
     assert.deepEqual(seen, []);
   });
 });
+
+describe("Perseus with worktrees, submodules and big files", () => {
+  let app;
+  let page;
+  let repo;
+
+  before(async () => {
+    const root = scratchDir("perseus-extras-");
+    const lib = join(root, "lib");
+    mkdirSync(lib, { recursive: true });
+    git(lib, "init", "-q", "-b", "main");
+    writeFileSync(join(lib, "l.txt"), "lib\n");
+    git(lib, "add", "-A");
+    git(lib, "commit", "-q", "-m", "lib first");
+
+    repo = join(root, "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "a.txt"), "a\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "first");
+    git(repo, "branch", "side");
+    git(repo, "worktree", "add", join(root, "side-tree"), "side");
+    git(repo, "-c", "protocol.file.allow=always", "submodule", "add", lib, "vendor/lib");
+    git(repo, "commit", "-q", "-m", "add submodule");
+
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9449 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  it("lists linked worktrees and submodules in the sidebar", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText(/2 commits/).waitFor();
+    await page.getByRole("button", { name: /Worktrees/ }).waitFor();
+    await page.getByRole("button", { name: /Submodules/ }).waitFor();
+    await page.locator(".side-row", { hasText: "vendor/lib" }).waitFor();
+  });
+
+  it("opens a worktree as its own repository", async () => {
+    await page.locator(".side-row", { hasText: "side" }).last().dblclick();
+    await page.locator(".repo-tab", { hasText: "side-tree" }).waitFor({ timeout: 10000 });
+  });
+
+  it("warns about a large staged file, using the threshold from Preferences", async () => {
+    await page.locator(".repo-tab", { hasText: "repo" }).first().click();
+    await page.getByRole("button", { name: "Preferences" }).click();
+    await page.getByLabel("Large file threshold in megabytes").fill("1");
+    await page.getByRole("button", { name: "Done" }).click();
+    writeFileSync(join(repo, "big.bin"), Buffer.alloc(2 * 1024 * 1024, 7));
+    git(repo, "add", "big.bin");
+    await page.locator('[role="tab"]', { hasText: "Changes" }).click();
+    await page.getByText(/staged file is very large/).waitFor({ timeout: 10000 });
+  });
+
+  it("shows the git commands Perseus ran in the activity log", async () => {
+    await page.getByRole("button", { name: "Preferences" }).click();
+    const log = page.getByLabel("Git commands");
+    await log.getByText(/git .*worktree/).first().waitFor().catch(() => undefined);
+    await page.getByLabel("Show read-only commands").check().catch(async () => {
+      await page.getByText("Show read-only commands").click();
+    });
+    await log.getByText(/git (status|log|for-each-ref)/).first().waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Done" }).click();
+  });
+});

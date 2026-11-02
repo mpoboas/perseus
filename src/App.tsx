@@ -12,6 +12,7 @@ import {
   FolderPlus,
   Keyboard,
   Search,
+  Settings,
   Moon,
   PanelLeft,
   RefreshCw,
@@ -43,6 +44,7 @@ import {
   type HostingInfo,
   type Issue,
   type MergeMethod,
+  type LargeFile,
   type PullRequest,
   type Question,
   type Signature,
@@ -62,6 +64,7 @@ import {
   type StashEntry,
   cancelGitOp,
   answerAskpass,
+  addWorktree,
   applyPatchFile,
   cloneRepo,
   checkoutPullRequest,
@@ -91,6 +94,8 @@ import {
   listRecentRepos,
   listRefs,
   listRemotes,
+  largeStagedFiles,
+  lfsTrack,
   listStashes,
   newBranch,
   newOpId,
@@ -104,13 +109,18 @@ import {
   streamCommits,
   switchRef,
   unstagePaths,
+  openNestedRepo,
+  removeWorktree,
   unwatchRepo,
+  updateSubmodules,
   watchAskpass,
   watchRepo,
 } from "./ipc";
 import { readPref, usePref, writePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
 import { AskpassDialog } from "./AskpassDialog";
+import { ExtrasSections } from "./ExtrasSections";
+import { LARGE_FILE_DEFAULT, LARGE_FILE_KEY, PreferencesDialog } from "./PreferencesDialog";
 import { CloneDialog } from "./CloneDialog";
 import { CreatePrDialog } from "./CreatePrDialog";
 import { ConflictDialog } from "./ConflictDialog";
@@ -187,6 +197,8 @@ function App() {
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [largeFiles, setLargeFiles] = useState<LargeFile[]>([]);
   const [newBranchOpen, setNewBranchOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; actions: GraphAction[] } | null>(null);
   const [confirm, setConfirm] = useState<GraphAction[] | null>(null);
@@ -908,6 +920,31 @@ function App() {
     });
   };
 
+  /** Opens a submodule or linked worktree of the current repository in its own tab. */
+  const openNested = async (path: string) => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      await adopt(await openNestedRepo(info.id, path));
+    } catch (e) {
+      report("Could not open it", e);
+    }
+  };
+
+  const newWorktreeFor = async (branch: string) => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      const where = await addWorktree(info.id, branch, false);
+      if (where) {
+        toast.success(`Created a worktree for ${branch}`);
+        void loadRefs(info);
+      }
+    } catch (e) {
+      report("Could not create the worktree", e);
+    }
+  };
+
   const onStashMenu = (entry: StashEntry, x: number, y: number) => {
     if (busy) return;
     const label = entry.message.replace(/^(WIP on|On) [^:]+: /, "") || `stash ${entry.index}`;
@@ -951,7 +988,22 @@ function App() {
     setMenu({
       x,
       y,
-      actions: [...menuActions(e, currentHead()), ...filterActions(ref.name)].filter((a) => a.id !== "create-pr" || hosting),
+      actions: [
+        ...menuActions(e, currentHead()),
+        ...(ref.kind === "branch" && !ref.is_head
+          ? [
+              {
+                id: "new-worktree",
+                title: `Check out ${ref.name} in a new worktree…`,
+                description: "",
+                confirmLabel: "Choose folder",
+                immediate: true,
+                run: { type: "ui" as const, run: () => void newWorktreeFor(ref.name) },
+              },
+            ]
+          : []),
+        ...filterActions(ref.name),
+      ].filter((a) => a.id !== "create-pr" || hosting),
     });
   };
 
@@ -1150,6 +1202,25 @@ function App() {
     void reloadRecents();
   }, [reloadProfiles, reloadRecents]);
 
+  // Warn about big files in the next commit; the check runs only when the staged set changes.
+  const stagedKey = status?.entries.filter((e) => e.index).map((e) => e.path).join("\0") ?? "";
+  useEffect(() => {
+    const info = repoRef.current;
+    const limit = readPref<number>(LARGE_FILE_KEY, LARGE_FILE_DEFAULT);
+    if (!info || !stagedKey || limit <= 0) {
+      setLargeFiles([]);
+      return;
+    }
+    let live = true;
+    largeStagedFiles(info.id, limit).then(
+      (l) => live && setLargeFiles(l),
+      () => live && setLargeFiles([]),
+    );
+    return () => {
+      live = false;
+    };
+  }, [stagedKey, prefsOpen]);
+
   // Git and ssh ask their questions (passwords, passphrases, host trust) through the window.
   useEffect(() => {
     watchAskpass((q) => setQuestions((l) => [...l, q]));
@@ -1249,7 +1320,7 @@ function App() {
 
   // ---- Keyboard ----
 
-  const overlayOpen = paletteOpen || shortcutsOpen || profilesOpen || newBranchOpen || !!confirm || !!menu;
+  const overlayOpen = paletteOpen || shortcutsOpen || prefsOpen || profilesOpen || newBranchOpen || !!confirm || !!menu;
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e) => {
     const mod = e.ctrlKey || e.metaKey;
@@ -1329,6 +1400,7 @@ function App() {
     add({ id: "theme-system", title: "Theme: Follow system", group: "Actions", icon: Sun, run: () => setTheme("system") });
     add({ id: "profiles", title: "Manage profiles…", group: "Actions", icon: Users, run: () => setProfilesOpen(true) });
     add({ id: "shortcuts", title: "Keyboard shortcuts", group: "Actions", icon: Keyboard, shortcut: "?", run: () => setShortcutsOpen(true) });
+    add({ id: "prefs", title: "Preferences and activity log…", group: "Actions", icon: Settings, run: () => setPrefsOpen(true) });
 
     for (const r of refs) {
       if (r.kind === "tag") {
@@ -1433,6 +1505,7 @@ function App() {
         }}
         onTheme={setTheme}
         onShortcuts={() => setShortcutsOpen(true)}
+        onPreferences={() => setPrefsOpen(true)}
       />
 
       {tabs.length > 0 && repo && (
@@ -1463,6 +1536,46 @@ function App() {
                   onPrMenu={onPrMenu}
                   onOpenIssue={(i) => repo && void openInBrowser(repo.id, i.url).catch((e) => report("Could not open the page", e))}
                   onStashMenu={onStashMenu}
+                  extras={
+                    <ExtrasSections
+                      repoId={repo.id}
+                      version={refs}
+                      busy={!!busy}
+                      onOpen={(p) => void openNested(p)}
+                      onUpdateSubmodules={(p) =>
+                        void act("Updating submodules…", "all", (id) => updateSubmodules(id, p), {
+                          done: "Submodules updated",
+                          fail: "Could not update the submodules",
+                        })
+                      }
+                      onRemoveWorktree={(w) =>
+                        setConfirm([
+                          {
+                            id: "remove-worktree",
+                            title: `Remove the worktree for ${w.branch ?? w.path}`,
+                            description: `Deletes the folder ${w.path}. Commits stay in the repository.`,
+                            warning: "Uncommitted changes in that folder are lost.",
+                            confirmLabel: "Remove",
+                            danger: true,
+                            run: {
+                              type: "ui",
+                              run: () =>
+                                void act("Removing worktree…", "all", (id) => removeWorktree(id, w.path), {
+                                  done: "Worktree removed",
+                                  fail: "Could not remove the worktree",
+                                }),
+                            },
+                          },
+                        ])
+                      }
+                      onTrackLfs={(pattern) =>
+                        void act("Updating LFS…", "all", (id) => lfsTrack(id, pattern), {
+                          done: `Tracking ${pattern} with LFS`,
+                          fail: "Could not track the pattern",
+                        })
+                      }
+                    />
+                  }
                   busy={!!busy}
                   onJump={jumpTo}
                   onCheckout={(r) => void checkout(r)}
@@ -1572,6 +1685,13 @@ function App() {
                 />
               ) : (
                 <ChangesPanel
+                  largeFiles={largeFiles}
+                  onTrackLarge={(pattern) =>
+                    void act("Updating LFS…", "all", (id) => lfsTrack(id, pattern), {
+                      done: `Tracking ${pattern} with LFS`,
+                      fail: "Could not track the pattern",
+                    })
+                  }
                   status={status}
                   busy={!!busy}
                   activeDiff={diff}
@@ -1651,6 +1771,7 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
       {stashOpen && status && (
         <StashDialog
           changed={status.entries.length}

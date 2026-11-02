@@ -7,6 +7,28 @@ building phases, derived from three sources: the original plan's unfinished item
 testing. Sizes are rough focused-work estimates for one developer: **S** 1-2 days,
 **M** 3-5 days, **L** 1-2 weeks, **XL** 2+ weeks.
 
+## Status (updated at the end of the overnight build)
+
+Phases 0-14 are built and tested; Phase 15 is built as far as it can be without the owner.
+Decisions taken by default while the owner was away are listed so they can be revisited.
+
+| Phase | State | Notes |
+|---|---|---|
+| 6 UI/UX | Done | See "Delivered" under Phase 6 |
+| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf notes in `docs/performance.md`, Playwright E2E over WebView2 (`pnpm e2e`), CI builds an unsigned NSIS installer and runs the E2E |
+| 8 Everyday Git | Done except undo | Stash, tags, branch delete/rename, reset, revert, discard, remotes, pull modes, force-with-lease, cancel |
+| 9 Staging and diffs | Done except highlighting | Hunk and line staging, file history, blame, patch export/apply. **Not done:** syntax highlighting, side-by-side diff |
+| 10 Navigation | Done except deep links | Tabs, search, clone/init, hide/solo, recents. **Not done:** deep links (`perseus://`), the scroll-height fix for graphs of several hundred thousand rows |
+| 11 Conflicts and history editing | Done except multi-pick | Conflict resolver, interactive rebase, conflict preview. **Not done:** cherry-picking several commits at once |
+| 12 Hosting | GitHub and GitLab | Pull/merge requests, issues, CI state. **Not done:** Bitbucket, Azure DevOps, and live testing against real accounts (covered by unit tests only; OAuth sign-in for GitHub and GitLab was verified live earlier) |
+| 13 Identity and signing | Done except GPG | Askpass prompts for git and ssh, SSH signing + verification badges, key generation, profile rules and pinning, skip hooks |
+| 14 Workflow extras | Partly | Submodules, worktrees, Git LFS (detect/track), large-file warning, preferences, activity log. **Deferred on purpose:** integrated terminal, AI helpers, workspaces, customizable shortcuts, Gitflow helpers, zoom, auto-fetch interval |
+| 15 Release engineering | Partly | README, user guide, threat model, local error log, per-OS bundle matrix in CI. **Owner-only (not done):** code-signing certificates, notarization, updater signing key and update hosting, first public release, macOS/Linux hands-on verification, formal accessibility audit, i18n |
+
+Defaults chosen without the owner (revisable): **MIT license**; **Windows first**; **no telemetry**;
+no integrated terminal and no AI helpers in scope; signing, notarization, updater keys and
+publication are left for the owner. Nothing was pushed or published: the `birth` branch is local.
+
 ## Milestones
 
 | Milestone | After | What it means |

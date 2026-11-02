@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Archive, CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert, Undo2 } from "lucide-react";
+import { Archive, CheckCircle2, TriangleAlert, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert, Undo2 } from "lucide-react";
 import { FileRow } from "./FileRow";
-import type { DiffTarget, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
+import type { DiffTarget, LargeFile, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
 import { usePref } from "./lib/prefs";
 import { Avatar, Badge, Button, EmptyState, IconButton, Shortcut } from "./ui";
 
@@ -26,6 +26,10 @@ interface Props {
   loadLastMessage: () => Promise<string | null>;
   /** The repository's commit template, if it has one. */
   loadTemplate: () => Promise<string | null>;
+  /** Staged files over the size threshold, largest first. */
+  largeFiles: LargeFile[];
+  /** Starts storing files like this through Git LFS (only offered when LFS is installed). */
+  onTrackLarge?: (pattern: string) => void;
 }
 
 const OPERATION_LABEL = {
@@ -71,6 +75,8 @@ export function ChangesPanel({
   onResolve,
   loadLastMessage,
   loadTemplate,
+  largeFiles,
+  onTrackLarge,
 }: Props) {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
@@ -349,6 +355,29 @@ export function ChangesPanel({
           onChange={(e) => setDescription(e.target.value)}
           onKeyDown={onKey}
         />
+        {largeFiles.length > 0 && (
+          <div className="callout callout-warn" role="alert">
+            <TriangleAlert size={16} />
+            <div>
+              <strong>
+                {largeFiles.length === 1 ? "A staged file is" : `${largeFiles.length} staged files are`} very large
+              </strong>
+              <ul className="large-files">
+                {largeFiles.slice(0, 3).map((f) => (
+                  <li key={f.path}>
+                    <code>{f.path}</code> · {(f.bytes / 1048576).toFixed(1)} MB
+                    {onTrackLarge && f.path.includes(".") && (
+                      <button type="button" className="link-btn" onClick={() => onTrackLarge(`*.${f.path.split(".").pop()}`)}>
+                        Track *.{f.path.split(".").pop()} with LFS
+                      </button>
+                    )}
+                  </li>
+                ))}
+              </ul>
+              <span className="muted">Once committed, it stays in the history for good.</span>
+            </div>
+          </div>
+        )}
         <label className="check-row">
           <input type="checkbox" checked={amend} onChange={(e) => toggleAmend(e.target.checked)} /> Amend the last commit
         </label>

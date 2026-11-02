@@ -21,6 +21,7 @@ import {
   Download,
   Eye,
   Pin,
+  Settings,
   FolderPlus,
   Terminal,
 } from "lucide-react";
@@ -66,6 +67,7 @@ interface Props {
   onPinProfile: () => void;
   onTheme: (t: ThemePref) => void;
   onShortcuts: () => void;
+  onPreferences: () => void;
 }
 
 const THEME_ITEMS: { id: ThemePref; label: string; icon: typeof Sun }[] = [
@@ -281,6 +283,7 @@ export function Toolbar(p: Props) {
           )}
         />
         <IconButton icon={CircleHelp} label="Keyboard shortcuts" shortcut="?" onClick={p.onShortcuts} />
+        <IconButton icon={Settings} label="Preferences" onClick={p.onPreferences} />
       </div>
     </header>
   );

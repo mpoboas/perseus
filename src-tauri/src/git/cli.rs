@@ -37,6 +37,154 @@ const SCRUBBED_ENV: &[&str] = &[
     "PERSEUS_PROFILE",
 ];
 
+/// One git command Perseus ran, for the activity log.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct LogEntry {
+    /// Unix seconds when it started.
+    pub time: u64,
+    pub command: String,
+    pub millis: u64,
+    pub ok: bool,
+    /// First line of git's complaint when it failed.
+    pub error: Option<String>,
+    /// Commands that only read (status, log, diff…): the log hides them unless asked.
+    pub read_only: bool,
+}
+
+const LOG_CAPACITY: usize = 400;
+static LOG: std::sync::Mutex<std::collections::VecDeque<LogEntry>> =
+    std::sync::Mutex::new(std::collections::VecDeque::new());
+
+/// The most recent git commands, oldest first.
+pub fn recent_commands() -> Vec<LogEntry> {
+    LOG.lock()
+        .map(|l| l.iter().cloned().collect())
+        .unwrap_or_default()
+}
+
+/// Hides credentials embedded in URLs (`https://user:token@host`) before anything is logged.
+fn redact(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find("://") {
+        out.push_str(&rest[..i + 3]);
+        rest = &rest[i + 3..];
+        let end = rest
+            .find(|c: char| c == '/' || c.is_whitespace())
+            .unwrap_or(rest.len());
+        if let Some(at) = rest[..end].rfind('@') {
+            out.push_str("***@");
+            rest = &rest[at + 1..];
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+const READ_ONLY: &[&str] = &[
+    "status",
+    "log",
+    "diff",
+    "show",
+    "rev-parse",
+    "for-each-ref",
+    "cat-file",
+    "ls-files",
+    "ls-tree",
+    "blame",
+    "config",
+    "merge-tree",
+    "merge-base",
+    "rev-list",
+    "describe",
+    "ls-remote",
+    "check-ignore",
+];
+
+struct Activity {
+    started: std::time::Instant,
+    time: u64,
+    command: String,
+    read_only: bool,
+}
+
+impl Activity {
+    fn begin(args: &[std::ffi::OsString]) -> Self {
+        let words: Vec<String> = args
+            .iter()
+            .map(|a| a.to_string_lossy().into_owned())
+            .collect();
+        let first = words
+            .iter()
+            .find(|w| !w.starts_with('-'))
+            .map(String::as_str)
+            .unwrap_or("");
+        let read_only = READ_ONLY.contains(&first)
+            || (first == "remote" && words.iter().any(|w| w == "-v"))
+            || (matches!(first, "stash" | "worktree" | "submodule")
+                && words.iter().any(|w| w == "list" || w == "status"));
+        let command: String = redact(
+            &words
+                .iter()
+                .map(|w| {
+                    if w.contains(' ') {
+                        format!("\"{w}\"")
+                    } else {
+                        w.clone()
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        )
+        .chars()
+        .take(300)
+        .collect();
+        Self {
+            started: std::time::Instant::now(),
+            time: std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |d| d.as_secs()),
+            command: format!("git {command}"),
+            read_only,
+        }
+    }
+
+    fn finish<T>(self, result: &Result<T>) {
+        let entry = LogEntry {
+            time: self.time,
+            command: self.command,
+            millis: self.started.elapsed().as_millis() as u64,
+            ok: result.is_ok(),
+            error: result.as_ref().err().map(|e| {
+                e.to_string()
+                    .lines()
+                    .next()
+                    .unwrap_or("")
+                    .chars()
+                    .take(200)
+                    .collect()
+            }),
+            read_only: self.read_only,
+        };
+        if let Ok(mut log) = LOG.lock() {
+            if log.len() >= LOG_CAPACITY {
+                log.pop_front();
+            }
+            log.push_back(entry);
+        }
+    }
+}
+
+fn collect_args<I, S>(args: I) -> Vec<std::ffi::OsString>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    args.into_iter()
+        .map(|a| a.as_ref().to_os_string())
+        .collect()
+}
+
 /// Environment set once at start-up and applied to every git command (the askpass program and
 /// its server address). Per-profile values still win over it.
 static GLOBAL_ENV: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
@@ -169,10 +317,16 @@ impl Git {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let child = self.spawn(self.command(args))?;
-        let out = child.wait_with_output().map_err(AppError::git)?;
-        check(out.status, &out.stderr, &out.stdout, ok_codes)?;
-        Ok(out.stdout)
+        let args = collect_args(args);
+        let activity = Activity::begin(&args);
+        let result = (|| -> Result<Vec<u8>> {
+            let child = self.spawn(self.command(&args))?;
+            let out = child.wait_with_output().map_err(AppError::git)?;
+            check(out.status, &out.stderr, &out.stdout, ok_codes)?;
+            Ok(out.stdout)
+        })();
+        activity.finish(&result);
+        result
     }
 
     /// Runs git feeding `input` on stdin (commit messages: avoids argv limits and quoting).
@@ -181,16 +335,22 @@ impl Git {
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
-        let mut cmd = self.command(args);
-        cmd.stdin(Stdio::piped());
-        let mut child = self.spawn(cmd)?;
-        if let Some(mut stdin) = child.stdin.take() {
-            // A write error means git exited early; its status below explains why.
-            let _ = stdin.write_all(input);
-        }
-        let out = child.wait_with_output().map_err(AppError::git)?;
-        check(out.status, &out.stderr, &out.stdout, &[0])?;
-        Ok(out.stdout)
+        let args = collect_args(args);
+        let activity = Activity::begin(&args);
+        let result = (|| -> Result<Vec<u8>> {
+            let mut cmd = self.command(&args);
+            cmd.stdin(Stdio::piped());
+            let mut child = self.spawn(cmd)?;
+            if let Some(mut stdin) = child.stdin.take() {
+                // A write error means git exited early; its status below explains why.
+                let _ = stdin.write_all(input);
+            }
+            let out = child.wait_with_output().map_err(AppError::git)?;
+            check(out.status, &out.stderr, &out.stdout, &[0])?;
+            Ok(out.stdout)
+        })();
+        activity.finish(&result);
+        result
     }
 
     /// Returns at most `max` bytes of stdout; the flag says whether output was cut.
@@ -240,6 +400,23 @@ impl Git {
     /// Like [`stream`](Self::stream), but setting `cancel` kills git and everything it started
     /// (ssh, credential helpers, `git-remote-https`) and returns a "cancelled" error.
     pub fn stream_cancellable<I, S>(
+        &self,
+        args: I,
+        on_line: impl FnMut(&str),
+        cancel: &AtomicBool,
+    ) -> Result<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        let args = collect_args(args);
+        let activity = Activity::begin(&args);
+        let result = self.stream_inner(&args, on_line, cancel);
+        activity.finish(&result);
+        result
+    }
+
+    fn stream_inner<I, S>(
         &self,
         args: I,
         mut on_line: impl FnMut(&str),
@@ -425,6 +602,7 @@ pub mod testutil {
 #[cfg(test)]
 mod tests {
     use super::testutil::*;
+    use super::{recent_commands, redact};
 
     #[test]
     fn failure_carries_git_stderr() {
@@ -500,6 +678,50 @@ mod tests {
             started.elapsed() < std::time::Duration::from_secs(10),
             "took {:?}",
             started.elapsed()
+        );
+    }
+
+    #[test]
+    fn commands_are_logged_with_secrets_removed_and_reads_marked() {
+        let (_d, git) = init_repo();
+        let _ = git.output([
+            "remote",
+            "add",
+            "origin",
+            "https://ada:s3cret-token@example.com/a/b.git",
+        ]);
+        let _ = git.output(["checkout", "no-such-branch-for-the-log"]);
+        let _ = git.output(["status", "--porcelain"]);
+        let log = recent_commands();
+        let find = |needle: &str| {
+            log.iter()
+                .rev()
+                .find(|e| e.command.contains(needle))
+                .unwrap_or_else(|| panic!("{needle}"))
+        };
+
+        let add = find("remote add origin");
+        assert!(add.ok && !add.read_only);
+        assert!(
+            !add.command.contains("s3cret-token") && add.command.contains("***@example.com"),
+            "{}",
+            add.command
+        );
+
+        let bad = find("no-such-branch-for-the-log");
+        assert!(!bad.ok);
+        assert!(
+            bad.error
+                .as_deref()
+                .unwrap_or("")
+                .contains("no-such-branch"),
+            "{bad:?}"
+        );
+
+        assert!(find("status --porcelain").read_only);
+        assert_eq!(
+            redact("git clone https://x:y@h/r and http://h/r"),
+            "git clone https://***@h/r and http://h/r"
         );
     }
 }

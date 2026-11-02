@@ -682,3 +682,51 @@ export const commitSignature = (repoId: number, oid: string) =>
 
 export const generateSshKey = (label: string, comment: string) =>
   invoke<{ path: string; public_key: string }>("generate_ssh_key", { label, comment });
+
+// ---- Submodules, worktrees, LFS, large files, activity log ----
+
+export interface Submodule {
+  path: string;
+  state: "clean" | "uninitialized" | "modified" | "conflicted";
+  oid: string;
+  describe: string | null;
+}
+export interface Worktree {
+  path: string;
+  head: string;
+  branch: string | null;
+  is_main: boolean;
+  locked: boolean;
+}
+export interface LfsStatus {
+  installed: boolean;
+  patterns: string[];
+}
+export interface LargeFile {
+  path: string;
+  bytes: number;
+}
+export interface LogEntry {
+  time: number;
+  command: string;
+  millis: number;
+  ok: boolean;
+  error: string | null;
+  read_only: boolean;
+}
+
+export const listSubmodules = (repoId: number) => invoke<Submodule[]>("list_submodules", { repoId });
+export const updateSubmodules = (repoId: number, path: string | null) =>
+  invoke<void>("update_submodules", { repoId, path });
+/** Opens a submodule (relative path) or linked worktree (as listed) of this repository. */
+export const openNestedRepo = (repoId: number, path: string) => invoke<RepoInfo>("open_nested_repo", { repoId, path });
+export const listWorktrees = (repoId: number) => invoke<Worktree[]>("list_worktrees", { repoId });
+/** Asks for a folder; resolves to the new worktree's path, or `null` when the user cancelled. */
+export const addWorktree = (repoId: number, branch: string, create: boolean) =>
+  invoke<string | null>("add_worktree", { repoId, branch, create });
+export const removeWorktree = (repoId: number, path: string) => invoke<void>("remove_worktree", { repoId, path });
+export const lfsStatus = (repoId: number) => invoke<LfsStatus>("lfs_status", { repoId });
+export const lfsTrack = (repoId: number, pattern: string) => invoke<void>("lfs_track", { repoId, pattern });
+export const largeStagedFiles = (repoId: number, megabytes: number) =>
+  invoke<LargeFile[]>("large_staged_files", { repoId, megabytes });
+export const activityLog = () => invoke<LogEntry[]>("activity_log");

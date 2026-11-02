@@ -4,6 +4,7 @@ pub mod clone;
 pub mod conflicts;
 pub mod detail;
 pub mod diff;
+pub mod extras;
 pub mod graph;
 pub mod history;
 pub mod lanes;
