@@ -15,6 +15,13 @@
 
 - Open the **Changes** tab. Tick a file to stage it, untick to unstage. Click a file to see its diff.
 - In a diff, tick **single hunks** or **single lines** to stage only part of a file.
+- Diffs are **coloured by language** (about twenty-five languages and config formats), and the **words
+  that changed** inside a removed and the added line that replaces it are marked. The two icons in the
+  diff's header switch between **one column** and **side by side**; Settings → UI Customization sets the
+  default and can turn the colours and word marks off.
+- **Pictures** (PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, SVG) are shown instead of a text diff: the before and
+  the after side by side, or a **Swipe** slider to wipe one over the other, with their sizes. Tiny images are
+  enlarged so they can be seen. An SVG can be read as text too.
 - Write a summary (and optionally a description), then **Commit** or press `Ctrl+Enter`.
 - **Amend the last commit** pre-fills its message. **Add co-authors** appends `Co-authored-by`
   trailers. **Skip commit hooks** runs `git commit --no-verify`.
@@ -25,10 +32,13 @@
 
 ## Branches, merging and history editing
 
-- **Undo** and **Redo** (toolbar, palette, `Ctrl+Z` / `Ctrl+Shift+Z`) put your local branches back as they were
-  before the last action: a commit (its changes stay staged), merge, rebase, checkout, branch delete and so
-  on. Nothing that was pushed is touched, and an undo that would overwrite uncommitted work is refused.
-  The history lasts until you close Perseus.
+- **Undo** and **Redo** (toolbar, palette, `Ctrl+Z` / `Ctrl+Shift+Z`) put things back as they were before the
+  last action: a commit (its changes stay staged), merge, rebase, checkout, branch delete, **tag** created or
+  deleted, **stash** pushed, popped or dropped, and **staging, unstaging and discarding** changes to tracked
+  files. Nothing that was pushed is touched. An undo that would overwrite newer work is refused with a message
+  and changes nothing: a discard is only brought back while the files are still as the discard left them.
+  Untracked files cannot be brought back (git never stored them), except those a stash pop restored, which
+  go away again if they are still as they were stashed. The history lasts until you close Perseus.
 - In the graph a **laptop** on a branch label means the branch exists on this computer and a **cloud** means a
   remote has it too; hover a label for the full names. Hovering a commit with no label shows, faded, the
   branch it belongs to.
@@ -54,11 +64,27 @@
   **Continue** or **Abort**.
 - **Interactive rebase**: right-click a commit and choose the interactive rebase action to reorder,
   squash, fix up, drop or reword the commits after it.
+- **Cherry-pick several commits**: `Ctrl`+click commits in the graph to pick them one by one, or `Shift`+click
+  to take the range from the selected one, then right-click → *Cherry-pick N commits onto…*. A dialog lists them
+  oldest first: change the order with the arrows, leave some out, or tick *Combine them into a single commit*
+  and write its message. If one conflicts the pick stops there and continues after you resolve it, with the usual
+  banner. Merge commits are left out (pick the commits they merged).
+- **Gitflow** (palette: *Gitflow: set up…*, *start a feature / release / hotfix…*, *finish the current branch…*):
+  set up names the main and develop branches and the prefixes (creating develop if needed) and stores them with
+  the same keys `git flow init` uses, so either tool works on the repository. Starting a feature or release
+  branches from develop, a hotfix from the main branch. Finishing merges a feature into develop; a release or
+  hotfix goes into main, is tagged, and goes back into develop; the branch is removed unless you keep it. If a
+  merge stops on conflicts, resolve and continue, then finish again: steps already done are skipped. Once set up,
+  the sidebar lists the open branches with a finish button.
 - **Reset**, **revert**, **tags** and **discard changes** are on the context menus. Discarding
-  cannot be undone and always asks first.
+  always asks first. Tags can be pushed one by one to the remote (`origin`, or the repository's only remote),
+  deleted there, or all pushed from the Push menu.
 
 ## Finding things
 
+- The graph handles very long histories: past about 285,000 rows the scroll bar is stretched so the last
+  commit is still reachable (browsers cannot scroll an area that tall). The mouse wheel keeps moving by rows;
+  drag the scroll bar, or use `Home`, `End` and the page keys, to cover distance.
 - `Ctrl+F` searches commits by message, author or content.
 - Right-click a file in a commit or in the Changes tab for its **history** and **blame**.
 - Hidden or "solo" branches (sidebar context menu) are remembered per repository.
@@ -90,7 +116,8 @@ open it in the browser or merge it; use the branch menu to create one.
 
 - **Submodules** appear in the sidebar with a marker when they are not downloaded or sit on a
   different commit than the project records. Double-click one to open it as its own tab; *Update all
-  submodules* downloads and checks them out.
+  submodules* downloads and checks them out. *Add a submodule…* (sidebar, or the palette) takes an address or
+  a folder on your computer and a folder inside the repository; the change is staged, so commit it.
 - **Worktrees**: right-click a branch → *Check out in a new worktree…*, pick a parent folder, and
   Perseus creates `<folder>/<branch>`. Linked worktrees are listed in the sidebar; double-click to
   open, or remove one with the bin icon.

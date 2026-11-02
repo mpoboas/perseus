@@ -4,7 +4,7 @@ Originally researched 2026-11-01 against GitKraken Desktop's official documentat
 and release notes (the installed copy on this machine is **12.6.1**; the version was confirmed
 from the binary, but its UI was never toured because its window was minimized and only click
 access was available). **Perseus status was re-checked on 2026-11-02** against this repository
-at commit `5161111` (end of Phases 7-14), by reading the code and running the release build.
+at commit `20758b9` (end of Tier 1 below), by reading the code and running the release build.
 The GitKraken columns were not re-researched.
 
 **Legend.** Perseus: ✅ have · 🟡 partial · ❌ missing · ➕ Perseus-only advantage.
@@ -17,13 +17,16 @@ free, which is the paywall Perseus was built to avoid.
 Since the first version of this document Perseus went from "the daily core loop" to most of
 what a Git GUI user expects: stash, tags, hunk and line staging, search, clone and init, tabs,
 interactive rebase, a conflict resolver, pull requests for GitHub and GitLab, SSH signing,
-submodules, worktrees, a command palette and themes. It is ahead on cost, privacy and weight.
+submodules, worktrees, a command palette and themes. The latest round added the diff view's
+syntax colours, word marks, side-by-side layout and picture diffs, undo for stashes, tags and file
+edits, cherry-picking several commits, adding submodules, Gitflow, and a graph that stays
+scrollable past a browser's height limit. It is ahead on cost, privacy and weight.
 
 It is **still not at parity**. What is missing is mostly depth and polish rather than whole
-areas: **syntax highlighting and side-by-side diff**, **image diffs**, **workspaces**
-(multi-repo), **Gitflow helpers**, **auto-fetch**, **Bitbucket and Azure DevOps**, **GPG
-signing**, **customizable shortcuts**, an **integrated terminal**, AI helpers, and a signed,
-auto-updating installer. Section 3 ranks what is left.
+areas: **workspaces** (multi-repo), **Bitbucket and Azure DevOps**, in-app **pull request
+review**, **per-line conflict picks**, **GPG signing**, **customizable shortcuts**, an
+**integrated terminal**, AI helpers, and a signed, auto-updating installer. Section 3 ranks what
+is left.
 
 Nothing here has been compared side by side with GitKraken; ✅ means the capability exists and
 was tested, not that it matches GitKraken's polish.
@@ -43,13 +46,13 @@ was tested, not that it matches GitKraken's polish.
 | Repo maintenance (gc etc.) | Free | ❌ |
 | Activity log (every git command, timing, errors) | Free | ✅ in memory, URL passwords redacted |
 | Deep links (open a repo/commit from a URL) | Free | ❌ |
-| Open in terminal / file manager / IDE | Free | ❌ |
+| Open in terminal / file manager / IDE | Free | ✅ command palette: file manager, terminal, editor (VS Code) |
 
 ### Commit graph and history
 | Feature | GitKraken | Perseus |
 |---|---|---|
 | Visual commit graph with lanes, merge nodes, ref badges | Free | ✅ canvas, virtualized, streamed |
-| Handles very large histories | Slow reports on huge repos (Electron) | ✅ ➕ measured: 500,000 commits ready in 5.5 s, 131 fps scroll (`docs/performance.md`) |
+| Handles very large histories | Slow reports on huge repos (Electron) | ✅ ➕ measured: 500,000 commits ready in 5.5 s, 131 fps scroll (`docs/performance.md`); past about 285,000 rows the scroll bar is stretched so the oldest commit stays reachable (tested with 320,000) |
 | Ghost branches (show a commit's containing branch) | Free | 🟡 hovering an unlabelled commit shows a faded label of the branch above it in the same colour (a guess for display) |
 | Hover highlight of a branch's commits | Free | ❌ (row hover and selection only) |
 | Hover tooltip with commit details | Free | ✅ |
@@ -65,12 +68,12 @@ was tested, not that it matches GitKraken's polish.
 | Feature | GitKraken | Perseus |
 |---|---|---|
 | Unified diff view | Free | ✅ virtualized, line numbers, 4 MiB cap, no-exec-diff safety |
-| Side-by-side / split diff, word-level highlights | Free | ❌ |
-| Syntax highlighting | Free | ❌ |
+| Side-by-side / split diff, word-level highlights | Free | ✅ one column or side by side (saved), changed words marked inside paired -/+ lines; line staging works in both layouts |
+| Syntax highlighting | Free | ✅ about 25 languages and config formats, with a small built-in highlighter (no HTML is ever generated); other files stay plain |
 | File history | Free | ✅ |
 | Blame | Free | ✅ |
 | Edit and save a file from the diff | Free | ❌ (the conflict resolver can edit by hand) |
-| Binary/image diff | Free | ❌ ("Binary files differ" text only) |
+| Binary/image diff | Free | ✅ pictures (PNG, JPEG, GIF, WebP, BMP, ICO, AVIF, SVG) before and after, side by side or with a swipe slider; other binaries still say "Binary file" |
 | Create / apply patches | Free | ✅ export staged or unstaged changes; apply, optionally staged |
 | Cloud Patches (share a patch without a PR) | Pro | ❌ out of scope (needs a cloud) |
 
@@ -98,13 +101,13 @@ was tested, not that it matches GitKraken's polish.
 | **Interactive rebase** (reorder, reword, squash, drop) | Free for public repos only | ✅ ➕ free on private repos; also fixup |
 | Squash commits | Free | ✅ through interactive rebase |
 | Cherry-pick one commit | Free | ✅ menu + drag-and-drop |
-| Cherry-pick several commits with reorder/squash | Free | ❌ |
+| Cherry-pick several commits with reorder/squash | Free | ✅ Ctrl/Shift+click to select, a dialog to reorder, leave out or combine into one commit; stops on a conflict and continues from the banner |
 | Revert a commit | Free | ✅ |
 | Reset (soft/mixed/hard) to a commit | Free | ✅ with confirmation |
 | Drag-and-drop branch operations | Free | ✅ ➕ explicit rules, refusal messages, conflict forecast in the dialog |
 | Detached HEAD checkout | Free | ✅ |
-| Gitflow (start/finish features, releases, hotfixes) | Free for public repos only | ❌ |
-| Undo / redo of Git actions | Free | ✅ local branch moves (commit, merge, rebase, checkout, branch create/delete…), toolbar and `Ctrl+Z`; not stash, tags or pushes |
+| Gitflow (start/finish features, releases, hotfixes) | Free for public repos only | ✅ ➕ free on private repos; set-up, start and finish for all three kinds, with git flow's own config keys; no support branches or bugfix kind |
+| Undo / redo of Git actions | Free | ✅ local branch moves, tags, stashes, and staging, unstaging and discarding of tracked files, toolbar and `Ctrl+Z`; refuses when it would overwrite newer edits; not pushes or untracked files |
 | Conflict-state banner with abort / continue | Free | ✅ merge, rebase, cherry-pick, revert |
 
 ### Conflict resolution
@@ -120,7 +123,7 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Fetch (all), pull, push | Free | ✅ with live progress |
 | Pull variants (ff, ff-only, rebase), default pull type | Free | ✅ fast-forward only / merge / rebase, remembered |
-| Push options (force-with-lease, tags, set upstream) | Free | 🟡 set-upstream and force-with-lease; no "push tags" option |
+| Push options (force-with-lease, tags, set upstream) | Free | ✅ set-upstream, force-with-lease, push all tags |
 | Manage remotes (add/remove/rename) | Free | ✅ |
 | Cancel a running network operation | Free | ✅ kills the whole process tree |
 | Auto-fetch in the background | Free | ✅ interval in Settings (off by default); status also refreshes on window focus and file changes |
@@ -130,8 +133,8 @@ was tested, not that it matches GitKraken's polish.
 | Feature | GitKraken | Perseus |
 |---|---|---|
 | Stash, pop, apply, drop, list in sidebar | Free | ✅ |
-| Create (annotated) tags, push/delete tags | Free | 🟡 create and delete; pushing a tag is not a dedicated action |
-| Submodules (add, update, list) | Free | 🟡 list with status markers, update all, open as a tab; no "add" |
+| Create (annotated) tags, push/delete tags | Free | ✅ create (light or annotated), delete, push one tag, delete a tag on the remote |
+| Submodules (add, update, list) | Free | ✅ list with status markers, add from an address or folder, update all, open as a tab |
 | Worktrees (create, open, remove, graph indicator) | Free for public repos only | ✅ ➕ free on private repos; no graph indicator |
 | Git LFS | Free for public repos only | 🟡 lists patterns, tracks new ones, large-file warning before commit; no locks |
 
@@ -198,27 +201,32 @@ was tested, not that it matches GitKraken's polish.
 | Never runs repo-configured diff/textconv programs | not documented | ➕ enforced and tested |
 | Crash reporting | Cloud-based (per their docs) | ➕ local `perseus.log` only, attached by the user if they choose |
 | Runtime | Electron | ➕ Tauri + native Rust core |
-| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (28 end-to-end tests); macOS/Linux compile and bundle in CI only |
+| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (46 end-to-end tests); macOS/Linux compile and bundle in CI only |
 
 ---
 
 ## 2. What the numbers say
 
-Counting the 112 rows in section 1: Perseus has **64 ✅ or ➕**, **19 🟡** and **29 ❌**
-(the first version of this document had 35, 8 and 66 out of 109). Roughly ten of the ❌ rows are
-deliberately out of scope (Kepler, Insights, Boards, team services, cloud patches, the
-vendor-account features, AI); the rest are real gaps, ranked below. The counts treat every row
-equally, which flatters Perseus on the long tail of small rows and understates what remains in
-the large ones (diff rendering, workspaces, hosting depth).
+Counting the 112 rows in section 1: Perseus has **74 ✅ or ➕**, **16 🟡** and **22 ❌**
+(the previous version of this document had 64, 19 and 29; the first had 35, 8 and 66 out of 109).
+Roughly ten of the ❌ rows are deliberately out of scope (Kepler, Insights, Boards, team services,
+cloud patches, the vendor-account features, AI); the rest are real gaps, ranked below. The counts treat
+every row equally, which flatters Perseus on the long tail of small rows and understates what remains in
+the large ones (workspaces, hosting depth, the conflict editor).
 
 ## 3. Suggested build order (what is left)
 
-**Tier 1: noticeable in daily use**
-1. **Syntax highlighting and side-by-side diff**, with word-level highlights and image diffs.
-2. Undo for stashes, tags and file edits (today it covers local branch moves).
-3. **Auto-fetch** on an interval, and **push tags** (including deleting a tag on the remote).
-4. **Cherry-pick several commits**, **submodule add**, **Gitflow helpers**.
-5. A graph that scrolls past a few hundred thousand rows (browser scroll-height limit).
+**Tier 1: noticeable in daily use: done.**
+1. ✅ Syntax highlighting, word-level marks, side-by-side diff and picture diffs.
+2. ✅ Undo for stashes, tags and edits to files (staging, unstaging, discarding).
+3. ✅ Auto-fetch on an interval (it was already in Settings), push tags, push a single tag and delete a tag
+   on the remote (menus on tags; the remote is `origin`, or the repository's own).
+4. ✅ Cherry-pick several commits, add a submodule, Gitflow.
+5. ✅ A graph that scrolls past a few hundred thousand rows (the scroll bar is stretched beyond 8 million px).
+
+What Tier 1 left out on purpose: undoing a push or a fetch (those change another computer), undoing the
+removal of untracked files (git never had them), Gitflow support branches and the bugfix kind, and
+highlighting for languages beyond the built-in list.
 
 **Tier 2: the features people pay GitKraken for**
 6. **In-app pull request review**, more hosts (**Bitbucket**, **Azure DevOps**), Jira/Trello issues.
@@ -230,7 +238,7 @@ the large ones (diff rendering, workspaces, hosting depth).
 10. Customizable shortcuts, zoom, more preferences, accessibility audit, localisation.
 11. Code-signed installers, auto-update, macOS and Linux hands-on verification (owner-only items
     are listed in `docs/releasing.md`).
-12. Deep links, "open in terminal / file manager / IDE", repo maintenance, an integrated terminal.
+12. Deep links, repo maintenance, an integrated terminal.
 13. Optional AI helpers with a bring-your-own key.
 
 **Probably not worth chasing:** Launchpad, cloud workspaces, team view, Insights, Boards,
@@ -246,7 +254,7 @@ local-first, no-account design is a feature.
   so some rows (agent sessions, Kepler) are about a product direction Perseus does not need to
   follow.
 - Perseus statuses were taken from the code and the roadmap, plus the test suites (Rust,
-  Vitest, and 28 end-to-end tests against the release build). Pull requests, issues and CI
+  Vitest, and 46 end-to-end tests against the release build). Pull requests, issues and CI
   state for GitHub and GitLab are covered by unit tests only; only OAuth sign-in was verified
   against the real services. macOS and Linux were never run.
 - Performance figures are Perseus's own measurements on synthetic repositories

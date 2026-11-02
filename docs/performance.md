@@ -45,13 +45,15 @@ with a wide margin on 500,000 rows.
 
 ## Known limits
 
-* **The scroll extent is `rows × 32 px`.** Chromium caps an element at about 33 million pixels, so
-  histories beyond roughly **1,000,000 commits** would stop scrolling correctly. Fix when it
-  matters: scale the scroll position (virtual scrolling with a fixed-size spacer). Planned with the
-  "graph scale work" in Phase 10.
+* **The scroll extent is capped at 8 million pixels.** A row is 28 px, so up to about 285,000 rows scroll
+  one-to-one. Beyond that (Chromium itself stops at about 33 million pixels, other engines earlier) the
+  scroll bar is stretched: one real pixel stands for several list pixels (`lib/scrollMap.ts`), the wheel
+  moves by rows, and the end of the bar is the end of the history. Tested end to end with 320,000 commits
+  (`End` reaches the oldest commit). Above a few million rows one real pixel is more than a row, so the
+  scroll bar alone can no longer address every row; the keyboard, search and jump-to-commit still do.
 * **Memory is dominated by WebView2**, not by the history: at 50,000 commits the JS heap is 53 MB
-  while the whole process tree is 1.2 GB. The renderer reserves memory for the very tall scroll
-  surface; the same fix as above should reduce it.
+  while the whole process tree is 1.2 GB. The renderer reserved memory for a very tall scroll surface;
+  the capped extent should lower that, but it has not been re-measured.
 * The first 1.4 s of a 500,000-commit load is the topological sort inside `gix`, before the first
   chunk can be produced.
 

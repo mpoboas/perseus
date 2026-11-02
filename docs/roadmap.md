@@ -284,7 +284,8 @@ webview's reach of secrets (answers go straight to the child process).
 **Goal.** Cover the long tail; sort by user demand.
 
 - **Submodules** (list, init, update, status markers, open as repo), **worktrees** (create, open,
-  remove, graph indicator), **Git LFS** (detect, track, status, large-file warnings), **Gitflow** helpers.
+  remove, graph indicator), **Git LFS** (detect, track, status, large-file warnings), **Gitflow** helpers
+  (built: set up, start and finish features, releases and hotfixes; no support branches).
 - **Command palette** (Ctrl+P), **customizable shortcuts**, **preferences** (themes light/dark/custom,
   zoom, graph options, default pull type, auto-fetch interval), **activity log** viewer.
 - **Workspaces** (local): group repos, multi-repo fetch and status.
