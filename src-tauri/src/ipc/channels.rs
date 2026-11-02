@@ -11,12 +11,15 @@ use crate::error::{AppError, Result};
 use crate::git::graph::{self, CommitRow, DEFAULT_CHUNK_SIZE, WalkSummary};
 use crate::git::repo::{RepoId, RepoInfo, RepoRegistry};
 use crate::recents::RecentStore;
+use crate::watcher::Watch;
 
 #[derive(Default)]
 pub struct AppState {
     pub repos: RepoRegistry,
     /// Cancellation flags for in-flight streams, keyed by the frontend-chosen stream id.
     streams: Mutex<HashMap<u32, Arc<AtomicBool>>>,
+    /// Active repository watches, keyed by the frontend-chosen watch id.
+    pub watches: Mutex<HashMap<u32, Watch>>,
 }
 
 impl AppState {
@@ -104,11 +107,13 @@ pub async fn stream_commits(
     on_chunk: Channel<CommitChunk>,
 ) -> Result<WalkSummary> {
     let repo = state.repos.get(repo_id)?;
+    let git = state.repos.git(repo_id)?;
     let guard = state.register_stream(stream_id)?;
     let flag = Arc::clone(&guard.flag);
 
     // gix is synchronous and CPU/IO bound: keep it off the async executor.
     let result = tauri::async_runtime::spawn_blocking(move || {
+        graph::ensure_commit_graph(&git);
         let repo = repo.to_thread_local();
         let mut seq = 0;
         graph::walk_commits(&repo, DEFAULT_CHUNK_SIZE, &flag, |rows| {

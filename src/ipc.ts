@@ -319,3 +319,24 @@ export const listRecentRepos = () => invoke<RecentRepo[]>("list_recent_repos");
 export const openRecentRepo = (path: string) => invoke<RepoInfo>("open_recent_repo", { path });
 
 export const removeRecentRepo = (path: string) => invoke<void>("remove_recent_repo", { path });
+
+// ---- Change notifications ----
+
+/** What a batch of file-system changes means: re-read status (`worktree`) and/or refs and history (`refs`). */
+export interface ChangeSet {
+  refs: boolean;
+  worktree: boolean;
+}
+
+let nextWatchId = 1;
+
+/** Starts watching an open repository. Returns the watch id for `unwatchRepo`. */
+export function watchRepo(repoId: number, onChange: (c: ChangeSet) => void): number {
+  const watchId = nextWatchId++;
+  const channel = new Channel<ChangeSet>();
+  channel.onmessage = onChange;
+  void invoke<void>("watch_repo", { repoId, watchId, onChange: channel });
+  return watchId;
+}
+
+export const unwatchRepo = (watchId: number) => invoke<void>("unwatch_repo", { watchId });

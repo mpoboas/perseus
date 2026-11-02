@@ -3,6 +3,7 @@ pub mod git;
 mod ipc;
 mod profiles;
 mod recents;
+mod watcher;
 
 use std::sync::Arc;
 
@@ -12,7 +13,7 @@ use tauri::Manager;
 
 use ipc::channels::{self, AppState};
 use ipc::oauth_commands::{self, OAuthFlows};
-use ipc::{commands, profile_commands, protocol, recent_commands};
+use ipc::{commands, profile_commands, protocol, recent_commands, watch_commands};
 use profiles::ProfileStore;
 use recents::RecentStore;
 
@@ -37,11 +38,16 @@ pub fn run() {
         .manage(OAuthFlows::default())
         .setup(|app| {
             // Profile metadata lives in the app data dir; tokens stay in the OS keychain.
-            let path = app.path().app_data_dir()?.join("profiles.json");
-            app.manage(ProfileStore::load(path, Arc::new(KeyringStore)));
-            app.manage(RecentStore::load(
-                app.path().app_data_dir()?.join("recents.json"),
+            // `PERSEUS_DATA_DIR` redirects it (end-to-end tests use a throwaway directory).
+            let data_dir = match std::env::var_os("PERSEUS_DATA_DIR") {
+                Some(dir) => std::path::PathBuf::from(dir),
+                None => app.path().app_data_dir()?,
+            };
+            app.manage(ProfileStore::load(
+                data_dir.join("profiles.json"),
+                Arc::new(KeyringStore),
             ));
+            app.manage(RecentStore::load(data_dir.join("recents.json")));
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, |ctx, request, responder| {
@@ -81,6 +87,8 @@ pub fn run() {
             recent_commands::list_recent_repos,
             recent_commands::open_recent_repo,
             recent_commands::remove_recent_repo,
+            watch_commands::watch_repo,
+            watch_commands::unwatch_repo,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

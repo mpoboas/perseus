@@ -5,6 +5,7 @@ description = "Open-source visual Git client"
 authors = ["Miguel Póvoas"]
 edition = "2024"
 publish = false
+license = "MIT"
 
 [lib]
 # The `_lib` suffix is required on Windows to avoid a bin/lib name collision.
@@ -26,6 +27,7 @@ gix = "0.90.0"
 url = "2.5.8"
 uuid = { version = "1", features = ["v4"] }
 open = "5.4.5"
+notify = "8"
 
 [dev-dependencies]
 criterion = { version = "0.8.2", default-features = false }

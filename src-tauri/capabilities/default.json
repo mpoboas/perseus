@@ -32,6 +32,8 @@
     "allow-oauth-cancel",
     "allow-list-recent-repos",
     "allow-open-recent-repo",
-    "allow-remove-recent-repo"
+    "allow-remove-recent-repo",
+    "allow-watch-repo",
+    "allow-unwatch-repo"
   ]
 }

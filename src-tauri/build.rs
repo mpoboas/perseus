@@ -31,6 +31,8 @@ const COMMANDS: &[&str] = &[
     "list_recent_repos",
     "open_recent_repo",
     "remove_recent_repo",
+    "watch_repo",
+    "unwatch_repo",
 ];
 
 fn main() {

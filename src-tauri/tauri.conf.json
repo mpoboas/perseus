@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "dev.perseus.app",
   "build": {
-    "beforeDevCommand": "cargo build -p perseus-credential-helper && pnpm dev",
+    "beforeDevCommand": "node scripts/prepare-helper.mjs debug && pnpm dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "cargo build --release -p perseus-credential-helper && pnpm build",
+    "beforeBuildCommand": "node scripts/prepare-helper.mjs release && pnpm build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -20,7 +20,9 @@
     "security": {
       "pattern": {
         "use": "isolation",
-        "options": { "dir": "../isolation" }
+        "options": {
+          "dir": "../isolation"
+        }
       },
       "freezePrototype": true,
       "csp": "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost perseus: http://perseus.localhost; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -29,13 +31,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "nsis"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
+    ],
+    "externalBin": [
+      "binaries/perseus-credential-helper"
     ]
   }
 }

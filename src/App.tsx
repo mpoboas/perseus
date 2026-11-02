@@ -29,6 +29,7 @@ import {
   type CommitDetail,
   type DiffTarget,
   type FileChange,
+  type ChangeSet,
   type GitOp,
   type ProfilesSnapshot,
   type RecentRepo,
@@ -54,6 +55,8 @@ import {
   streamCommits,
   switchRef,
   unstagePaths,
+  unwatchRepo,
+  watchRepo,
 } from "./ipc";
 import { usePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
@@ -122,9 +125,14 @@ function App() {
   const selectedRef = useRef<number | "wip" | null>(null);
   /** Commit to re-select once a reload finishes (row numbers change when history reloads). */
   const keepOid = useRef<string | null>(null);
+  const watchId = useRef<number | null>(null);
+  const busyRef = useRef<string | null>(null);
+  const lastActEnd = useRef(0);
+  const onChangedRef = useRef<(c: ChangeSet) => void>(() => undefined);
   const repoRef = useRef<RepoInfo | null>(null);
   repoRef.current = repo;
   selectedRef.current = selected;
+  busyRef.current = busy;
 
   const report = useCallback((title: string, e: unknown) => {
     const detail = String(e);
@@ -165,29 +173,39 @@ function App() {
     [report],
   );
 
+  /**
+   * Streams the history into the graph. A `silent` reload (after a commit, fetch or an external
+   * change) fills a second store and swaps it in when done, so the graph never blanks or flickers
+   * and keeps its scroll position.
+   */
   const loadGraph = useCallback(
-    async (info: RepoInfo) => {
+    async (info: RepoInfo, silent = false) => {
       if (streamId.current !== null) await cancelStream(streamId.current);
-      store.current.clear();
-      setCount(0);
-      if (!keepOid.current) {
-        setDetail(null);
-        setFiles([]);
+      const target = silent ? new CommitStore() : store.current;
+      if (!silent) {
+        store.current.clear();
+        setCount(0);
+        if (!keepOid.current) {
+          setDetail(null);
+          setFiles([]);
+        }
+        setLoaded("");
+        setLoading(true);
       }
-      setLoaded("");
-      setLoading(true);
       const started = performance.now();
       const { streamId: id, done } = streamCommits(info.id, (chunk) => {
-        store.current.push(chunk);
-        scheduleCount();
+        target.push(chunk);
+        if (!silent) scheduleCount();
       });
       streamId.current = id;
       try {
         const summary = await done;
-        setCount(store.current.length);
+        if (silent && (summary.cancelled || streamId.current !== id)) return;
+        if (silent) store.current = target;
+        setCount(target.length);
         if (keepOid.current) {
-          const row = store.current.index.get(keepOid.current);
-          if (row !== undefined) setSelected(row);
+          const row = target.index.get(keepOid.current);
+          setSelected(row ?? null);
         }
         const secs = ((performance.now() - started) / 1000).toFixed(2);
         setLoaded(
@@ -229,8 +247,7 @@ function App() {
         // A reload re-numbers rows: remember the commit and find its new row when loading ends.
         const sel = selectedRef.current;
         keepOid.current = typeof sel === "number" ? (store.current.rows[sel]?.oid ?? null) : null;
-        setSelected((s) => (s === "wip" ? s : null));
-        void loadGraph(info);
+        void loadGraph(info, true);
       } else {
         await loadStatus(info);
       }
@@ -262,6 +279,8 @@ function App() {
         setProgress("");
       }
       await refresh(scope);
+      // The watcher also sees our own writes; the refresh above already covered them.
+      lastActEnd.current = Date.now();
       return ok;
     },
     [refresh, report, toast],
@@ -269,6 +288,19 @@ function App() {
 
   const gitOp = (label: string, op: GitOp, opts?: ActOptions) =>
     act(label, "all", (id) => runGitOp(id, op, setProgress), opts);
+
+  /** Outside changes (an editor, a terminal, another git client) refresh what moved, quietly. */
+  onChangedRef.current = (c) => {
+    const info = repoRef.current;
+    if (!info || busyRef.current || Date.now() - lastActEnd.current < 700) return;
+    if (c.refs) void refresh("all");
+    else if (c.worktree) void loadStatus(info);
+  };
+
+  const startWatching = (info: RepoInfo) => {
+    if (watchId.current !== null) void unwatchRepo(watchId.current);
+    watchId.current = watchRepo(info.id, (c) => onChangedRef.current(c));
+  };
 
   // ---- Graph gestures: drag and drop, and the right-click menu ----
 
@@ -369,6 +401,7 @@ function App() {
     repoRef.current = picked;
     wasInOperation.current = false;
     setRepo(picked);
+    startWatching(picked);
     setRefs([]);
     setStatus(null);
     setDiff(null);
@@ -411,6 +444,8 @@ function App() {
     if (!info) return;
     if (streamId.current !== null) await cancelStream(streamId.current);
     repoRef.current = null;
+    if (watchId.current !== null) void unwatchRepo(watchId.current);
+    watchId.current = null;
     setRepo(null);
     setRefs([]);
     setStatus(null);
