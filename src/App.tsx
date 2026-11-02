@@ -138,6 +138,7 @@ import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
 import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
+import { CherryPickDialog, type PickCommit } from "./CherryPickDialog";
 import { profileFor, type ProfileRule } from "./lib/profileRules";
 import { ProfilesDialog, RULES_KEY } from "./ProfilesDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
@@ -186,8 +187,15 @@ function App() {
   const [refs, setRefs] = useState<RefInfo[]>([]);
   const [stashes, setStashes] = useState<StashEntry[]>([]);
   const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
+  /** Where tag pushes go: `origin`, or the repository's first remote when it has none by that name. */
+  const defaultRemote = remotes.some((r) => r.name === "origin") ? "origin" : (remotes[0]?.name ?? "origin");
   const [cancellable, setCancellable] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
+  /** Commit rows picked with Ctrl/Shift+click (two or more; a single one is just the selection). */
+  const [picked, setPicked] = useState<number[]>([]);
+  const pickedSet = useMemo(() => new Set(picked), [picked]);
+  /** The commits offered to the cherry-pick dialog, oldest first. */
+  const [pickCommits, setPickCommits] = useState<PickCommit[] | null>(null);
   const [remotesOpen, setRemotesOpen] = useState(false);
   const [historyPath, setHistoryPath] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -447,6 +455,7 @@ function App() {
       if (!info) return;
       setDiffVersion((v) => v + 1);
       if (scope === "all") {
+        setPicked([]);
         await Promise.all([loadStatus(info), loadRefs(info)]);
         // A reload re-numbers rows: remember the commit and find its new row when loading ends.
         const sel = selectedRef.current;
@@ -749,14 +758,58 @@ function App() {
     return out;
   };
 
+  /** The menu of a multi-selection: what can be done with all the picked commits at once. */
+  const pickedMenu = (x: number, y: number) => {
+    const rows = [...picked].sort((a, b) => b - a); // oldest first: parents sit lower in the graph
+    const commits = rows.flatMap((r) => store.current.rows[r] ?? []);
+    const head = currentHead();
+    const n = commits.length;
+    const ui = (id: string, title: string, run: () => void): GraphAction => ({
+      id,
+      title,
+      description: "",
+      confirmLabel: title,
+      immediate: true,
+      run: { type: "ui", run },
+    });
+    setMenu({
+      x,
+      y,
+      actions: [
+        ...(head.oid !== null
+          ? [
+              ui("pick-many", `Cherry-pick ${n} commits onto ${head.branch ?? "HEAD"}…`, () =>
+                setPickCommits(
+                  commits.map((c) => ({ oid: c.oid, summary: c.summary, author: c.author, merge: c.parents.length > 1 })),
+                ),
+              ),
+            ]
+          : []),
+        {
+          id: "copy-many",
+          title: `Copy ${n} commit ids`,
+          description: "",
+          confirmLabel: "Copy",
+          immediate: true,
+          run: { type: "copy", text: commits.map((c) => c.oid).join("\n") },
+        },
+        ui("clear-pick", "Clear the selection", () => setPicked([])),
+      ],
+    });
+  };
+
   const onMenu = (subject: Subject, x: number, y: number) => {
+    if (subject.kind !== "wip" && picked.length > 1 && picked.includes(subject.row) && !busy) {
+      pickedMenu(x, y);
+      return;
+    }
     const e = endpointFor(subject);
     if (!e || busy) return;
     setMenu({
       x,
       y,
       actions: [
-        ...menuActions(e, currentHead()),
+        ...menuActions(e, currentHead(), defaultRemote),
         ...appActions(e),
         ...(e.type === "ref" ? filterActions(e.name) : []),
       ].filter(
@@ -1141,7 +1194,7 @@ function App() {
       x,
       y,
       actions: [
-        ...menuActions(e, currentHead()),
+        ...menuActions(e, currentHead(), defaultRemote),
         ...appActions(e),
         ...(ref.kind === "branch" && !ref.is_head
           ? [
@@ -1263,7 +1316,8 @@ function App() {
   // ---- Selection ----
 
   const select = useCallback(
-    (row: number) => {
+    (row: number, keepPicked = false) => {
+      if (!keepPicked) setPicked([]);
       setSelected(row);
       setTab("commit");
       const commit = store.current.rows[row];
@@ -1290,8 +1344,32 @@ function App() {
     [repo],
   );
 
+  /** Ctrl+click toggles a commit in the multi-selection; Shift+click takes the range from the selected one. */
+  const pickRow = useCallback(
+    (row: number, range: boolean) => {
+      const sel = selectedRef.current;
+      const anchor = typeof sel === "number" ? sel : null;
+      let next: number[];
+      if (range && anchor !== null) {
+        const [a, b] = anchor < row ? [anchor, row] : [row, anchor];
+        next = Array.from({ length: b - a + 1 }, (_, i) => a + i);
+      } else {
+        const base = picked.length > 0 ? picked : anchor !== null ? [anchor] : [];
+        next = base.includes(row) ? base.filter((r) => r !== row) : [...base, row];
+      }
+      if (next.length < 2) {
+        select(next[0] ?? row);
+        return;
+      }
+      setPicked(next);
+      select(row, true);
+    },
+    [picked, select],
+  );
+
   const selectWip = useCallback(() => {
     setSelected("wip");
+    setPicked([]);
     setTab("changes");
   }, []);
 
@@ -1797,7 +1875,9 @@ function App() {
                 count={count}
                 loading={loading}
                 selected={selected}
+                picked={pickedSet}
                 onSelect={select}
+                onPick={pickRow}
                 onSelectWip={selectWip}
                 reveal={reveal}
                 onDrop={onDrop}
@@ -1980,6 +2060,25 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {pickCommits && (
+        <CherryPickDialog
+          commits={pickCommits}
+          target={status?.branch ?? "the detached HEAD"}
+          onClose={() => setPickCommits(null)}
+          onRun={(oids, squash) => {
+            setPickCommits(null);
+            setPicked([]);
+            void gitOp(
+              "Cherry-picking…",
+              { op: "cherry_pick_many", oids, squash },
+              {
+                done: squash ? "Cherry-picked into one commit" : `Cherry-picked ${oids.length} commit${oids.length === 1 ? "" : "s"}`,
+                fail: "Cherry-pick stopped",
+              },
+            );
+          }}
+        />
+      )}
       {stashOpen && status && (
         <StashDialog
           changed={status.entries.length}

@@ -134,6 +134,8 @@ export type GitOp =
     }
   | { op: "merge"; rev: string }
   | { op: "cherry_pick"; oid: string }
+  /** Oldest first; with `squash` they become one commit with that message. */
+  | { op: "cherry_pick_many"; oids: string[]; squash?: string | null }
   | { op: "rebase"; onto: string }
   | { op: "abort" }
   | { op: "continue" };

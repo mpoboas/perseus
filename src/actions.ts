@@ -142,8 +142,11 @@ function checkoutTarget(e: Extract<Endpoint, { type: "ref" }>): SwitchTarget {
   return { kind: "branch", name };
 }
 
-/** Entries for the right-click menu on a ref badge or commit row. */
-export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
+/**
+ * Entries for the right-click menu on a ref badge or commit row. `remote` is where tag pushes go:
+ * `origin`, unless the repository has no remote by that name.
+ */
+export function menuActions(subject: Endpoint, head: Head, remote = "origin"): GraphAction[] {
   const out: GraphAction[] = [];
   const oid = subject.oid;
   const hasHead = head.oid !== null;
@@ -176,7 +179,7 @@ export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
     }
   }
 
-  out.push(...manageActions(subject, head));
+  out.push(...manageActions(subject, head, remote));
   out.push({
     id: "new-branch",
     title: `Create branch here…`,
@@ -199,7 +202,9 @@ export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
 const act = (a: GitAction): GraphAction["run"] => ({ type: "action", action: a });
 
 /** Branch, tag, reset and revert entries for the right-click menu. */
-export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
+export function manageActions(subject: Endpoint, head: Head, remote = "origin"): GraphAction[] {
+  // Only named when it is not the usual one, so the common case stays `{ action, name }`.
+  const where = remote === "origin" ? {} : { remote };
   const out: GraphAction[] = [];
   const oid = subject.oid;
 
@@ -263,10 +268,10 @@ export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
     } else if (subject.kind === "tag") {
       out.push({
         id: "push-tag",
-        title: `Push tag ${describe(subject)} to origin`,
-        description: `Publishes the tag ${describe(subject)} to the remote called origin.`,
+        title: `Push tag ${describe(subject)} to ${remote}`,
+        description: `Publishes the tag ${describe(subject)} to the remote called ${remote}.`,
         confirmLabel: "Push tag",
-        run: act({ action: "tag_push", name: subject.name }),
+        run: act({ action: "tag_push", name: subject.name, ...where }),
       });
       out.push({
         id: "delete-tag",
@@ -278,12 +283,12 @@ export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
       });
       out.push({
         id: "delete-remote-tag",
-        title: `Delete tag ${describe(subject)} on origin…`,
-        description: `Removes the tag from the remote called origin.`,
+        title: `Delete tag ${describe(subject)} on ${remote}…`,
+        description: `Removes the tag from the remote called ${remote}.`,
         warning: "This changes the remote repository.",
-        confirmLabel: "Delete on origin",
+        confirmLabel: `Delete on ${remote}`,
         danger: true,
-        run: act({ action: "tag_delete_remote", name: subject.name }),
+        run: act({ action: "tag_delete_remote", name: subject.name, ...where }),
       });
     }
   }

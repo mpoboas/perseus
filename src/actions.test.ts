@@ -226,6 +226,20 @@ describe("branch, tag, reset and revert entries", () => {
     expect(run(tag, "delete-remote-tag")).toEqual({ action: "tag_delete_remote", name: "v1" });
   });
 
+  it("sends tags to the repository's own remote when it has no origin", () => {
+    const entries = menuActions(tag, head, "upstream");
+    const of = (id: string) => entries.find((a) => a.id === id)!;
+    expect(of("push-tag").title).toBe("Push tag 'v1' to upstream");
+    expect(of("delete-remote-tag").title).toContain("on upstream");
+    const action = (id: string) => {
+      const r = of(id).run;
+      if (r.type !== "action") throw new Error("not a quick action");
+      return r.action;
+    };
+    expect(action("push-tag")).toEqual({ action: "tag_push", name: "v1", remote: "upstream" });
+    expect(action("delete-remote-tag")).toEqual({ action: "tag_delete_remote", name: "v1", remote: "upstream" });
+  });
+
   it("creates a tag at the clicked commit", () => {
     expect(run(otherCommit, "new-tag", "v2")).toEqual({ action: "tag_create", name: "v2", target: B });
   });

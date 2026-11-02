@@ -586,6 +586,87 @@ describe("Perseus interactive rebase", () => {
   });
 });
 
+describe("Perseus cherry-picking several commits", () => {
+  let app;
+  let page;
+  let repo;
+
+  before(async () => {
+    repo = join(scratchDir("perseus-picks-"), "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "base.txt"), "base\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "base");
+    git(repo, "switch", "-q", "-c", "feature");
+    for (const n of ["f1", "f2", "f3"]) {
+      writeFileSync(join(repo, `${n}.txt`), `${n}\n`);
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", n);
+    }
+    // The branch being worked on sits at `base`, so the graph is one line: f3, f2, f1, base.
+    git(repo, "switch", "-q", "-c", "target", "main");
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9450 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  /** Clicks a commit row while holding a modifier key. */
+  const clickWith = async (key, row) => {
+    const { x, y } = await rowPoint(page, row);
+    await page.keyboard.down(key);
+    await page.mouse.click(x, y);
+    await page.keyboard.up(key);
+  };
+
+  it("picks two commits in the order set in the dialog", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText(/4 commits/).waitFor();
+    // Rows, newest first: f3, f2, f1, base. Select f1, then add f3 with Ctrl.
+    const f1 = await rowPoint(page, 2);
+    await page.mouse.click(f1.x, f1.y);
+    await clickWith("Control", 0);
+    const f3 = await rowPoint(page, 0);
+    await page.mouse.click(f3.x, f3.y, { button: "right" });
+    await page.getByRole("menuitem", { name: /Cherry-pick 2 commits onto target/ }).click();
+
+    const items = page.getByRole("list", { name: "Commits to cherry-pick" }).locator("li");
+    assert.deepEqual(await items.locator(".pick-summary").allInnerTexts(), ["f1", "f3"], "oldest first");
+    await items.first().getByRole("button", { name: "Move down" }).click();
+    assert.deepEqual(await items.locator(".pick-summary").allInnerTexts(), ["f3", "f1"]);
+    await page.getByRole("button", { name: "Cherry-pick 2 commits" }).click();
+    await page.getByText("Cherry-picked 2 commits").waitFor();
+
+    assert.equal(git(repo, "log", "-3", "--format=%s").trim(), "f1\nf3\nbase", "f3 was applied first, then f1");
+    assert.equal(git(repo, "status", "--porcelain").trim(), "");
+  });
+
+  it("combines a range of commits into one", async () => {
+    // Back to base (outside the app), so the graph is the single line again.
+    git(repo, "reset", "-q", "--hard", "main");
+    await settle(2500);
+    const f1 = await rowPoint(page, 2);
+    await page.mouse.click(f1.x, f1.y);
+    await clickWith("Shift", 0);
+    const f3 = await rowPoint(page, 0);
+    await page.mouse.click(f3.x, f3.y, { button: "right" });
+    await page.getByRole("menuitem", { name: /Cherry-pick 3 commits onto target/ }).click();
+
+    await page.getByLabel("Combine them into a single commit").check();
+    const message = page.getByRole("textbox", { name: "Commit message" });
+    assert.equal(await message.inputValue(), "f1\nf2\nf3", "the summaries make a starting message");
+    await message.fill("Three features in one");
+    await page.getByRole("button", { name: "Cherry-pick into one commit" }).click();
+    await page.getByText("Cherry-picked into one commit").waitFor();
+
+    assert.equal(git(repo, "log", "-2", "--format=%s").trim(), "Three features in one\nbase");
+    for (const n of ["f1", "f2", "f3"]) assert.ok(existsSync(join(repo, `${n}.txt`)), n);
+  });
+});
+
 describe("Perseus asking for a login", () => {
   let app;
   let page;

@@ -223,3 +223,68 @@
   color: var(--text-dim);
   font-family: inherit;
 }
+
+/* ---------- Cherry-pick several commits ---------- */
+
+.pick-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 280px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+.pick-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 34px;
+  padding: 0 6px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+.pick-item:last-child {
+  border-bottom: 0;
+}
+.pick-n {
+  flex: none;
+  width: 18px;
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.pick-sha {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.pick-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pick-by {
+  flex: none;
+  max-width: 110px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.pick-tools {
+  flex: none;
+  display: flex;
+}
+.pick-empty {
+  padding: 12px;
+  color: var(--text-faint);
+}
+.pick-message {
+  width: 100%;
+  resize: vertical;
+}

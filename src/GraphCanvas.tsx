@@ -133,7 +133,11 @@ interface Props {
   count: number;
   loading: boolean;
   selected: number | "wip" | null;
+  /** More commit rows selected with Ctrl/Shift+click (empty unless several are picked). */
+  picked: ReadonlySet<number>;
   onSelect: (row: number) => void;
+  /** Ctrl+click toggles a row; Shift+click selects the range from the selected row to this one. */
+  onPick: (row: number, range: boolean) => void;
   onSelectWip: () => void;
   /** Scrolls the given commit row into the middle of the view whenever `nonce` changes. */
   reveal: { row: number; nonce: number } | null;
@@ -187,7 +191,9 @@ export function GraphCanvas({
   count,
   loading,
   selected,
+  picked,
   onSelect,
+  onPick,
   onSelectWip,
   reveal,
   onDrop,
@@ -227,12 +233,12 @@ export function GraphCanvas({
   const refsEff = showRefs ? refsW : 0;
   const authEff = showAuthor ? authorW : 0;
   const dateEff = showDate ? dateW : 0;
-  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset });
-  latest.current = { count, selected, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset };
+  const latest = useRef({ count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset });
+  latest.current = { count, selected, picked, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset };
 
   /** Where each visible commit's ref chips were painted, for hit-testing. */
   const badges = useRef(new Map<number, Badge[]>());
-  const press = useRef<{ x: number; y: number; subject: Subject; pointerId: number } | null>(null);
+  const press = useRef<{ x: number; y: number; subject: Subject; pointerId: number; ctrl: boolean; shift: boolean } | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
   const [tip, setTip] = useState<Tip | null>(null);
@@ -290,7 +296,7 @@ export function GraphCanvas({
     // Pass 1: row backgrounds (hover and selection).
     const selDisplay = sel === "wip" ? 0 : sel === null ? null : sel + off;
     for (let d = firstDisplay; d <= lastDisplay; d++) {
-      if (d === selDisplay) {
+      if (d === selDisplay || (d >= off && latest.current.picked.has(d - off))) {
         ctx.fillStyle = pal.selected;
         ctx.fillRect(0, yOf(d), w, ROW_H);
         ctx.fillStyle = pal.accent;
@@ -631,7 +637,7 @@ export function GraphCanvas({
     setGraphW(PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W);
   }, [count, store]);
 
-  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, refsEff, authEff, dateEff, dateStyle, showGhost, showBands, schedule]);
+  useEffect(schedule, [count, selected, picked, wip, headRow, headBranch, refKinds, refsEff, authEff, dateEff, dateStyle, showGhost, showBands, schedule]);
 
   // Keep the selected row visible (keyboard navigation).
   useEffect(() => {
@@ -682,7 +688,7 @@ export function GraphCanvas({
     const subject = subjectUnder(x, y);
     if (!subject) return;
     hideTip();
-    press.current = { x, y, subject, pointerId: e.pointerId };
+    press.current = { x, y, subject, pointerId: e.pointerId, ctrl: e.ctrlKey || e.metaKey, shift: e.shiftKey };
   };
 
   const setHover = (display: number | null) => {
@@ -744,6 +750,8 @@ export function GraphCanvas({
     press.current = null;
     if (!p) return;
     if (p.subject.kind === "wip") onSelectWip();
+    else if (p.ctrl) onPick(p.subject.row, false);
+    else if (p.shift) onPick(p.subject.row, true);
     else onSelect(p.subject.row); // a press without movement is a click
   };
 
@@ -761,7 +769,7 @@ export function GraphCanvas({
     if (!subject) return;
     hideTip();
     if (subject.kind === "wip") onSelectWip();
-    else onSelect(subject.row);
+    else if (!latest.current.picked.has(subject.row)) onSelect(subject.row);
     onMenu(subject, e.clientX, e.clientY);
   };
 

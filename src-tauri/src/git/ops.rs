@@ -174,6 +174,13 @@ pub enum GitOp {
     CherryPick {
         oid: String,
     },
+    /// Several commits, applied in the order given (oldest first). With a `squash` message they
+    /// become a single commit instead of one each.
+    CherryPickMany {
+        oids: Vec<String>,
+        #[serde(default)]
+        squash: Option<String>,
+    },
     Rebase {
         onto: String,
     },
@@ -187,6 +194,46 @@ fn rev_arg(rev: &str) -> Result<String> {
         Ok(id) => Ok(id.to_string()),
         Err(_) => validate::ref_name(rev).map(str::to_string),
     }
+}
+
+/// Most commits one cherry-pick may take; the list ends up on a command line.
+const MAX_PICKS: usize = 500;
+
+/// The commits to pick as validated full ids in the order given, without repeats. Merge commits
+/// are refused here with a clear message: git would stop on them wanting to know which parent to follow.
+fn pick_list(git: &Git, oids: &[String]) -> Result<Vec<String>> {
+    let mut list: Vec<String> = Vec::new();
+    for oid in oids {
+        let oid = validate::oid(oid)?.to_string();
+        if !list.contains(&oid) {
+            list.push(oid);
+        }
+    }
+    if list.is_empty() {
+        return Err(AppError::Git("no commits to cherry-pick".into()));
+    }
+    if list.len() > MAX_PICKS {
+        return Err(AppError::Git(format!(
+            "cherry-picking more than {MAX_PICKS} commits at once is not supported"
+        )));
+    }
+    let mut args = vec![
+        "rev-list".to_string(),
+        "--no-walk=unsorted".into(),
+        "--parents".into(),
+    ];
+    args.extend(list.iter().cloned());
+    let parents = git.output(args)?;
+    for line in String::from_utf8_lossy(&parents).lines() {
+        let mut fields = line.split_whitespace();
+        if let (Some(oid), true) = (fields.next(), fields.count() > 1) {
+            return Err(AppError::Git(format!(
+                "{} is a merge commit; pick the commits it merged instead",
+                &oid[..oid.len().min(7)]
+            )));
+        }
+    }
+    Ok(list)
 }
 
 fn current_branch(git: &Git) -> Result<String> {
@@ -256,6 +303,30 @@ pub fn run_cancellable(
         GitOp::CherryPick { oid } => {
             let oid = validate::oid(oid)?.to_string();
             git.stream_cancellable(["cherry-pick", oid.as_str()], on_line, cancel)?
+        }
+        GitOp::CherryPickMany { oids, squash } => {
+            let oids = pick_list(git, oids)?;
+            let message = squash.as_deref().map(str::trim).filter(|m| !m.is_empty());
+            let mut args = vec!["cherry-pick".to_string()];
+            if message.is_some() {
+                args.push("--no-commit".into());
+            }
+            args.extend(oids);
+            match message {
+                None => git.stream_cancellable(args, on_line, cancel)?,
+                Some(message) => {
+                    if message.contains('\0') {
+                        return Err(AppError::Git("invalid commit message".into()));
+                    }
+                    let mut on_line = on_line;
+                    git.stream_cancellable(args, &mut on_line, cancel).map_err(|e| {
+                        AppError::Git(format!(
+                            "{e}\n\nThese commits are being combined into one: once the conflicts are resolved and the cherry-pick is continued, commit the staged result."
+                        ))
+                    })?;
+                    git.stream_cancellable(["commit", "-m", message], &mut on_line, cancel)?
+                }
+            }
         }
         GitOp::Rebase { onto } => {
             let onto = rev_arg(onto)?;
@@ -365,6 +436,131 @@ mod op_tests {
         git.output(["switch", "-q", "main"]).unwrap();
         run(&git, &GitOp::CherryPick { oid: side }, quiet).unwrap();
         assert_eq!(read(&git, "g.txt"), "g\n");
+    }
+
+    /// `main` has `base`; `feature` adds f1, f2 and f3 (each its own file) on top of it.
+    fn with_feature() -> (tempfile::TempDir, Git, Vec<String>) {
+        let (d, git) = init_repo();
+        commit_file(&git, "base.txt", "base\n", "base");
+        git.output(["switch", "-q", "-c", "feature"]).unwrap();
+        let mut ids = Vec::new();
+        for n in ["f1", "f2", "f3"] {
+            commit_file(&git, &format!("{n}.txt"), &format!("{n}\n"), n);
+            ids.push(rev(&git, "HEAD"));
+        }
+        git.output(["switch", "-q", "main"]).unwrap();
+        (d, git, ids)
+    }
+
+    fn subjects(git: &Git, n: usize) -> Vec<String> {
+        let out = git
+            .output(["log", &format!("-{n}"), "--format=%s"])
+            .unwrap();
+        String::from_utf8_lossy(&out)
+            .lines()
+            .map(str::to_string)
+            .collect()
+    }
+
+    #[test]
+    fn several_commits_are_picked_in_the_order_given() {
+        let (_d, git, ids) = with_feature();
+        let op = GitOp::CherryPickMany {
+            oids: vec![ids[2].clone(), ids[0].clone(), ids[2].clone()],
+            squash: None,
+        };
+        run(&git, &op, quiet).unwrap();
+        // f3 first, then f1; the repeated id was ignored.
+        assert_eq!(subjects(&git, 3), ["f1", "f3", "base"]);
+        assert!(!git.root().join("f2.txt").exists());
+    }
+
+    #[test]
+    fn several_commits_can_be_combined_into_one() {
+        let (_d, git, ids) = with_feature();
+        let op = GitOp::CherryPickMany {
+            oids: ids.clone(),
+            squash: Some("  Three features in one  ".into()),
+        };
+        run(&git, &op, quiet).unwrap();
+        assert_eq!(subjects(&git, 2), ["Three features in one", "base"]);
+        for n in ["f1", "f2", "f3"] {
+            assert!(git.root().join(format!("{n}.txt")).exists(), "{n}");
+        }
+        assert_eq!(in_progress(&git), None);
+    }
+
+    #[test]
+    fn a_conflict_in_the_middle_stops_there_and_continues_with_the_rest() {
+        let (_d, git, ids) = with_feature();
+        // Make f2 conflict by giving main a different f2.txt.
+        commit_file(&git, "f2.txt", "mine\n", "my f2");
+        let op = GitOp::CherryPickMany {
+            oids: ids.clone(),
+            squash: None,
+        };
+        assert!(run(&git, &op, quiet).is_err());
+        assert_eq!(in_progress(&git), Some(Operation::CherryPick));
+        assert_eq!(
+            subjects(&git, 2),
+            ["f1", "my f2"],
+            "f1 landed before the stop"
+        );
+
+        write(&git, "f2.txt", "resolved\n");
+        stage(&git, &["f2.txt".to_string()]).unwrap();
+        run(&git, &GitOp::Continue, quiet).unwrap();
+        assert_eq!(in_progress(&git), None);
+        assert_eq!(
+            subjects(&git, 3),
+            ["f3", "f2", "f1"],
+            "the rest was picked after continuing"
+        );
+    }
+
+    #[test]
+    fn a_conflicted_pick_can_be_abandoned_as_a_whole() {
+        let (_d, git, ids) = with_feature();
+        commit_file(&git, "f2.txt", "mine\n", "my f2");
+        let before = rev(&git, "HEAD");
+        let op = GitOp::CherryPickMany {
+            oids: ids.clone(),
+            squash: None,
+        };
+        assert!(run(&git, &op, quiet).is_err());
+        run(&git, &GitOp::Abort, quiet).unwrap();
+        assert_eq!(rev(&git, "HEAD"), before, "even f1 is taken back");
+        assert_eq!(in_progress(&git), None);
+    }
+
+    #[test]
+    fn merge_commits_and_bad_lists_are_refused_before_anything_changes() {
+        let (_d, git, ids) = with_feature();
+        git.output(["merge", "-q", "--no-ff", "-m", "merge feature", "feature"])
+            .unwrap();
+        let merge = rev(&git, "HEAD");
+        git.output(["reset", "-q", "--hard", "HEAD~1"]).unwrap();
+        // Re-create the merge commit on another branch so it can be named while main stays put.
+        let tip = rev(&git, "HEAD");
+        let pick =
+            |oids: Vec<String>| run(&git, &GitOp::CherryPickMany { oids, squash: None }, quiet);
+        let err = pick(vec![ids[0].clone(), merge]).unwrap_err();
+        assert!(err.to_string().contains("merge commit"), "{err}");
+        assert_eq!(rev(&git, "HEAD"), tip, "f1 was not picked either");
+        assert!(pick(vec![]).is_err());
+        assert!(pick(vec!["main".into()]).is_err());
+        assert!(pick(vec!["--all".into()]).is_err());
+        assert!(
+            run(
+                &git,
+                &GitOp::CherryPickMany {
+                    oids: ids,
+                    squash: Some("bad\0message".into())
+                },
+                quiet
+            )
+            .is_err()
+        );
     }
 
     #[test]
