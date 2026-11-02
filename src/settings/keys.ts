@@ -12,6 +12,9 @@ export const KEYS = {
   graphDate: "graph.showDate",
   graphGhost: "graph.ghostBranch",
   graphBands: "graph.bands",
+  diffMode: "diff.mode",
+  diffHighlight: "diff.highlight",
+  diffWords: "diff.words",
 } as const;
 
 /** Staged files above this many megabytes trigger a warning (0 turns it off). */

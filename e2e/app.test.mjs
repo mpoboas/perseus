@@ -6,7 +6,33 @@ import http from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
+import { crc32, deflateSync } from "node:zlib";
 import { git, launch, makeFixture, rowPoint, scratchDir } from "./harness.mjs";
+
+/** A solid-colour PNG of the given size, built by hand so the tests need no image files. */
+function png(width, height, [r, g, b]) {
+  const chunk = (type, data) => {
+    const body = Buffer.concat([Buffer.from(type), data]);
+    const out = Buffer.alloc(12 + data.length);
+    out.writeUInt32BE(data.length, 0);
+    body.copy(out, 4);
+    out.writeUInt32BE(crc32(body), 8 + data.length);
+    return out;
+  };
+  const head = Buffer.alloc(13);
+  head.writeUInt32BE(width, 0);
+  head.writeUInt32BE(height, 4);
+  head.writeUInt8(8, 8); // bit depth
+  head.writeUInt8(2, 9); // RGB
+  const row = Buffer.concat([Buffer.from([0]), Buffer.from(Array.from({ length: width }, () => [r, g, b]).flat())]);
+  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk("IHDR", head),
+    chunk("IDAT", deflateSync(raw)),
+    chunk("IEND", Buffer.alloc(0)),
+  ]);
+}
 
 describe("Perseus", () => {
   let app;
@@ -343,6 +369,47 @@ describe("Perseus", () => {
     const gapLeft = fetch.x - (left.x + left.width);
     const gapRight = right.x - (stashPop.x + stashPop.width);
     assert.ok(Math.abs(gapLeft - gapRight) < 40, `actions are centred (gaps ${Math.round(gapLeft)} and ${Math.round(gapRight)})`);
+  });
+
+  it("colours code, marks the changed words and lays the diff out side by side", async () => {
+    writeFileSync(join(repo, "calc.js"), "const price = 3;\nexport default price;\n");
+    git(repo, "add", "calc.js");
+    git(repo, "commit", "-q", "-m", "Add calc.js");
+    writeFileSync(join(repo, "calc.js"), "const price = 4;\nexport default price;\n");
+    await page.locator('[role="tab"]', { hasText: "Changes" }).click();
+    await page.locator(".file-main", { hasText: "calc.js" }).first().click();
+    await page.locator(".diff-line.add .tok-kw", { hasText: "const" }).waitFor();
+    await page.locator(".diff-line.add .chg", { hasText: "4" }).waitFor();
+    await page.locator(".diff-line.del .chg", { hasText: "3" }).waitFor();
+
+    await page.getByRole("radio", { name: "Side by side" }).click();
+    await page.locator(".diff-line.split .half.del .chg", { hasText: "3" }).waitFor();
+    await page.locator(".diff-line.split .half.add .chg", { hasText: "4" }).waitFor();
+    // Lines can still be picked for staging from the split layout.
+    await page.getByLabel("Select added line 1", { exact: true }).check();
+    await page.getByRole("button", { name: "Stage lines" }).waitFor();
+    await page.getByRole("button", { name: "Clear" }).click();
+
+    await page.getByRole("radio", { name: "Unified" }).click();
+    await page.locator(".diff-line.add").first().waitFor();
+    git(repo, "checkout", "--", "calc.js");
+  });
+
+  it("shows the before and after of a changed picture", async () => {
+    writeFileSync(join(repo, "logo.png"), png(2, 2, [220, 40, 40]));
+    git(repo, "add", "logo.png");
+    git(repo, "commit", "-q", "-m", "Add logo.png");
+    writeFileSync(join(repo, "logo.png"), png(4, 4, [40, 60, 220]));
+    await page.locator('[role="tab"]', { hasText: "Changes" }).click();
+    await page.locator(".file-main", { hasText: "logo.png" }).first().click();
+    await page.getByText("2×2", { exact: false }).first().waitFor();
+    await page.getByText("4×4", { exact: false }).first().waitFor();
+    const sizes = await page.evaluate(() => [...document.querySelectorAll(".img-shot")].map((i) => i.naturalWidth));
+    assert.deepEqual(sizes, [2, 4], "both versions decoded");
+
+    await page.getByRole("radio", { name: "Swipe" }).click();
+    await page.locator(".img-swipe .img-shot.over").waitFor();
+    git(repo, "checkout", "--", "logo.png");
   });
 
   it("logs nothing worse than the known isolation-iframe CSP entries", async () => {

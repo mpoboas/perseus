@@ -268,6 +268,30 @@ export async function fetchPatch(
   return { text: await res.text(), truncated: res.headers.get("x-perseus-truncated") === "1" };
 }
 
+export interface FileBytes {
+  bytes: ArrayBuffer;
+  /** The backend cut the file off at its size cap. */
+  truncated: boolean;
+}
+
+/**
+ * One version of a file over the `perseus://` protocol, or null when that version has none (a file
+ * that was just added has no "before"). `rev` is a commit id, `<id>^` for its parent, or one of
+ * `head`, `index` and `work`.
+ */
+export async function fetchBlob(
+  repoId: number,
+  path: string,
+  rev: string,
+  signal?: AbortSignal,
+): Promise<FileBytes | null> {
+  const params = new URLSearchParams({ repo: String(repoId), path, rev });
+  const res = await fetch(`${convertFileSrc("blob", "perseus")}?${params}`, { signal });
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error((await res.text()) || `request failed (${res.status})`);
+  return { bytes: await res.arrayBuffer(), truncated: res.headers.get("x-perseus-truncated") === "1" };
+}
+
 // ---- Profiles (identity, SSH key, host tokens) ----
 // Tokens are write-only from the UI's point of view: they are sent once to be put in
 // the OS keychain, and only non-secret metadata (host, username) ever comes back.

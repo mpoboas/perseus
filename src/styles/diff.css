@@ -1,0 +1,193 @@
+/* Diff view extras: syntax colours, changed words, the side-by-side layout and the picture view. */
+
+:root {
+  --tok-kw: #c792ea;
+  --tok-str: #8ccf7e;
+  --tok-com: #6b7790;
+  --tok-num: #f2a65a;
+  --tok-lit: #f2a65a;
+  --tok-typ: #6cc7d6;
+  --tok-fn: #82aaff;
+  --tok-tag: #f2646f;
+  --tok-attr: #e7c46a;
+  --tok-prop: #82aaff;
+  --chg-add: rgba(76, 195, 138, 0.34);
+  --chg-del: rgba(242, 100, 111, 0.34);
+}
+:root[data-theme="light"] {
+  --tok-kw: #8a3fb8;
+  --tok-str: #2a7d2e;
+  --tok-com: #7a8499;
+  --tok-num: #b45f06;
+  --tok-lit: #b45f06;
+  --tok-typ: #0f7a8a;
+  --tok-fn: #2f55c9;
+  --tok-tag: #c0283e;
+  --tok-attr: #8a6a00;
+  --tok-prop: #2f55c9;
+  --chg-add: rgba(31, 157, 99, 0.3);
+  --chg-del: rgba(214, 47, 69, 0.26);
+}
+
+.tok-kw { color: var(--tok-kw); }
+.tok-str { color: var(--tok-str); }
+.tok-com { color: var(--tok-com); font-style: italic; }
+.tok-num { color: var(--tok-num); }
+.tok-lit { color: var(--tok-lit); }
+.tok-typ { color: var(--tok-typ); }
+.tok-fn { color: var(--tok-fn); }
+.tok-tag { color: var(--tok-tag); }
+.tok-attr { color: var(--tok-attr); }
+.tok-prop { color: var(--tok-prop); }
+
+/* The words that changed inside a removed or added line. */
+.diff-line.add .chg,
+.half.add .chg {
+  background: var(--chg-add);
+  border-radius: 2px;
+}
+.diff-line.del .chg,
+.half.del .chg {
+  background: var(--chg-del);
+  border-radius: 2px;
+}
+
+/* ---------- Side by side ---------- */
+
+.diff-canvas.is-split .diff-line.split {
+  display: flex;
+}
+.diff-line .half {
+  flex: none;
+  display: flex;
+  min-width: 0;
+  overflow: hidden;
+}
+.diff-line .half + .half {
+  border-left: 1px solid var(--border);
+}
+.diff-line .half .gutter {
+  position: static;
+}
+.diff-line .half .code {
+  min-width: 0;
+}
+.diff-line .half.add {
+  background: var(--diff-add-bg);
+}
+.diff-line .half.add .gutter {
+  background: var(--diff-add-gutter);
+  color: var(--st-add);
+}
+.diff-line .half.add .marker {
+  color: var(--st-add);
+}
+.diff-line .half.del {
+  background: var(--diff-del-bg);
+}
+.diff-line .half.del .gutter {
+  background: var(--diff-del-gutter);
+  color: var(--st-del);
+}
+.diff-line .half.del .marker {
+  color: var(--st-del);
+}
+.diff-line .half.empty {
+  background: repeating-linear-gradient(135deg, transparent 0 6px, var(--surface-2) 6px 7px);
+}
+.diff-line .half.picked {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+.diff-line .code.full {
+  padding-left: 14px;
+}
+
+/* ---------- Pictures ---------- */
+
+.img-diff {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  background: var(--surface-inset);
+}
+.img-bar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.img-slider {
+  width: 220px;
+  accent-color: var(--accent);
+}
+.img-panes {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  min-height: 0;
+  background: var(--border);
+}
+.img-pane {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 14px;
+  overflow: auto;
+  background: var(--surface-inset);
+}
+.img-pane.none {
+  justify-content: center;
+}
+.img-pane.del .img-label {
+  color: var(--st-del);
+}
+.img-pane.add .img-label {
+  color: var(--st-add);
+}
+.img-label {
+  align-self: stretch;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.img-meta {
+  color: var(--text-faint);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+}
+.img-shot {
+  max-width: 100%;
+  object-fit: contain;
+  /* A checkerboard shows which parts are transparent. */
+  background:
+    conic-gradient(var(--surface-3) 25%, transparent 0 50%, var(--surface-3) 0 75%, transparent 0) 0 0 / 16px 16px;
+  border: 1px solid var(--border-strong);
+  image-rendering: auto;
+}
+.img-swipe {
+  position: relative;
+  flex: none;
+  align-self: center;
+  margin: 16px;
+  display: grid;
+}
+.img-swipe .img-shot {
+  grid-area: 1 / 1;
+  max-height: calc(100vh - 260px);
+}
+.img-swipe .img-shot.over {
+  background: none;
+}

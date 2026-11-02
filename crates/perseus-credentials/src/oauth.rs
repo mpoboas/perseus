@@ -521,7 +521,11 @@ mod tests {
         // The first request asks for device code with our scope; polls carry the grant type.
         let reqs = http.requests.lock().unwrap();
         assert_eq!(reqs[0].0, "https://github.com/login/device/code");
-        assert!(reqs[0].1.contains(&("scope".into(), "repo workflow".into())));
+        assert!(
+            reqs[0]
+                .1
+                .contains(&("scope".into(), "repo workflow".into()))
+        );
         assert_eq!(reqs[1].0, "https://github.com/login/oauth/access_token");
         assert!(
             reqs[1]

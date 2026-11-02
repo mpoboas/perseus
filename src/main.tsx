@@ -7,6 +7,7 @@ import "./styles/base.css";
 import "./styles/ui.css";
 import "./styles/app.css";
 import "./styles/picker.css";
+import "./styles/diff.css";
 import "./styles/settings.css";
 
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(

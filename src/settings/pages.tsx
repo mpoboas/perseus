@@ -192,6 +192,9 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
   const [date, setDate] = usePref<boolean>(KEYS.graphDate, true);
   const [ghost, setGhost] = usePref<boolean>(KEYS.graphGhost, true);
   const [bands, setBands] = usePref<boolean>(KEYS.graphBands, true);
+  const [diffMode, setDiffMode] = usePref<"unified" | "split">(KEYS.diffMode, "unified");
+  const [diffHighlight, setDiffHighlight] = usePref<boolean>(KEYS.diffHighlight, true);
+  const [diffWords, setDiffWords] = usePref<boolean>(KEYS.diffWords, true);
   const [pictures, setPictures] = usePref<boolean>(AVATAR_PREF, true);
   const [gravatar, setGravatar] = usePref<boolean>(GRAVATAR_PREF, false);
   const sample = Math.floor(Date.now() / 1000) - 26 * 86400;
@@ -240,6 +243,31 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
           checked={bands}
           hint="A soft band in the branch colour from the avatar to the message."
           onChange={setBands}
+        />
+      </Section>
+
+      <Section title="Diffs">
+        <SelectRow
+          label="Show diffs"
+          value={diffMode}
+          options={[
+            { value: "unified", label: "In one column" },
+            { value: "split", label: "Side by side" },
+          ]}
+          hint="You can also switch from the diff's own header."
+          onChange={setDiffMode}
+        />
+        <CheckRow
+          label="Colour code by language"
+          checked={diffHighlight}
+          hint="Keywords, strings, comments and so on, for the common languages and config formats."
+          onChange={setDiffHighlight}
+        />
+        <CheckRow
+          label="Mark the words that changed"
+          checked={diffWords}
+          hint="Inside a removed line and the added line that replaces it."
+          onChange={setDiffWords}
         />
       </Section>
 

@@ -15,6 +15,7 @@ use tauri::http::{Method, Request, Response, StatusCode, header};
 use url::Url;
 
 use crate::error::AppError;
+use crate::git::blob;
 use crate::git::diff::{self, WorkSide};
 use crate::git::repo::{RepoId, RepoRegistry};
 
@@ -117,6 +118,11 @@ fn route(
 
     match path {
         "/diff" => Ok(diff::commit_patch(&git, param(q, "oid")?, file, orig)?),
+        // One version of a file, for the picture view.
+        "/blob" => {
+            let source = blob::Source::parse(param(q, "rev")?)?;
+            blob::read(&git, &source, file)?.ok_or(Failure::NotFound)
+        }
         "/wdiff" => {
             let side = match param(q, "side")? {
                 "unstaged" => WorkSide::Unstaged,
@@ -181,6 +187,27 @@ mod tests {
             OK,
         );
         assert!(String::from_utf8_lossy(res.body()).contains("+three"));
+    }
+
+    #[test]
+    fn serves_file_versions_for_the_picture_view() {
+        let (_d, repos, id, oid) = setup();
+        let blob = |rev: &str, path: &str| {
+            get(
+                &repos,
+                &format!("http://perseus.localhost/blob?repo={id}&rev={rev}&path={path}"),
+                OK,
+            )
+        };
+        let res = blob(&oid, "a.txt");
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(res.body(), b"two\n");
+        assert_eq!(blob(&format!("{oid}%5E"), "a.txt").body(), b"one\n");
+        assert_eq!(blob("work", "a.txt").body(), b"two\n");
+        // A version that does not exist is a plain 404, and bad input is refused.
+        assert_eq!(blob(&oid, "nope.txt").status(), StatusCode::NOT_FOUND);
+        assert_eq!(blob("main", "a.txt").status(), StatusCode::BAD_REQUEST);
+        assert_eq!(blob("work", "..%2Fx").status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]

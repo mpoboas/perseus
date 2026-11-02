@@ -1,4 +1,5 @@
 pub mod actions;
+pub mod blob;
 pub mod cli;
 pub mod clone;
 pub mod conflicts;
