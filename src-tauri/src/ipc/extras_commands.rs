@@ -153,14 +153,28 @@ pub fn activity_log() -> Vec<LogEntry> {
     cli::recent_commands()
 }
 
-/// Where every local branch points and which one is checked out, for undo and redo.
+/// Where every local branch and tag points, which one is checked out and what is stashed, for undo
+/// and redo. `files` also records the staged and on-disk state of the tracked files, which costs a
+/// scan of the working tree, so only actions that edit files ask for it.
 #[tauri::command]
-pub async fn undo_snapshot(state: State<'_, AppState>, repo_id: RepoId) -> Result<undo::Snapshot> {
+pub async fn undo_snapshot(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+    files: Option<bool>,
+) -> Result<undo::Snapshot> {
     let git = state.repos.git(repo_id)?;
-    blocking(move || undo::snapshot(&git)).await
+    blocking(move || {
+        if files.unwrap_or(false) {
+            undo::snapshot_with_files(&git)
+        } else {
+            undo::snapshot(&git)
+        }
+    })
+    .await
 }
 
-/// Puts the local branches back as `snapshot` describes (see `git::undo`).
+/// Puts the repository back as `snapshot` describes; `from` is the state being left, which lets
+/// edits to files be undone only while the files are still as that action left them (see `git::undo`).
 #[tauri::command]
 pub async fn undo_restore(
     state: State<'_, AppState>,
@@ -168,7 +182,8 @@ pub async fn undo_restore(
     repo_id: RepoId,
     snapshot: undo::Snapshot,
     keep_changes: bool,
+    from: Option<undo::Snapshot>,
 ) -> Result<()> {
     let git = git_for(&state, &profiles, repo_id)?;
-    blocking(move || undo::restore(&git, &snapshot, keep_changes)).await
+    blocking(move || undo::restore_from(&git, &snapshot, keep_changes, from.as_ref())).await
 }

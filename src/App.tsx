@@ -157,7 +157,12 @@ interface ActOptions {
   done?: string;
   /** Title of the error toast. */
   fail?: string;
+  /** The action edits tracked files (staging, discarding, stashing), so undo records them too. */
+  files?: boolean;
 }
+
+/** Actions that change files or the index, so their undo needs the file state. */
+const FILE_ACTIONS = new Set(["discard", "patch", "stash_push", "stash_apply", "stash_pop", "stash_drop"]);
 
 /** One step of the undo history: the branches before and after an action. */
 interface UndoEntry {
@@ -467,7 +472,8 @@ function App() {
       if (!info) return false;
       setBusy(label);
       setProgress("");
-      const before = scope === "all" ? await undoSnapshot(info.id).catch(() => null) : null;
+      const files = !!opts.files;
+      const before = scope === "all" || files ? await undoSnapshot(info.id, files).catch(() => null) : null;
       let ok = true;
       try {
         await fn(info.id);
@@ -480,7 +486,7 @@ function App() {
       }
       if (before) {
         // Whatever changed local branches, even a failed or half-finished action, can be undone.
-        const after = await undoSnapshot(info.id).catch(() => null);
+        const after = await undoSnapshot(info.id, files).catch(() => null);
         if (after && !sameSnapshot(before, after)) {
           const stack = undoStack(info.path);
           stack.undo.push({ label, before, after, soft: /^(Committing|Amending)/.test(label) });
@@ -514,7 +520,8 @@ function App() {
     if (!entry) return;
     setBusy(direction === "undo" ? "Undoing…" : "Redoing…");
     try {
-      await undoRestore(info.id, direction === "undo" ? entry.before : entry.after, entry.soft);
+      const [target, left] = direction === "undo" ? [entry.before, entry.after] : [entry.after, entry.before];
+      await undoRestore(info.id, target, entry.soft, left);
       (direction === "undo" ? stack.redo : stack.undo).push(entry);
       toast.success(`${direction === "undo" ? "Undid" : "Redid"} ${undoName(entry.label)}`);
     } catch (e) {
@@ -551,7 +558,7 @@ function App() {
   };
 
   const doAction = (label: string, action: GitAction, opts?: ActOptions) =>
-    act(label, "all", (id) => gitAction(id, action), opts);
+    act(label, "all", (id) => gitAction(id, action), { ...opts, files: opts?.files ?? FILE_ACTIONS.has(action.action) });
 
   /** Outside changes (an editor, a terminal, another git client) refresh what moved, quietly. */
   onChangedRef.current = (c) => {
@@ -758,7 +765,7 @@ function App() {
     });
   };
 
-  /** Throwing changes away cannot be undone, so it always asks first. */
+  /** Throwing changes away always asks first. Tracked files can be brought back with Undo; untracked ones cannot. */
   const askDiscard = (paths: string[], untracked: boolean) => {
     const what = paths.length === 1 ? paths[0] : `${paths.length} files`;
     setConfirm([
@@ -768,7 +775,7 @@ function App() {
         description: untracked
           ? `Deletes ${what} from disk. These files are not tracked by git, so nothing can bring them back.`
           : `Restores ${what} to the last committed version, dropping staged and unstaged edits.`,
-        warning: "This cannot be undone.",
+        warning: untracked ? "This cannot be undone." : "Undo (Ctrl+Z) can bring this back until you close Perseus.",
         confirmLabel: "Discard",
         danger: true,
         run: { type: "action", action: { action: "discard", paths, untracked } },
@@ -1050,7 +1057,7 @@ function App() {
           id: "discard-parts",
           title: `Discard ${what} in ${path}`,
           description: `Removes ${what} from the file on disk, restoring the staged (or committed) version of those lines.`,
-          warning: "This cannot be undone.",
+          warning: "Undo (Ctrl+Z) can bring this back until you close Perseus.",
           confirmLabel: "Discard",
           danger: true,
           run: { type: "action", action },
@@ -1116,8 +1123,8 @@ function App() {
         {
           id: "stash-drop",
           title: `Drop “${label}”`,
-          description: "Deletes this stash. Its changes cannot be brought back from here.",
-          warning: "Dropped stashes can sometimes be recovered with git fsck, but Perseus cannot do it for you.",
+          description: "Removes this stash from the list.",
+          warning: "Undo (Ctrl+Z) brings it back until you close Perseus; after that git fsck can sometimes recover it.",
           confirmLabel: "Drop",
           danger: true,
           run: { type: "action", action: { action: "stash_drop", index: entry.index } },
@@ -1892,9 +1899,9 @@ function App() {
                   activeDiff={diff}
                   identity={identity}
                   onOpenDiff={setDiff}
-                  onStage={(paths) => void act("Staging…", "status", (id) => stagePaths(id, paths), { fail: "Could not stage" })}
+                  onStage={(paths) => void act("Staging…", "status", (id) => stagePaths(id, paths), { fail: "Could not stage", files: true })}
                   onUnstage={(paths) =>
-                    void act("Unstaging…", "status", (id) => unstagePaths(id, paths), { fail: "Could not unstage" })
+                    void act("Unstaging…", "status", (id) => unstagePaths(id, paths), { fail: "Could not unstage", files: true })
                   }
                   skipHooksDefault={skipHooksDefault}
                   onCommit={async (message, amend, noVerify) => {

@@ -3,11 +3,23 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import http from "node:http";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { crc32, deflateSync } from "node:zlib";
 import { git, launch, makeFixture, rowPoint, scratchDir } from "./harness.mjs";
+
+/** Waits until `check` is true, for state that git or the file system settles a moment after a click. */
+async function until(check, what, ms = 10000) {
+  const end = Date.now() + ms;
+  while (!(await check())) {
+    if (Date.now() > end) assert.fail(`timed out waiting for: ${what}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+}
+
+/** Lets the app finish refreshing after an action (file-watcher events arrive a moment later). */
+const settle = (ms = 1500) => new Promise((r) => setTimeout(r, ms));
 
 /** A solid-colour PNG of the given size, built by hand so the tests need no image files. */
 function png(width, height, [r, g, b]) {
@@ -106,6 +118,19 @@ describe("Perseus", () => {
     await page.getByRole("menuitem", { name: /Pop/ }).click();
     await page.getByText("Stash pop done").waitFor();
     assert.match(git(repo, "status", "--porcelain"), /b\.txt/);
+
+    // Undo puts the stash back and the file as it was before the pop; redo pops it once more.
+    const text = () => readFileSync(join(repo, "b.txt"), "utf8").replace(/\r\n/g, "\n");
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByText("Undid stash pop").waitFor();
+    await until(() => git(repo, "stash", "list").includes("e2e stash"), "the stash is back");
+    await until(() => text() === "b\n", "the file is as committed again");
+    await settle();
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await page.getByText("Redid stash pop").waitFor();
+    await until(() => text() === "work in progress\n", "the pop is redone");
+    assert.equal(git(repo, "stash", "list").trim(), "", "and the stash is used up again");
+    await settle();
   });
 
   it("asks before discarding, then restores the file", async () => {
@@ -115,10 +140,20 @@ describe("Perseus", () => {
     writeFileSync(join(repo, "b.txt"), "scribbles\n");
     await page.getByLabel("Discard changes to b.txt").waitFor({ timeout: 8000 });
     await page.getByLabel("Discard changes to b.txt").click({ force: true });
-    await page.getByRole("dialog").getByText("This cannot be undone.").waitFor();
+    await page.getByRole("dialog").getByText(/Undo \(Ctrl\+Z\) can bring this back/).waitFor();
     await page.getByRole("dialog").getByRole("button", { name: "Discard" }).click();
     await page.getByText("Discard done").waitFor();
     assert.equal(git(repo, "status", "--porcelain").trim(), "");
+
+    // The discard can be undone, and redone.
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await page.getByText("Undid discard").waitFor();
+    await until(() => readFileSync(join(repo, "b.txt"), "utf8").replace(/\r\n/g, "\n") === "scribbles\n", "the edit is back");
+    await settle();
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await page.getByText("Redid discard").waitFor();
+    await until(() => git(repo, "status", "--porcelain").trim() === "", "discarded again");
+    await settle();
   });
 
   it("stages a single hunk, then single lines, from the diff view", async () => {
@@ -212,6 +247,13 @@ describe("Perseus", () => {
     await page.getByRole("dialog").getByRole("button", { name: "Create tag" }).click();
     await page.getByText("Tag create done").waitFor();
     assert.match(git(repo, "tag", "--list"), /e2e-tag/);
+
+    await page.getByRole("button", { name: "Undo", exact: true }).click();
+    await until(() => !git(repo, "tag", "--list").includes("e2e-tag"), "the tag is removed");
+    await settle();
+    await page.getByRole("button", { name: "Redo", exact: true }).click();
+    await until(() => git(repo, "tag", "--list").includes("e2e-tag"), "the tag is back");
+    await settle();
   });
 
   it("keeps the graph after many outside ref changes in a row", async () => {

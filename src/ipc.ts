@@ -778,15 +778,23 @@ export const remoteAvatar = (repoId: number) => invoke<string | null>("remote_av
 
 // ---- Undo and redo ----
 
-/** Where every local branch points and which one is checked out. */
+/** What undo puts back: branches, tags, stashes and, for edits to files, the staged and on-disk trees. */
 export interface UndoSnapshot {
   branch: string | null;
   head: string | null;
   branches: { name: string; oid: string }[];
+  tags: { name: string; oid: string }[];
+  stashes: { oid: string; message: string }[];
+  files: { index: string; work: string } | null;
 }
 
-export const undoSnapshot = (repoId: number) => invoke<UndoSnapshot>("undo_snapshot", { repoId });
+/** `files` also records the tracked files (slower on a big working tree). */
+export const undoSnapshot = (repoId: number, files = false) =>
+  invoke<UndoSnapshot>("undo_snapshot", { repoId, files });
 
-/** `keepChanges` moves the checked-out branch with a soft reset (an undone commit stays staged). */
-export const undoRestore = (repoId: number, snapshot: UndoSnapshot, keepChanges: boolean) =>
-  invoke<void>("undo_restore", { repoId, snapshot, keepChanges });
+/**
+ * `keepChanges` moves the checked-out branch with a soft reset (an undone commit stays staged).
+ * `from` is the state being left, so edits to files are only undone while they are as that action left them.
+ */
+export const undoRestore = (repoId: number, snapshot: UndoSnapshot, keepChanges: boolean, from?: UndoSnapshot) =>
+  invoke<void>("undo_restore", { repoId, snapshot, keepChanges, from: from ?? null });
