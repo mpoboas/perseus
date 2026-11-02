@@ -16,13 +16,18 @@ const host = /host: (\S+)/.exec(execFileSync("rustc", ["-vV"], { encoding: "utf8
 if (!host) throw new Error("could not determine the Rust host target triple");
 const exe = host.includes("windows") ? ".exe" : "";
 
-execFileSync("cargo", ["build", ...(profile === "release" ? ["--release"] : []), "-p", "perseus-credential-helper"], {
-  stdio: "inherit",
-});
+const programs = ["perseus-credential-helper", "perseus-askpass"];
+execFileSync(
+  "cargo",
+  ["build", ...(profile === "release" ? ["--release"] : []), ...programs.flatMap((p) => ["-p", p])],
+  { stdio: "inherit" },
+);
 
 mkdirSync("src-tauri/binaries", { recursive: true });
-copyFileSync(
-  join("target", profile, `perseus-credential-helper${exe}`),
-  join("src-tauri", "binaries", `perseus-credential-helper-${host}${exe}`),
-);
-console.log(`prepared src-tauri/binaries/perseus-credential-helper-${host}${exe} (${profile})`);
+for (const program of programs) {
+  copyFileSync(
+    join("target", profile, `${program}${exe}`),
+    join("src-tauri", "binaries", `${program}-${host}${exe}`),
+  );
+  console.log(`prepared src-tauri/binaries/${program}-${host}${exe} (${profile})`);
+}

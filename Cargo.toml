@@ -1,5 +1,5 @@
 [workspace]
-members = ["src-tauri", "crates/perseus-credentials", "crates/perseus-credential-helper"]
+members = ["src-tauri", "crates/perseus-credentials", "crates/perseus-credential-helper", "crates/perseus-askpass"]
 resolver = "3"
 
 [profile.release]

@@ -1,3 +1,4 @@
+mod askpass;
 mod error;
 pub mod git;
 mod hosting;
@@ -12,9 +13,11 @@ use perseus_credentials::KeyringStore;
 use serde::Serialize;
 use tauri::Manager;
 
+use ipc::askpass_commands;
 use ipc::channels::{self, AppState};
 use ipc::hosting_commands::{self, HostingState};
 use ipc::oauth_commands::{self, OAuthFlows};
+use ipc::signing_commands::{self, DataDir};
 use ipc::{
     commands, patch_commands, profile_commands, protocol, recent_commands, repo_commands,
     rewrite_commands, watch_commands,
@@ -43,12 +46,25 @@ pub fn run() {
         .manage(OAuthFlows::default())
         .manage(HostingState::default())
         .setup(|app| {
+            // Git and ssh ask their questions through this window.
+            let broker = Arc::new(askpass::Broker::default());
+            if let Some(program) = askpass::program_path() {
+                let handler_broker = Arc::clone(&broker);
+                match perseus_askpass::Server::start(Arc::new(move |prompt, kind| {
+                    handler_broker.ask(prompt, kind)
+                })) {
+                    Ok(server) => git::cli::set_global_env(server.env(&program.to_string_lossy())),
+                    Err(e) => eprintln!("perseus: prompts from git will not work: {e}"),
+                }
+            }
+            app.manage(broker);
             // Profile metadata lives in the app data dir; tokens stay in the OS keychain.
             // `PERSEUS_DATA_DIR` redirects it (end-to-end tests use a throwaway directory).
             let data_dir = match std::env::var_os("PERSEUS_DATA_DIR") {
                 Some(dir) => std::path::PathBuf::from(dir),
                 None => app.path().app_data_dir()?,
             };
+            app.manage(DataDir(data_dir.clone()));
             app.manage(ProfileStore::load(
                 data_dir.join("profiles.json"),
                 Arc::new(KeyringStore),
@@ -106,6 +122,10 @@ pub fn run() {
             hosting_commands::ci_state,
             hosting_commands::checkout_pull_request,
             hosting_commands::open_in_browser,
+            askpass_commands::watch_askpass,
+            askpass_commands::answer_askpass,
+            commands::commit_signature,
+            signing_commands::generate_ssh_key,
             patch_commands::export_patch,
             patch_commands::apply_patch_file,
             profile_commands::list_profiles,

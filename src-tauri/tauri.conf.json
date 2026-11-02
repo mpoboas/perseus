@@ -42,7 +42,8 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/perseus-credential-helper"
+      "binaries/perseus-credential-helper",
+      "binaries/perseus-askpass"
     ]
   }
 }

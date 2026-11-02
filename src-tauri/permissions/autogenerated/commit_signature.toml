@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-commit-signature"
+description = "Enables the commit_signature command without any pre-configured scope."
+commands.allow = ["commit_signature"]
+
+[[permission]]
+identifier = "deny-commit-signature"
+description = "Denies the commit_signature command without any pre-configured scope."
+commands.deny = ["commit_signature"]

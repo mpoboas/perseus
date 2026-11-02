@@ -1,3 +1,4 @@
+pub mod askpass_commands;
 pub mod channels;
 pub mod commands;
 pub mod hosting_commands;
@@ -8,4 +9,5 @@ pub mod protocol;
 pub mod recent_commands;
 pub mod repo_commands;
 pub mod rewrite_commands;
+pub mod signing_commands;
 pub mod watch_commands;

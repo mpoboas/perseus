@@ -4252,6 +4252,7 @@ dependencies = [
  "gix",
  "notify",
  "open",
+ "perseus-askpass",
  "perseus-credentials",
  "serde",
  "serde_json",
@@ -4262,6 +4263,15 @@ dependencies = [
  "thiserror 2.0.21",
  "ureq",
  "url",
+ "uuid",
+]
+
+[[package]]
+name = "perseus-askpass"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
  "uuid",
 ]
 

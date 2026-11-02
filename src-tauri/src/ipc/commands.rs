@@ -111,9 +111,10 @@ pub async fn create_commit(
     repo_id: RepoId,
     message: String,
     amend: bool,
+    no_verify: Option<bool>,
 ) -> Result<()> {
     let git = git_for(&state, &profiles, repo_id)?;
-    blocking(move || ops::commit(&git, &message, amend)).await
+    blocking(move || ops::commit_with(&git, &message, amend, no_verify.unwrap_or(false))).await
 }
 
 #[tauri::command]
@@ -246,4 +247,37 @@ pub async fn search_commits(
 ) -> Result<Hits> {
     let git = state.repos.git(repo_id)?;
     blocking(move || search::search(&git, &query)).await
+}
+
+/// Whether a commit is signed, and by whom, checked against the keys of the user's profiles.
+#[tauri::command]
+pub async fn commit_signature(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    oid: String,
+) -> Result<crate::git::signing::Signature> {
+    use crate::git::signing::{self, Signer};
+    let git = state.repos.git(repo_id)?;
+    let snapshot = profiles.snapshot()?;
+    blocking(move || {
+        // Public keys of every profile that signs with SSH: `<key>.pub` next to the private key.
+        let signers: Vec<Signer> = snapshot
+            .profiles
+            .iter()
+            .filter(|p| p.signing_format.as_deref() == Some("ssh"))
+            .filter_map(|p| {
+                let key = p.signing_key.as_deref()?;
+                let public = std::fs::read_to_string(format!("{key}.pub"))
+                    .or_else(|_| std::fs::read_to_string(key))
+                    .ok()?;
+                public.trim().starts_with("ssh-").then(|| Signer {
+                    email: p.user_email.clone(),
+                    public_key: public,
+                })
+            })
+            .collect();
+        signing::signature(&git, &oid, &signers)
+    })
+    .await
 }

@@ -18,6 +18,7 @@ tauri-build = { version = "2", features = ["isolation"] }
 
 [dependencies]
 perseus-credentials = { path = "../crates/perseus-credentials" }
+perseus-askpass = { path = "../crates/perseus-askpass" }
 tauri = { version = "2", features = ["isolation"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

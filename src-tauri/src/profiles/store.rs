@@ -25,6 +25,12 @@ pub struct Profile {
     pub user_email: String,
     #[serde(default)]
     pub ssh_key: Option<String>,
+    /// `ssh` or `gpg`; commits made as this profile are signed when a key is set too.
+    #[serde(default)]
+    pub signing_format: Option<String>,
+    /// For SSH signing the path of the key file; for GPG the key id.
+    #[serde(default)]
+    pub signing_key: Option<String>,
     #[serde(default)]
     pub credentials: Vec<CredentialMeta>,
 }
@@ -37,6 +43,10 @@ pub struct ProfileInput {
     pub user_name: String,
     pub user_email: String,
     pub ssh_key: Option<String>,
+    #[serde(default)]
+    pub signing_format: Option<String>,
+    #[serde(default)]
+    pub signing_key: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +104,25 @@ fn ssh_key(value: Option<&str>) -> Result<Option<String>> {
         return Err(AppError::profile("SSH key file was not found"));
     }
     Ok(Some(v.to_string()))
+}
+
+/// Signing settings: both or neither. The key is a file path (ssh) or a key id (gpg).
+fn signing(format: Option<&str>, key: Option<&str>) -> Result<(Option<String>, Option<String>)> {
+    let key = key.map(str::trim).filter(|k| !k.is_empty());
+    let format = format.map(str::trim).filter(|f| !f.is_empty());
+    match (format, key) {
+        (None, None) => Ok((None, None)),
+        (Some(f @ ("ssh" | "gpg")), Some(k)) => {
+            if k.len() > 500 || k.chars().any(char::is_control) || k.starts_with('-') {
+                return Err(AppError::profile("signing key is not valid"));
+            }
+            Ok((Some(f.to_string()), Some(k.to_string())))
+        }
+        (Some(_), None) => Err(AppError::profile(
+            "choose a signing key, or turn signing off",
+        )),
+        _ => Err(AppError::profile("signing format must be ssh or gpg")),
+    }
 }
 
 impl ProfileStore {
@@ -173,6 +202,10 @@ impl ProfileStore {
         let user_name = text("commit name", &input.user_name, 100)?;
         let user_email = email(&input.user_email)?;
         let ssh_key = ssh_key(input.ssh_key.as_deref())?;
+        let (signing_format, signing_key) = signing(
+            input.signing_format.as_deref(),
+            input.signing_key.as_deref(),
+        )?;
 
         let mut s = self.lock()?;
         let saved = match &input.id {
@@ -186,6 +219,8 @@ impl ProfileStore {
                 p.user_name = user_name;
                 p.user_email = user_email;
                 p.ssh_key = ssh_key;
+                p.signing_format = signing_format;
+                p.signing_key = signing_key;
                 p.clone()
             }
             None => {
@@ -195,6 +230,8 @@ impl ProfileStore {
                     user_name,
                     user_email,
                     ssh_key,
+                    signing_format,
+                    signing_key,
                     credentials: Vec::new(),
                 };
                 s.profiles.push(p.clone());
@@ -318,6 +355,8 @@ mod tests {
             user_name: "Ada Lovelace".into(),
             user_email: "ada@example.com".into(),
             ssh_key: None,
+            signing_format: None,
+            signing_key: None,
         }
     }
 
@@ -495,5 +534,38 @@ mod tests {
         let snap = f.store().snapshot().unwrap();
         assert_eq!(snap.profiles[0].credentials.len(), 0);
         assert!(snap.active.is_none());
+    }
+
+    #[test]
+    fn signing_needs_a_format_and_a_key_together_and_rejects_odd_values() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = ProfileStore::load(
+            dir.path().join("profiles.json"),
+            Arc::new(MemoryStore::default()),
+        );
+        let with = |f: Option<&str>, k: Option<&str>| ProfileInput {
+            signing_format: f.map(str::to_string),
+            signing_key: k.map(str::to_string),
+            ..input("S")
+        };
+        let ok = store
+            .save(with(Some("ssh"), Some("~/.ssh/id_ed25519")))
+            .unwrap();
+        assert_eq!(ok.signing_format.as_deref(), Some("ssh"));
+        assert!(store.save(with(None, None)).unwrap().signing_key.is_none());
+        assert!(store.save(with(Some("ssh"), None)).is_err());
+        assert!(store.save(with(Some("pgp"), Some("k"))).is_err());
+        assert!(store.save(with(Some("gpg"), Some("--evil"))).is_err());
+        assert!(
+            store
+                .save(with(
+                    Some("gpg"),
+                    Some(
+                        "a
+b"
+                    )
+                ))
+                .is_err()
+        );
     }
 }

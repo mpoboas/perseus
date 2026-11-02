@@ -1,0 +1,19 @@
+[package]
+name = "perseus-askpass"
+version = "0.1.0"
+description = "Lets git and ssh ask the user questions through the Perseus window"
+edition = "2024"
+publish = false
+license = "MIT"
+
+[lib]
+name = "perseus_askpass"
+
+[[bin]]
+name = "perseus-askpass"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+uuid = { version = "1", features = ["v4"] }

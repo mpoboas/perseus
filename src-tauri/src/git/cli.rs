@@ -37,6 +37,21 @@ const SCRUBBED_ENV: &[&str] = &[
     "PERSEUS_PROFILE",
 ];
 
+/// Environment set once at start-up and applied to every git command (the askpass program and
+/// its server address). Per-profile values still win over it.
+static GLOBAL_ENV: std::sync::OnceLock<Vec<(String, String)>> = std::sync::OnceLock::new();
+
+pub fn set_global_env(env: Vec<(String, String)>) {
+    let _ = GLOBAL_ENV.set(env);
+}
+
+/// True when git and ssh can ask the user questions through Perseus.
+pub fn askpass_active() -> bool {
+    GLOBAL_ENV
+        .get()
+        .is_some_and(|e| e.iter().any(|(k, _)| k == "GIT_ASKPASS"))
+}
+
 /// Per-profile settings injected into one git invocation. They live only on the
 /// command line and in the child's environment, so the user's `~/.gitconfig` and
 /// the repository's `.git/config` are never modified.
@@ -111,6 +126,9 @@ impl Git {
             .stderr(Stdio::piped());
         for var in SCRUBBED_ENV {
             cmd.env_remove(var);
+        }
+        for (k, v) in GLOBAL_ENV.get().into_iter().flatten() {
+            cmd.env(k, v);
         }
         // After the scrub, so profile values win over anything inherited.
         for (k, v) in &self.overrides.env {

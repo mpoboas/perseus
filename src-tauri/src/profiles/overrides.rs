@@ -46,11 +46,32 @@ impl Profile {
             }
             o.env.push((
                 "GIT_SSH_COMMAND".into(),
+                // With askpass active, ssh may ask (passphrase, unknown host) through Perseus;
+                // otherwise it must fail instead of waiting on a prompt nobody could answer.
                 format!(
-                    "ssh -i {} -o IdentitiesOnly=yes -o BatchMode=yes",
-                    shell_quote(&key)
+                    "ssh -i {} -o IdentitiesOnly=yes{}",
+                    shell_quote(&key),
+                    if crate::git::cli::askpass_active() {
+                        ""
+                    } else {
+                        " -o BatchMode=yes"
+                    }
                 ),
             ));
+        }
+
+        if let (Some(format), Some(key)) = (&self.signing_format, &self.signing_key) {
+            if key.contains('\0') {
+                return Err(AppError::Git("invalid signing key".into()));
+            }
+            o.config.push(("commit.gpgsign".into(), "true".into()));
+            o.config
+                .push(("user.signingkey".into(), slashes(Path::new(key))));
+            if format == "ssh" {
+                o.config.push(("gpg.format".into(), "ssh".into()));
+                // Git for Windows keeps ssh-keygen off PATH; git needs it to sign.
+                o.config.extend(crate::git::signing::ssh_program_config());
+            }
         }
 
         if !self.credentials.is_empty()
@@ -80,6 +101,8 @@ mod tests {
             user_name: "Ada Lovelace".into(),
             user_email: "ada@work.example".into(),
             ssh_key: None,
+            signing_format: None,
+            signing_key: None,
             credentials: vec![],
         }
     }
@@ -307,6 +330,8 @@ mod profile_auth_flow {
                 user_name: "Ada Lovelace".into(),
                 user_email: "ada@example.com".into(),
                 ssh_key: None,
+                signing_format: None,
+                signing_key: None,
             })
             .unwrap();
         let host = format!("127.0.0.1:{port}");
@@ -327,5 +352,44 @@ mod profile_auth_flow {
         assert!(result.is_err());
         let expected = format!("Basic {}", b64(b"ada:tok-from-app"));
         assert_eq!(*seen.lock().unwrap(), vec![expected]);
+    }
+
+    #[test]
+    fn signing_settings_become_git_config_only_when_complete() {
+        use crate::profiles::store::Profile;
+        let mut p = Profile {
+            id: "0123456789abcdef0123456789abcdef".into(),
+            name: "Work".into(),
+            user_name: "Ada".into(),
+            user_email: "ada@work.example".into(),
+            ssh_key: None,
+            signing_format: None,
+            signing_key: None,
+            credentials: vec![],
+        };
+        let o = p.git_overrides(None).unwrap();
+        assert!(!o.config.iter().any(|(k, _)| k == "commit.gpgsign"));
+
+        p.signing_format = Some("ssh".into());
+        p.signing_key = Some(r"C:\Users\me\.ssh\id_work".into());
+        let o = p.git_overrides(None).unwrap();
+        assert!(o.config.contains(&("commit.gpgsign".into(), "true".into())));
+        assert!(o.config.contains(&("gpg.format".into(), "ssh".into())));
+        assert!(
+            o.config
+                .contains(&("user.signingkey".into(), "C:/Users/me/.ssh/id_work".into()))
+        );
+
+        p.signing_format = Some("gpg".into());
+        p.signing_key = Some("ABCD1234".into());
+        let o = p.git_overrides(None).unwrap();
+        assert!(
+            o.config
+                .contains(&("user.signingkey".into(), "ABCD1234".into()))
+        );
+        assert!(
+            !o.config.iter().any(|(k, _)| k == "gpg.format"),
+            "gpg is git's default"
+        );
     }
 }

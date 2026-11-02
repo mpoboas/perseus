@@ -44,12 +44,20 @@ pub fn unstage(git: &Git, files: &[String]) -> Result<()> {
 
 /// Commits the index. The message goes over stdin, so it can be any length or content.
 pub fn commit(git: &Git, message: &str, amend: bool) -> Result<()> {
+    commit_with(git, message, amend, false)
+}
+
+/// Like [`commit`]; `no_verify` skips the pre-commit and commit-msg hooks.
+pub fn commit_with(git: &Git, message: &str, amend: bool, no_verify: bool) -> Result<()> {
     if message.trim().is_empty() {
         return Err(AppError::Git("commit message is empty".into()));
     }
     let mut args = vec!["commit", "-q", "--cleanup=strip", "-F", "-"];
     if amend {
         args.push("--amend");
+    }
+    if no_verify {
+        args.push("--no-verify");
     }
     git.output_with_stdin(args, message.as_bytes())?;
     Ok(())
