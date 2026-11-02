@@ -7,6 +7,7 @@ use crate::error::{AppError, Result};
 use crate::git::cli::{self, LogEntry};
 use crate::git::extras::{self, LargeFile, LfsAction, LfsStatus, Submodule, Worktree};
 use crate::git::flow;
+use crate::git::maintenance;
 use crate::git::repo::{RepoId, RepoInfo};
 use crate::git::undo;
 use crate::git::validate;
@@ -91,6 +92,16 @@ pub async fn add_submodule(
 ) -> Result<()> {
     let git = git_for(&state, &profiles, repo_id)?;
     blocking(move || extras::add_submodule(&git, &url, &path)).await
+}
+
+/// How big the repository is on disk and whether git's housekeeping is due.
+#[tauri::command]
+pub async fn repo_stats(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+) -> Result<maintenance::RepoStats> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || maintenance::stats(&git)).await
 }
 
 /// Opens a folder inside the repository (a submodule or a linked worktree of it) as its own

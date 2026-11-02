@@ -10,6 +10,7 @@ pub mod flow;
 pub mod graph;
 pub mod history;
 pub mod lanes;
+pub mod maintenance;
 pub mod ops;
 pub mod patch;
 pub mod rebase;

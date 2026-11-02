@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-set-repo-alias"
+description = "Enables the set_repo_alias command without any pre-configured scope."
+commands.allow = ["set_repo_alias"]
+
+[[permission]]
+identifier = "deny-set-repo-alias"
+description = "Denies the set_repo_alias command without any pre-configured scope."
+commands.deny = ["set_repo_alias"]

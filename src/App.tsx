@@ -27,6 +27,11 @@ import {
   X,
   Redo2,
   Undo2,
+  Pencil,
+  Star,
+  Link2,
+  Wrench,
+  GitFork,
 } from "lucide-react";
 import { type Endpoint, type GraphAction, type Head, dropActions, menuActions } from "./actions";
 import { ChangesPanel } from "./ChangesPanel";
@@ -114,6 +119,11 @@ import {
   repoStatus,
   runGitOp,
   setActiveProfile,
+  setRepoAlias,
+  setRepoFavorite,
+  forkRepository,
+  watchLinks,
+  type DeepLink,
   stagePaths,
   streamCommits,
   switchRef,
@@ -144,6 +154,9 @@ import { ConflictDialog } from "./ConflictDialog";
 import { RebaseDialog } from "./RebaseDialog";
 import { NewBranchDialog } from "./NewBranchDialog";
 import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
+import { RenameRepoDialog } from "./RenameRepoDialog";
+import { MaintenanceDialog } from "./MaintenanceDialog";
+import { ForkDialog } from "./ForkDialog";
 import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
@@ -158,6 +171,7 @@ import { StatusBar } from "./StatusBar";
 import { Toolbar } from "./Toolbar";
 import { setAvatarRepo } from "./lib/avatars";
 import { undoName } from "./lib/format";
+import { perseusLink, repoLabel, restoreTabs, swapTabSets, type TabSets } from "./lib/repos";
 import { layoutMenu } from "./menuLayout";
 import { Badge, Menu, type MenuItem, Splitter, useToast } from "./ui";
 import { Welcome } from "./Welcome";
@@ -172,6 +186,9 @@ interface ActOptions {
   /** The action edits tracked files (staging, discarding, stashing), so undo records them too. */
   files?: boolean;
 }
+
+/** Where each profile's open tabs are kept while another profile is in use. */
+const TABSETS_KEY = "session.tabsets";
 
 /** Actions that change files or the index, so their undo needs the file state. */
 const FILE_ACTIONS = new Set(["discard", "patch", "stash_push", "stash_apply", "stash_pop", "stash_drop"]);
@@ -216,6 +233,15 @@ function App() {
   /** The commits offered to the cherry-pick dialog, oldest first. */
   const [pickCommits, setPickCommits] = useState<PickCommit[] | null>(null);
   const [remotesOpen, setRemotesOpen] = useState(false);
+  /** The repository (by folder) being renamed. */
+  const [renaming, setRenaming] = useState<string | null>(null);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [forkOpen, setForkOpen] = useState(false);
+  /** A commit named by a link, selected once the graph has loaded. */
+  const pendingCommit = useRef<{ path: string; commit: string } | null>(null);
+  /** A link opened a repository, so the start-up restore must not replace it with the last session's. */
+  const linkOpened = useRef(false);
+  const gotoCommitRef = useRef<(prefix: string) => void>(() => undefined);
   const [historyPath, setHistoryPath] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [questions, setQuestions] = useState<Question[]>([]);
@@ -398,6 +424,12 @@ function App() {
         setLoaded(
           `${summary.total.toLocaleString()} commits · ${secs}s${summary.cancelled ? " (stopped)" : ""}`,
         );
+        // A link that named a commit: show it now that the history is here.
+        const wanted = pendingCommit.current;
+        if (wanted && wanted.path === info.path && repoRef.current?.id === info.id) {
+          pendingCommit.current = null;
+          window.setTimeout(() => gotoCommitRef.current(wanted.commit), 0);
+        }
       } catch (e) {
         report("Could not read the history", e);
       } finally {
@@ -773,6 +805,7 @@ function App() {
     }
     const commitUrl = webLink("commit", e.oid);
     if (commitUrl) out.push(plain("copy-link", `Copy link to this commit on ${hosting?.host}`, { type: "copy", text: commitUrl }));
+    if (repo) out.push(plain("copy-perseus-link", "Copy a Perseus link to this commit", { type: "copy", text: perseusLink(repo.path, e.oid) }));
     out.push(plain("patch", "Create patch from commit", ui(() => void doExportPatch({ source: "commit", oid: e.oid }))));
     return out;
   };
@@ -1280,6 +1313,35 @@ function App() {
     });
   };
 
+  const copyText = (text: string, done: string) =>
+    navigator.clipboard.writeText(text).then(
+      () => toast.success(done),
+      () => toast.error("Could not access the clipboard"),
+    );
+
+  const doFork = async (
+    fork: { name: string | null; namespace: string | null },
+    remote: { name: string | null; make_origin: boolean },
+  ) => {
+    const info = repoRef.current;
+    if (!info) return;
+    setBusy("Forking…");
+    try {
+      const out = await forkRepository(info.id, fork, remote);
+      toast.success(
+        `Forked to ${out.fork.full_name}`,
+        out.made_origin
+          ? "The fork is now origin and the original is upstream. The host may need a moment before it can be fetched."
+          : `Added as the remote ${out.remote}. The host may need a moment before it can be fetched.`,
+      );
+    } catch (e) {
+      report("Could not fork", e);
+    } finally {
+      setBusy(null);
+    }
+    await refresh("all");
+  };
+
   // ---- Opening and closing repositories ----
 
   const adopt = async (picked: RepoInfo) => {
@@ -1339,6 +1401,44 @@ function App() {
       void reloadRecents();
     }
   };
+
+  const toggleFavorite = async (path: string, favorite: boolean) => {
+    try {
+      await setRepoFavorite(path, favorite);
+    } catch (e) {
+      report("Could not change the favorite", e);
+    }
+    void reloadRecents();
+  };
+
+  const saveAlias = async (path: string, alias: string | null) => {
+    setRenaming(null);
+    try {
+      await setRepoAlias(path, alias);
+    } catch (e) {
+      report("Could not rename it", e);
+    }
+    void reloadRecents();
+  };
+
+  const closeOtherTabs = async (keep: RepoTab) => {
+    setTabs([keep]);
+    if (repoRef.current?.path !== keep.path) await openRecent(keep.path);
+  };
+
+  /** A `perseus-app://` link: open the folder (already approved by the backend), then show the commit. */
+  const openLink = async (link: DeepLink) => {
+    linkOpened.current = true;
+    if (repoRef.current?.path === link.path) {
+      // Already open: just show the commit.
+      if (link.commit) gotoCommit(link.commit);
+      return;
+    }
+    pendingCommit.current = link.commit ? { path: link.path, commit: link.commit } : null;
+    await openRecent(link.path);
+  };
+  const openLinkRef = useRef(openLink);
+  openLinkRef.current = openLink;
 
   const closeTab = async (tab: RepoTab) => {
     const remaining = tabs.filter((t) => t.path !== tab.path);
@@ -1499,6 +1599,7 @@ function App() {
     },
     [jumpTo, toast],
   );
+  gotoCommitRef.current = gotoCommit;
 
   const checkout = (r: RefInfo) =>
     act(
@@ -1561,6 +1662,12 @@ function App() {
     watchAskpass((q) => setQuestions((l) => [...l, q]));
   }, []);
 
+  // Links from outside (`perseus-app://open?path=…&commit=…`). The backend has already checked the folder.
+  useEffect(() => {
+    watchLinks((link) => void openLinkRef.current(link)).catch(() => undefined);
+  }, []);
+
+
   const answerQuestion = (answer: string | null) => {
     const q = questions[0];
     if (!q) return;
@@ -1601,21 +1708,50 @@ function App() {
     // Tabs only make sense for repositories that still exist.
     setTabs((t) => t.filter((x) => recents.some((r) => r.path === x.path && r.exists)));
     const last = readPref<string | null>("session.last", null);
-    if (last && recents.some((r) => r.path === last && r.exists)) void openRecent(last);
+    if (!linkOpened.current && last && recents.some((r) => r.path === last && r.exists)) void openRecent(last);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recents]);
 
   const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active) ?? null;
   const identity = activeProfile ? { name: activeProfile.user_name, email: activeProfile.user_email } : null;
 
-  const switchProfile = async (id: string | null) => {
+  /**
+   * Chooses the profile that commits and talks to remotes. When the user picks it (`swapTabs`), the open
+   * tabs are kept for the profile being left and the new profile's own tabs come back. A profile that
+   * a repository's rule or pin selects on opening does not move the tabs.
+   */
+  const switchProfile = async (id: string | null, swapTabs = false) => {
+    const from = profiles?.active ?? null;
     try {
       await setActiveProfile(id);
       await reloadProfiles();
-      toast.success(id ? "Profile switched" : "Using your Git configuration");
     } catch (e) {
       report("Could not switch profile", e);
+      return;
     }
+    let restoredTabs = 0;
+    if (swapTabs && id !== from) {
+      const current = { tabs, last: repoRef.current?.path ?? null };
+      const { sets, next } = swapTabSets(readPref<TabSets>(TABSETS_KEY, {}), from, id, current);
+      writePref(TABSETS_KEY, sets);
+      const open = repoRef.current;
+      if (next) {
+        const { tabs: usable, show } = restoreTabs(next, (path) => recents.some((r) => r.path === path && r.exists));
+        restoredTabs = usable.length;
+        setTabs(usable);
+        if (show && show !== open?.path) await openRecent(show);
+        else if (!show && open) setTabs([{ path: open.path, name: open.name }]);
+      } else if (open) {
+        // First time with this profile: it starts with the repository in front.
+        setTabs([{ path: open.path, name: open.name }]);
+      } else {
+        setTabs([]);
+      }
+    }
+    toast.success(
+      id ? "Profile switched" : "Using your Git configuration",
+      restoredTabs > 0 ? `${restoredTabs} ${restoredTabs === 1 ? "tab" : "tabs"} restored` : undefined,
+    );
   };
 
   // ---- Derived data for the graph ----
@@ -1749,6 +1885,25 @@ function App() {
       add({ id: "open-folder", title: "Show in file manager", group: "Actions", icon: FolderOpen, run: () => void doOpenIn("folder") });
       add({ id: "open-terminal", title: "Open in terminal", group: "Actions", icon: Terminal, run: () => void doOpenIn("terminal") });
       add({ id: "open-editor", title: "Open in editor (VS Code)", group: "Actions", icon: Code2, run: () => void doOpenIn("editor") });
+      const here = recents.find((r) => r.path === repo.path);
+      add({ id: "rename-repo", title: "Rename this repository in Perseus…", group: "Actions", icon: Pencil, run: () => setRenaming(repo.path) });
+      add({
+        id: "favorite-repo",
+        title: here?.favorite ? "Remove this repository from favorites" : "Add this repository to favorites",
+        group: "Actions",
+        icon: Star,
+        run: () => void toggleFavorite(repo.path, !here?.favorite),
+      });
+      add({
+        id: "copy-repo-link",
+        title: "Copy a Perseus link to this repository",
+        subtitle: "perseus-app://open?path=…",
+        group: "Actions",
+        icon: Link2,
+        run: () => copyText(perseusLink(repo.path), "Copied the link"),
+      });
+      add({ id: "maintenance", title: "Repository maintenance (gc, integrity check, commit graph)…", group: "Actions", icon: Wrench, run: () => setMaintenanceOpen(true) });
+      if (hosting) add({ id: "fork", title: `Fork ${hosting.path} on ${hosting.host}…`, group: "Actions", icon: GitFork, run: () => setForkOpen(true) });
       add({ id: "close", title: "Close repository", group: "Actions", icon: X, run: () => void closeCurrent() });
     }
     add({ id: "theme-light", title: "Theme: Light", group: "Actions", icon: Sun, run: () => setTheme("light") });
@@ -1775,14 +1930,14 @@ function App() {
     }
 
     if (profiles) {
-      add({ id: "prof:", title: "Use system default identity", group: "Profiles", icon: User, run: () => void switchProfile(null) });
+      add({ id: "prof:", title: "Use system default identity", group: "Profiles", icon: User, run: () => void switchProfile(null, true) });
       for (const p of profiles.profiles)
-        add({ id: `prof:${p.id}`, title: `Use profile ${p.name}`, subtitle: p.user_email, group: "Profiles", icon: User, run: () => void switchProfile(p.id) });
+        add({ id: `prof:${p.id}`, title: `Use profile ${p.name}`, subtitle: p.user_email, group: "Profiles", icon: User, run: () => void switchProfile(p.id, true) });
     }
 
     for (const r of recents)
       if (r.exists && r.path !== repo?.path)
-        add({ id: `rec:${r.path}`, title: `Open ${r.name}`, subtitle: r.path, group: "Repositories", icon: FolderOpen, run: () => void openRecent(r.path) });
+        add({ id: `rec:${r.path}`, title: `Open ${repoLabel(r)}`, subtitle: r.path, group: "Repositories", icon: r.favorite ? Star : FolderOpen, run: () => void openRecent(r.path) });
     return out;
     // The closures above read current state; the palette is rebuilt whenever any of it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1800,8 +1955,12 @@ function App() {
         <RepoTabs
           tabs={tabs}
           activePath={repo.path}
+          recents={recents}
           onSelect={(t) => t.path !== repo.path && void openRecent(t.path)}
           onClose={(t) => void closeTab(t)}
+          onCloseOthers={(t) => void closeOtherTabs(t)}
+          onRename={(t) => setRenaming(t.path)}
+          onToggleFavorite={(t, fav) => void toggleFavorite(t.path, fav)}
           onNew={() => void open()}
         />
       )}
@@ -1815,7 +1974,7 @@ function App() {
           initialPage={settingsPage}
           onExit={() => setSettingsOpen(false)}
           onManageProfiles={() => setProfilesOpen(true)}
-          onSwitchProfile={(id) => void switchProfile(id)}
+          onSwitchProfile={(id) => void switchProfile(id, true)}
         />
       )}
 
@@ -1876,7 +2035,7 @@ function App() {
         onPalette={() => setPaletteOpen(true)}
         onCancelLoad={() => streamId.current !== null && void cancelStream(streamId.current)}
         onProfiles={() => setProfilesOpen(true)}
-        onSwitchProfile={(id) => void switchProfile(id)}
+        onSwitchProfile={(id) => void switchProfile(id, true)}
         onPinProfile={() => {
           if (!repo || !activeProfile) return;
           writePref(`repoProfile.${repo.path}`, activeProfile.id);
@@ -1887,6 +2046,7 @@ function App() {
         onPreferences={() => openSettings()}
         onNewBranch={() => setNewBranchOpen(true)}
         onMergeIntoMain={mergeIntoMain}
+        onToggleFavorite={(path, fav) => void toggleFavorite(path, fav)}
         undoLabel={repo ? (lastOf(undoStack(repo.path).undo)?.label ?? null) : null}
         redoLabel={repo ? (lastOf(undoStack(repo.path).redo)?.label ?? null) : null}
         onUndo={() => void stepHistory("undo")}
@@ -1913,6 +2073,7 @@ function App() {
                   ci={ci}
                   hostingError={hostingError}
                   onPrMenu={onPrMenu}
+                  onFork={() => setForkOpen(true)}
                   onOpenIssue={(i) => repo && void openInBrowser(repo.id, i.url).catch((e) => report("Could not open the page", e))}
                   onStashMenu={onStashMenu}
                   extras={
@@ -2128,6 +2289,8 @@ function App() {
           onOpen={() => void open()}
           onOpenRecent={(p) => void openRecent(p)}
           onRemoveRecent={(p) => void removeRecent(p)}
+          onToggleFavorite={(p, fav) => void toggleFavorite(p, fav)}
+          onRename={(p) => setRenaming(p)}
           onPalette={() => setPaletteOpen(true)}
           onClone={() => setCloneOpen(true)}
           onInit={() => void doInit()}
@@ -2174,6 +2337,38 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {renaming &&
+        (() => {
+          const target = recents.find((r) => r.path === renaming);
+          const fallback = renaming.split(/[\/]/).filter(Boolean).pop() ?? renaming;
+          return (
+            <RenameRepoDialog
+              folderName={target?.name ?? fallback}
+              alias={target?.alias ?? null}
+              onSave={(alias) => void saveAlias(renaming, alias)}
+              onClose={() => setRenaming(null)}
+            />
+          );
+        })()}
+      {maintenanceOpen && repo && (
+        <MaintenanceDialog
+          repoId={repo.id}
+          repoName={repoLabel(recents.find((r) => r.path === repo.path) ?? repo)}
+          onChanged={() => void refresh("all")}
+          onClose={() => setMaintenanceOpen(false)}
+        />
+      )}
+      {forkOpen && repo && hosting && (
+        <ForkDialog
+          hosting={hosting}
+          remotes={remotes.map((r) => r.name)}
+          onClose={() => setForkOpen(false)}
+          onFork={(fork, remote) => {
+            setForkOpen(false);
+            void doFork(fork, remote);
+          }}
+        />
+      )}
       {flowDialog?.type === "init" && (
         <FlowInitDialog
           initial={flowDialog.initial}

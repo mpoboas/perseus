@@ -4,8 +4,9 @@ Originally researched 2026-11-01 against GitKraken Desktop's official documentat
 and release notes (the installed copy on this machine is **12.6.1**; the version was confirmed
 from the binary, but its UI was never toured because its window was minimized and only click
 access was available). **Perseus status was re-checked on 2026-11-02** against this repository
-at commit `20758b9` (end of Tier 1 below), by reading the code and running the release build.
-The GitKraken columns were not re-researched.
+at commit `20758b9` (end of Tier 1 below), by reading the code and running the release build; the
+"Repository management" rows were re-checked again after that section was completed (favorites, names,
+tab sets per profile, maintenance, forks, links). The GitKraken columns were not re-researched.
 
 **Legend.** Perseus: ✅ have · 🟡 partial · ❌ missing · ➕ Perseus-only advantage.
 GitKraken tier: **Free** = Community plan, **Pro+** = paid. GitKraken's free plan only covers
@@ -20,7 +21,9 @@ interactive rebase, a conflict resolver, pull requests for GitHub and GitLab, SS
 submodules, worktrees, a command palette and themes. The latest round added the diff view's
 syntax colours, word marks, side-by-side layout and picture diffs, undo for stashes, tags and file
 edits, cherry-picking several commits, adding submodules, Gitflow, and a graph that stays
-scrollable past a browser's height limit. It is ahead on cost, privacy and weight.
+scrollable past a browser's height limit. A further round finished repository management: favorites,
+names of your own and a set of tabs per profile, maintenance (gc, integrity check, commit graph), forks
+and `perseus-app://` links. It is ahead on cost, privacy and weight.
 
 It is **still not at parity**. What is missing is mostly depth and polish rather than whole
 areas: **workspaces** (multi-repo), **Bitbucket and Azure DevOps**, in-app **pull request
@@ -40,12 +43,12 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Open a local repository | Free | ✅ native folder picker |
 | Clone / init | Free | ✅ |
-| Multiple repos as tabs, per-profile tab sets, tab aliases | Free | 🟡 tabs, restored on start; no per-profile sets or aliases |
-| Favorites / recent repos | Free | 🟡 recents on the welcome screen; no favorites |
-| Fork a GitHub repo from the app | Free | ❌ |
-| Repo maintenance (gc etc.) | Free | ❌ |
+| Multiple repos as tabs, per-profile tab sets, tab aliases | Free | ✅ tabs restored on start; each profile keeps its own set, swapped when you switch profile; names of your own for tabs and lists |
+| Favorites / recent repos | Free | ✅ recents and starred favorites (listed first, never dropped) on the welcome screen and in the toolbar picker |
+| Fork a GitHub repo from the app | Free | ✅ GitHub and GitLab: to your account, an organization or a group, optionally as `origin` with the original kept as `upstream`; tested against a mock host and real git, not yet against the real services |
+| Repo maintenance (gc etc.) | Free | ✅ size and advice, optimize (`gc`), deep optimize, commit-graph, integrity check, forget stale remote branches; cancellable, never prunes inside git's grace period |
 | Activity log (every git command, timing, errors) | Free | ✅ in memory, URL passwords redacted |
-| Deep links (open a repo/commit from a URL) | Free | ❌ |
+| Deep links (open a repo/commit from a URL) | Free | ✅ `perseus-app://open?path=…&commit=…`; unknown folders need a native confirmation; a second launch hands over to the running window |
 | Open in terminal / file manager / IDE | Free | ✅ command palette: file manager, terminal, editor (VS Code) |
 
 ### Commit graph and history
@@ -201,14 +204,14 @@ was tested, not that it matches GitKraken's polish.
 | Never runs repo-configured diff/textconv programs | not documented | ➕ enforced and tested |
 | Crash reporting | Cloud-based (per their docs) | ➕ local `perseus.log` only, attached by the user if they choose |
 | Runtime | Electron | ➕ Tauri + native Rust core |
-| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (47 end-to-end tests); macOS/Linux compile and bundle in CI only |
+| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (55 end-to-end tests); macOS/Linux compile and bundle in CI only |
 
 ---
 
 ## 2. What the numbers say
 
-Counting the 112 rows in section 1: Perseus has **74 ✅ or ➕**, **16 🟡** and **22 ❌**
-(the previous version of this document had 64, 19 and 29; the first had 35, 8 and 66 out of 109).
+Counting the 112 rows in section 1: Perseus has **79 ✅ or ➕**, **14 🟡** and **19 ❌**
+(the previous version of this document had 74, 16 and 22, the one before 64, 19 and 29; the first had 35, 8 and 66 out of 109).
 Roughly ten of the ❌ rows are deliberately out of scope (Kepler, Insights, Boards, team services,
 cloud patches, the vendor-account features, AI); the rest are real gaps, ranked below. The counts treat
 every row equally, which flatters Perseus on the long tail of small rows and understates what remains in
@@ -238,7 +241,7 @@ highlighting for languages beyond the built-in list.
 10. Customizable shortcuts, zoom, more preferences, accessibility audit, localisation.
 11. Code-signed installers, auto-update, macOS and Linux hands-on verification (owner-only items
     are listed in `docs/releasing.md`).
-12. Deep links, repo maintenance, an integrated terminal.
+12. An integrated terminal. (Deep links, repo maintenance, forks, favorites and tab sets are done.)
 13. Optional AI helpers with a bring-your-own key.
 
 **Probably not worth chasing:** Launchpad, cloud workspaces, team view, Insights, Boards,
@@ -254,7 +257,7 @@ local-first, no-account design is a feature.
   so some rows (agent sessions, Kepler) are about a product direction Perseus does not need to
   follow.
 - Perseus statuses were taken from the code and the roadmap, plus the test suites (Rust,
-  Vitest, and 47 end-to-end tests against the release build). Pull requests, issues and CI
+  Vitest, and 55 end-to-end tests against the release build). Pull requests, issues and CI
   state for GitHub and GitLab are covered by unit tests only; only OAuth sign-in was verified
   against the real services. macOS and Linux were never run.
 - Performance figures are Perseus's own measurements on synthetic repositories

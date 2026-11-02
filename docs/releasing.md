@@ -8,7 +8,10 @@ need the owner's accounts, money or keys are listed separately so nothing is mis
 - `security`: `cargo deny` and `pnpm audit` on every push and weekly.
 - `check` (Windows, macOS, Linux): `pnpm build`, Vitest, `cargo fmt`, `clippy -D warnings`, `cargo test`.
 - `windows-build`: unsigned NSIS installer, then the end-to-end tests (`pnpm e2e`) against the
-  production executable; the installer is uploaded as an artifact.
+  production executable; the installer is uploaded as an artifact. The NSIS installer registers the
+  `perseus-app://` address for the installing user (from `plugins.deep-link` in `tauri.conf.json`). Nobody has
+  yet run an installer built here to confirm that, so check *Settings → General → Links* and opening a link
+  after the first install.
 - `other-bundles`: unsigned `.dmg` (macOS) and `.AppImage` / `.deb` (Linux) as artifacts. A green job
   means "it builds", not "it was run": nobody has launched those bundles yet.
 

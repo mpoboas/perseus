@@ -11,6 +11,31 @@
    patterns, and the **right panel** shows the selected commit or your working changes.
 3. Press **`Ctrl+K`** at any time for the command palette: every action, every branch, every profile.
 
+## Your repositories
+
+- **Favorites**: the star next to a repository (welcome screen, the repository picker in the toolbar, or a
+  tab's right-click menu) pins it under *Favorites*, listed first and by name. Favorites never fall off the
+  list of recent repositories; the other recents keep the last 20.
+- **Names**: *Rename* (the pencil on the welcome screen, a tab's menu, double-clicking a tab, or the palette)
+  gives a repository a name of your own, shown in tabs, lists and the toolbar. The folder keeps its name,
+  which stays visible next to it; clearing the field goes back to the folder's name.
+- **Tabs per profile**: each profile keeps its own set of open tabs. When *you* switch profile (toolbar menu or
+  palette) Perseus keeps the tabs of the profile you leave and brings back the other's, with the repository
+  that was in front. A profile with no tabs yet starts with the repository you are looking at. A profile
+  that a repository's rule or pin picks on opening does not move your tabs.
+- **Links**: *Copy a Perseus link to this repository* (palette) and *Copy a Perseus link to this commit* (a
+  commit's menu) make `perseus-app://open?path=…&commit=…` addresses. Opening one, from a chat or a web page,
+  opens the repository in Perseus and selects the commit. A link only ever opens a folder and shows a
+  commit. A repository Perseus has opened before opens straight away; a folder it has not seen asks you
+  first, in a window of its own. Installed copies register the `perseus-app://` address themselves; for a
+  copy you only unpacked, use *Settings → General → Links → Register for this user*. Launching Perseus a
+  second time (with or without a link) brings the running window forward instead of opening another.
+- **Maintenance** (palette → *Repository maintenance…*): shows how many loose and packed objects the
+  repository has and whether Git would soon clean it up itself, and runs *Optimize* (`git gc`: it only removes
+  unreachable objects older than two weeks), *Rebuild the commit graph file*, *Check integrity* (`git fsck`,
+  listing what it finds), *Forget stale remote branches* and a slower *Deep optimize*. Any of them can be
+  stopped. There is deliberately no "delete everything unreachable now".
+
 ## Committing
 
 - Open the **Changes** tab. Tick a file to stage it, untick to unstage. Click a file to see its diff.
@@ -114,6 +139,14 @@
 For repositories whose remote is on GitHub or GitLab and whose profile is signed in, the sidebar lists open
 pull (or merge) requests with their CI state, and open issues. Click a pull request for a menu to check it out,
 open it in the browser or merge it; use the branch menu to create one.
+
+**Fork** (the link under the pull requests, or the palette's *Fork … on …*) copies the repository to your
+account, or to an organization (GitHub) or group (GitLab) you name, under the same name or another one, and adds the
+copy as a remote named after its owner. Choose *Make the fork origin* to follow the usual contributor setup:
+the fork becomes `origin`, the original is kept as `upstream`, pushes go to the fork and pulls still follow the
+original. The address of the new remote comes from the host's answer, and uses SSH when your `origin` does. The
+host may need a moment before a new fork can be fetched. Forking needs a signed-in profile; asking again for an
+existing fork gives you that fork.
 
 ## Submodules, worktrees and LFS
 

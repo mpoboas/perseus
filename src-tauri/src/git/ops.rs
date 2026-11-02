@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::git::cli::Git;
+use crate::git::maintenance;
 use crate::git::validate;
 
 fn paths(paths: &[String]) -> Result<Vec<&str>> {
@@ -186,6 +187,10 @@ pub enum GitOp {
     },
     Abort,
     Continue,
+    /// Upkeep of the repository itself: gc, commit-graph, integrity check, stale remote branches.
+    Maintenance {
+        task: maintenance::Task,
+    },
 }
 
 /// A commit id or ref name, never something that parses as an option.
@@ -332,6 +337,7 @@ pub fn run_cancellable(
             let onto = rev_arg(onto)?;
             git.stream_cancellable(["rebase", onto.as_str()], on_line, cancel)?
         }
+        GitOp::Maintenance { task } => maintenance::run(git, *task, on_line, cancel)?,
         GitOp::Abort | GitOp::Continue => {
             let current = in_progress(git)
                 .ok_or_else(|| AppError::Git("no operation is in progress".into()))?;

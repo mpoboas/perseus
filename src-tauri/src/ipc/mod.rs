@@ -3,6 +3,7 @@ pub mod channels;
 pub mod commands;
 pub mod extras_commands;
 pub mod hosting_commands;
+pub mod link_commands;
 pub mod oauth_commands;
 pub mod patch_commands;
 pub mod profile_commands;

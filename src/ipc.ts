@@ -138,7 +138,11 @@ export type GitOp =
   | { op: "cherry_pick_many"; oids: string[]; squash?: string | null }
   | { op: "rebase"; onto: string }
   | { op: "abort" }
-  | { op: "continue" };
+  | { op: "continue" }
+  | { op: "maintenance"; task: MaintenanceTask };
+
+/** Upkeep of the repository itself (see `git/maintenance.rs`). */
+export type MaintenanceTask = "gc" | "gc_aggressive" | "commit_graph" | "fsck" | "prune_remotes";
 
 export type WorkSide = "unstaged" | "staged" | "untracked";
 
@@ -432,9 +436,80 @@ export interface RecentRepo {
   last_opened: number;
   /** False when the folder has since been moved or deleted. */
   exists: boolean;
+  /** Favorites are listed first and never fall off the list. */
+  favorite: boolean;
+  /** A name of the user's own, shown instead of `name`. */
+  alias: string | null;
 }
 
 export const listRecentRepos = () => invoke<RecentRepo[]>("list_recent_repos");
+
+export const setRepoFavorite = (path: string, favorite: boolean) =>
+  invoke<void>("set_repo_favorite", { path, favorite });
+
+/** A blank alias clears it. */
+export const setRepoAlias = (path: string, alias: string | null) =>
+  invoke<void>("set_repo_alias", { path, alias });
+
+// ---- Links that open repositories (perseus-app://open?path=…&commit=…) ----
+
+export interface DeepLink {
+  /** A folder from the recent list, already approved. */
+  path: string;
+  commit: string | null;
+}
+
+/** Calls `onLink` for each link the operating system hands to Perseus, including ones that arrived before the call. */
+export function watchLinks(onLink: (link: DeepLink) => void) {
+  const channel = new Channel<DeepLink>();
+  channel.onmessage = onLink;
+  return invoke<void>("watch_links", { onLink: channel });
+}
+
+export const linksRegistered = () => invoke<boolean>("links_registered");
+
+/** Points `perseus-app://` at this copy of Perseus for the current user. */
+export const registerLinks = () => invoke<void>("register_links");
+
+// ---- Maintenance and forks ----
+
+export interface RepoStats {
+  loose_objects: number;
+  loose_kib: number;
+  packed_objects: number;
+  packs: number;
+  pack_kib: number;
+  prune_packable: number;
+  garbage_files: number;
+  garbage_kib: number;
+  commit_graph: boolean;
+  /** Git's own threshold for running housekeeping has been passed. */
+  gc_advised: boolean;
+}
+
+export const repoStats = (repoId: number) => invoke<RepoStats>("repo_stats", { repoId });
+
+export interface Fork {
+  full_name: string;
+  owner: string;
+  https_url: string;
+  ssh_url: string;
+  web_url: string;
+}
+
+export interface ForkOutcome {
+  fork: Fork;
+  /** The local remote that now points at the fork. */
+  remote: string;
+  made_origin: boolean;
+}
+
+/** Forks the open repository on its host and adds the fork as a remote. */
+export const forkRepository = (
+  repoId: number,
+  fork: { name: string | null; namespace: string | null },
+  remote: { name: string | null; make_origin: boolean },
+) => invoke<ForkOutcome>("fork_repository", { repoId, fork, remote });
 
 /** Only paths already in the recents list are accepted; the backend refuses anything else. */
 export const openRecentRepo = (path: string) => invoke<RepoInfo>("open_recent_repo", { path });

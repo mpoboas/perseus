@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type LfsStatus, type LogEntry, type Profile, type ProfilesSnapshot, type RepoInfo, activityLog, lfsStatus, lfsTrack } from "../ipc";
+import { type LfsStatus, type LogEntry, type Profile, type ProfilesSnapshot, type RepoInfo, activityLog, lfsStatus, lfsTrack, linksRegistered, registerLinks } from "../ipc";
 import { AVATAR_PREF, GRAVATAR_PREF } from "../lib/avatars";
 import { absoluteTime, relativeTime } from "../lib/format";
 import { usePref } from "../lib/prefs";
@@ -61,6 +61,10 @@ export function GeneralPage() {
         />
       </Section>
 
+      <Section title="Links">
+        <LinksRow />
+      </Section>
+
       <Section title="Your Git configuration">
         <p className="set-note">
           Perseus never edits your global Git configuration. Identity, SSH keys and sign-ins are applied per command from the active
@@ -69,6 +73,39 @@ export function GeneralPage() {
         </p>
       </Section>
     </>
+  );
+}
+
+/** Whether `perseus-app://` links open this copy of Perseus, and a button to make them. */
+function LinksRow() {
+  const [registered, setRegistered] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    linksRegistered().then(setRegistered, () => setRegistered(null));
+  }, []);
+
+  const register = () => {
+    setError(null);
+    registerLinks().then(
+      () => setRegistered(true),
+      (e) => setError(String(e)),
+    );
+  };
+
+  return (
+    <Row
+      label="Open links in Perseus"
+      hint={
+        <>
+          Links like <code>perseus-app://open?path=…&amp;commit=…</code> (copy one from the command palette or a commit's menu) open the
+          repository, and select the commit, in Perseus. A folder Perseus has not opened before asks for your confirmation first.
+        </>
+      }
+      warn={error ? `Could not register: ${error}` : undefined}
+    >
+      {registered ? <Badge tone="success">Registered</Badge> : <Button onClick={register}>Register for this user</Button>}
+    </Row>
   );
 }
 

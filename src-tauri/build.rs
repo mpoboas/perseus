@@ -82,6 +82,13 @@ const COMMANDS: &[&str] = &[
     "list_recent_repos",
     "open_recent_repo",
     "remove_recent_repo",
+    "set_repo_favorite",
+    "set_repo_alias",
+    "repo_stats",
+    "fork_repository",
+    "watch_links",
+    "register_links",
+    "links_registered",
     "watch_repo",
     "unwatch_repo",
 ];

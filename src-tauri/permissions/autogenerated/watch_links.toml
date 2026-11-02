@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-watch-links"
+description = "Enables the watch_links command without any pre-configured scope."
+commands.allow = ["watch_links"]
+
+[[permission]]
+identifier = "deny-watch-links"
+description = "Denies the watch_links command without any pre-configured scope."
+commands.deny = ["watch_links"]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-fork-repository"
+description = "Enables the fork_repository command without any pre-configured scope."
+commands.allow = ["fork_repository"]
+
+[[permission]]
+identifier = "deny-fork-repository"
+description = "Denies the fork_repository command without any pre-configured scope."
+commands.deny = ["fork_repository"]

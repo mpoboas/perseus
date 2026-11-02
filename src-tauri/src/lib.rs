@@ -4,6 +4,7 @@ mod error;
 pub mod git;
 mod hosting;
 mod ipc;
+mod links;
 mod profiles;
 mod recents;
 mod watcher;
@@ -13,12 +14,14 @@ use std::sync::Arc;
 use perseus_credentials::KeyringStore;
 use serde::Serialize;
 use tauri::Manager;
+use tauri_plugin_deep_link::DeepLinkExt;
 
 use ipc::askpass_commands;
 use ipc::channels::{self, AppState};
 use ipc::extras_commands;
 mod avatars;
 use ipc::hosting_commands::{self, HostingState};
+use ipc::link_commands;
 use ipc::oauth_commands::{self, OAuthFlows};
 use ipc::signing_commands::{self, DataDir};
 use ipc::{
@@ -43,11 +46,24 @@ fn app_info() -> AppInfo {
 }
 
 pub fn run() {
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+    // A second launch (a `perseus-app://` link, or the shortcut again) hands over to the running
+    // window instead of opening another. It must be registered first, and is skipped when
+    // `PERSEUS_DATA_DIR` redirects the data (end-to-end tests run several copies side by side).
+    if std::env::var_os("PERSEUS_DATA_DIR").is_none() {
+        // With its `deep-link` feature the plugin passes the second launch's link on to
+        // `on_open_url` below, so this only has to bring the window forward.
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            links::show_window(app);
+        }));
+    }
+    builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .manage(OAuthFlows::default())
         .manage(HostingState::default())
+        .manage(links::LinkState::default())
         .setup(|app| {
             // Git and ssh ask their questions through this window.
             let broker = Arc::new(askpass::Broker::default());
@@ -80,6 +96,17 @@ pub fn run() {
                 Arc::new(KeyringStore),
             ));
             app.manage(RecentStore::load(data_dir.join("recents.json")));
+
+            // Links that open a repository: the ones that started this launch, and later ones.
+            let handle = app.handle().clone();
+            app.deep_link().on_open_url(move |event| {
+                links::handle(
+                    &handle,
+                    event.urls().iter().map(ToString::to_string).collect(),
+                );
+            });
+            let launched_with: Vec<String> = std::env::args().skip(1).collect();
+            links::handle(app.handle(), launched_with);
             Ok(())
         })
         .register_asynchronous_uri_scheme_protocol(protocol::SCHEME, |ctx, request, responder| {
@@ -170,6 +197,13 @@ pub fn run() {
             recent_commands::list_recent_repos,
             recent_commands::open_recent_repo,
             recent_commands::remove_recent_repo,
+            recent_commands::set_repo_favorite,
+            recent_commands::set_repo_alias,
+            extras_commands::repo_stats,
+            hosting_commands::fork_repository,
+            link_commands::watch_links,
+            link_commands::register_links,
+            link_commands::links_registered,
             watch_commands::watch_repo,
             watch_commands::unwatch_repo,
         ])

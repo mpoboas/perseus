@@ -267,6 +267,53 @@ pub struct NewPullRequest {
     pub draft: bool,
 }
 
+/// Where a fork should go. Both fields are optional: by default the fork keeps the repository's
+/// name and lands in the signed-in user's own account.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct NewFork {
+    /// A different name for the fork.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// An organization (GitHub) or group (GitLab) to put it in, instead of the user's account.
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+/// A fork the host created (or already had).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Fork {
+    /// `owner/name`.
+    pub full_name: String,
+    /// The account or group that owns it.
+    pub owner: String,
+    pub https_url: String,
+    pub ssh_url: String,
+    pub web_url: String,
+}
+
+/// A repository name, user, organization or group path as the hosts allow them. Anything else is
+/// refused before it reaches a request.
+fn fork_part(what: &str, value: Option<&str>, slash: bool) -> Result<Option<String>> {
+    let Some(v) = value.map(str::trim).filter(|v| !v.is_empty()) else {
+        return Ok(None);
+    };
+    let ok = v.len() <= 100
+        && !v.starts_with(['-', '.', '/'])
+        && !v.ends_with(['.', '/'])
+        && !v.contains("..")
+        && !v.contains("//")
+        && v.chars().all(|c| {
+            c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.') || (slash && c == '/')
+        });
+    if ok {
+        Ok(Some(v.to_string()))
+    } else {
+        Err(AppError::Internal(format!(
+            "{what} has characters the host does not allow"
+        )))
+    }
+}
+
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum MergeMethod {
@@ -548,6 +595,84 @@ impl Client<'_> {
             }
         }
         Ok(())
+    }
+
+    /// Forks this repository. Hosts do it in the background, so the fork may take a moment to be
+    /// cloneable; the answer already names it. Forking again returns the existing fork.
+    pub fn fork(&self, new: &NewFork) -> Result<Fork> {
+        if self.token.is_none() {
+            return Err(AppError::Internal(format!(
+                "Sign in to {} from Profiles to fork a repository.",
+                self.repo.host
+            )));
+        }
+        let name = fork_part("the name", new.name.as_deref(), false)?;
+        let namespace = fork_part(
+            "the owner",
+            new.namespace.as_deref(),
+            self.repo.kind == Kind::GitLab,
+        )?;
+        let (endpoint, body, owner_ptr, full_ptr, https_ptr, ssh_ptr, web_ptr) =
+            match self.repo.kind {
+                Kind::GitHub => {
+                    let mut body = serde_json::Map::new();
+                    if let Some(n) = &name {
+                        body.insert("name".into(), n.clone().into());
+                    }
+                    if let Some(o) = &namespace {
+                        body.insert("organization".into(), o.clone().into());
+                    }
+                    (
+                        "forks",
+                        Value::Object(body),
+                        "/owner/login",
+                        "/full_name",
+                        "/clone_url",
+                        "/ssh_url",
+                        "/html_url",
+                    )
+                }
+                Kind::GitLab => {
+                    let mut body = serde_json::Map::new();
+                    if let Some(n) = &name {
+                        body.insert("name".into(), n.clone().into());
+                        body.insert("path".into(), n.clone().into());
+                    }
+                    if let Some(o) = &namespace {
+                        body.insert("namespace_path".into(), o.clone().into());
+                    }
+                    (
+                        "fork",
+                        Value::Object(body),
+                        "/namespace/full_path",
+                        "/path_with_namespace",
+                        "/http_url_to_repo",
+                        "/ssh_url_to_repo",
+                        "/web_url",
+                    )
+                }
+            };
+        // GitHub names the endpoint `forks`, GitLab `fork`.
+        let resp = self.send(
+            "POST",
+            &format!("{}/{endpoint}", self.project_url()),
+            Some(&body),
+        )?;
+        let v: Value = serde_json::from_str(&resp.body)
+            .map_err(|e| AppError::Internal(format!("unexpected answer: {e}")))?;
+        let fork = Fork {
+            full_name: s(&v, full_ptr),
+            owner: s(&v, owner_ptr),
+            https_url: s(&v, https_ptr),
+            ssh_url: s(&v, ssh_ptr),
+            web_url: s(&v, web_ptr),
+        };
+        if fork.full_name.is_empty() || fork.https_url.is_empty() {
+            return Err(AppError::Internal(
+                "the host's answer did not describe a fork".into(),
+            ));
+        }
+        Ok(fork)
     }
 
     pub fn list_issues(&self) -> Result<Vec<Issue>> {
@@ -903,6 +1028,83 @@ mod tests {
                 .create_pull_request(&bad)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn forking_uses_each_providers_endpoint_and_normalizes_the_answer() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on(
+            "/repos/a/b/forks",
+            202,
+            r#"{"full_name":"me/b2","owner":{"login":"me"},"clone_url":"https://github.com/me/b2.git","ssh_url":"git@github.com:me/b2.git","html_url":"https://github.com/me/b2"}"#,
+        );
+        let fork = client(&gh, Kind::GitHub, "github.com", "a/b", &cache)
+            .fork(&NewFork {
+                name: Some("b2".into()),
+                namespace: Some("my-org".into()),
+            })
+            .unwrap();
+        assert_eq!(fork.full_name, "me/b2");
+        assert_eq!(fork.owner, "me");
+        assert_eq!(fork.https_url, "https://github.com/me/b2.git");
+        assert_eq!(fork.ssh_url, "git@github.com:me/b2.git");
+        let seen = gh.requests();
+        assert_eq!(seen.len(), 1, "one request, to the right endpoint");
+        assert_eq!(seen[0].0, "POST");
+        let sent: Value = serde_json::from_str(seen[0].3.as_deref().unwrap()).unwrap();
+        assert_eq!(sent["name"], "b2");
+        assert_eq!(sent["organization"], "my-org");
+
+        let gl = Mock::default().on(
+            "/projects/g%2Fp/fork",
+            201,
+            r#"{"path_with_namespace":"me/p","namespace":{"full_path":"me"},"http_url_to_repo":"https://gitlab.com/me/p.git","ssh_url_to_repo":"git@gitlab.com:me/p.git","web_url":"https://gitlab.com/me/p"}"#,
+        );
+        let fork = client(&gl, Kind::GitLab, "gitlab.com", "g/p", &cache)
+            .fork(&NewFork {
+                name: None,
+                namespace: Some("team/sub".into()),
+            })
+            .unwrap();
+        assert_eq!(
+            (fork.full_name.as_str(), fork.owner.as_str()),
+            ("me/p", "me")
+        );
+        let sent: Value = serde_json::from_str(gl.requests()[0].3.as_deref().unwrap()).unwrap();
+        assert_eq!(sent["namespace_path"], "team/sub");
+        assert!(sent.get("name").is_none(), "no name was asked for");
+    }
+
+    #[test]
+    fn forking_needs_a_sign_in_and_clean_names() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on("/forks", 202, "{}");
+        let mut anonymous = client(&gh, Kind::GitHub, "github.com", "a/b", &cache);
+        anonymous.token = None;
+        assert!(anonymous.fork(&NewFork::default()).is_err());
+        assert!(gh.requests().is_empty(), "nothing is sent without a token");
+
+        let signed_in = client(&gh, Kind::GitHub, "github.com", "a/b", &cache);
+        for bad in ["-x", "a b", "a/b", "../x", "x\n", &"n".repeat(101)] {
+            let new = NewFork {
+                name: Some(bad.into()),
+                namespace: None,
+            };
+            assert!(signed_in.fork(&new).is_err(), "{bad:?}");
+        }
+        // An answer that does not describe a fork is an error, not an empty success.
+        assert!(signed_in.fork(&NewFork::default()).is_err());
+    }
+
+    #[test]
+    fn forking_reports_a_hosts_refusal() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on("/forks", 403, r#"{"message":"Forking is disabled"}"#);
+        let err = client(&gh, Kind::GitHub, "github.com", "a/b", &cache)
+            .fork(&NewFork::default())
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("Forking is disabled"), "{err}");
     }
 
     #[test]

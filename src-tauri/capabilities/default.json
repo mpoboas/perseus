@@ -84,6 +84,13 @@
     "allow-list-recent-repos",
     "allow-open-recent-repo",
     "allow-remove-recent-repo",
+    "allow-set-repo-favorite",
+    "allow-set-repo-alias",
+    "allow-repo-stats",
+    "allow-fork-repository",
+    "allow-watch-links",
+    "allow-register-links",
+    "allow-links-registered",
     "allow-watch-repo",
     "allow-unwatch-repo"
   ]

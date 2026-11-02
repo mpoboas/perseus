@@ -41,8 +41,11 @@ export function scratchDir(prefix) {
   return mkdtempSync(join(tmpdir(), prefix));
 }
 
-/** Starts the app and returns `{ page, root, consoleErrors, stop }`. */
-export async function launch({ recents = [], port = 9444 } = {}) {
+/**
+ * Starts the app and returns `{ page, root, appdata, consoleErrors, stop }`. `args` are command-line
+ * arguments (a `perseus-app://` link), `profiles` the contents of profiles.json to start with.
+ */
+export async function launch({ recents = [], port = 9444, args = [], profiles = null } = {}) {
   const root = scratchDir("perseus-e2e-");
   const appdata = join(root, "appdata");
   mkdirSync(join(appdata, "dev.perseus.app"), { recursive: true });
@@ -51,7 +54,9 @@ export async function launch({ recents = [], port = 9444 } = {}) {
     JSON.stringify(recents.map((r) => ({ ...r, last_opened: Math.floor(Date.now() / 1000) }))),
   );
 
-  const child = spawn(EXE, [], {
+  if (profiles) writeFileSync(join(appdata, "dev.perseus.app", "profiles.json"), JSON.stringify(profiles));
+
+  const child = spawn(EXE, args, {
     env: {
       ...process.env,
       PERSEUS_DATA_DIR: join(appdata, "dev.perseus.app"),
@@ -90,6 +95,7 @@ export async function launch({ recents = [], port = 9444 } = {}) {
   return {
     page,
     root,
+    appdata: join(appdata, "dev.perseus.app"),
     consoleErrors,
     async stop() {
       await browser.close().catch(() => undefined);

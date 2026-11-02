@@ -17,14 +17,14 @@ can be revisited.
 | Phase | State | Notes |
 |---|---|---|
 | 6 UI/UX | Done | See "Delivered" under Phase 6. Still open: the status bar does not show a paused merge/rebase |
-| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf numbers in `docs/performance.md` (500,000 commits ready in 5.5 s, 131 fps), Playwright E2E over WebView2 (`pnpm e2e`, 47 tests), CI builds an unsigned NSIS installer and runs the E2E. Open: merging `birth` into `main` and publishing |
+| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf numbers in `docs/performance.md` (500,000 commits ready in 5.5 s, 131 fps), Playwright E2E over WebView2 (`pnpm e2e`, 55 tests), CI builds an unsigned NSIS installer and runs the E2E. Open: merging `birth` into `main` and publishing |
 | 8 Everyday Git | Done | Stash, tags (incl. push and remote delete), branch delete/rename, reset, revert, discard, remotes, pull modes, force-with-lease, cancel, **undo/redo** of branch moves, tags, stashes and file edits (not pushes, not untracked files) |
 | 9 Staging and diffs | Done except small items | Hunk and line staging, file history, blame, patch export/apply, **syntax highlighting, word marks, side-by-side and picture diffs**. Not done: edit a file from the diff, expandable context / whole-file view, "load more" past the 4 MiB cap, Worker decoding, conventional-commit helper |
-| 10 Navigation | Done except deep links | Tabs, search, clone/init, hide/solo, recents, **scrolling past a few hundred thousand rows**. Not done: deep links, tab aliases/favorites/per-profile tab sets, reorderable columns, graph filter by author |
+| 10 Navigation | Done | Tabs (**names of your own, favorites, a set per profile**), search, clone/init, hide/solo, recents, **deep links** (`perseus-app://`), **scrolling past a few hundred thousand rows**. Not done: reorderable columns, graph filter by author |
 | 11 Conflicts and history editing | Done except the editor's depth | Conflict resolver, interactive rebase, conflict preview (toolbar button, which now also merges into main), **cherry-pick of several commits**. Not done: per-line picks with a live output pane, external merge tools, "squash selected commits" shortcut, revert ranges |
 | 12 Hosting | GitHub and GitLab | Pull/merge requests, issues, CI state. Not done: in-app review, PR filters/saved views, Bitbucket, Azure DevOps, Jira/Trello, and live testing against real accounts (unit tests only; OAuth sign-in for GitHub and GitLab was verified live) |
 | 13 Identity and signing | Done except GPG | Askpass prompts for git and ssh, SSH signing + verification badges, key generation, profile rules and pinning, skip hooks. Not done: GPG, uploading a generated public key to GitHub/GitLab |
-| 14 Workflow extras | Partly | Submodules (incl. add), worktrees, Git LFS (detect/track), large-file warning, preferences, activity log, **Gitflow** (no support branches or bugfix kind), **auto-fetch**, command palette. **Deferred on purpose:** integrated terminal, AI helpers. Not done: workspaces, customizable shortcuts, zoom, LFS locks, worktree graph indicator |
+| 14 Workflow extras | Partly | Submodules (incl. add), worktrees, Git LFS (detect/track), large-file warning, preferences, activity log, **Gitflow** (no support branches or bugfix kind), **auto-fetch**, command palette, **repository maintenance** (gc, integrity check, commit graph), **forking** on GitHub and GitLab. **Deferred on purpose:** integrated terminal, AI helpers. Not done: workspaces, customizable shortcuts, zoom, LFS locks, worktree graph indicator |
 | 15 Release engineering | Partly | README, user guide, threat model, local error log, per-OS bundle matrix in CI. **Owner-only (not done):** code-signing certificates, notarization, updater signing key and update hosting, first public release, macOS/Linux hands-on verification, formal accessibility audit, i18n |
 
 Defaults chosen without the owner (revisable): **MIT license** (now in `LICENSE`); **Windows first**;
@@ -53,9 +53,8 @@ matrix. Tiers follow the comparison's build order; the size is a rough estimate.
 |---|---|---|
 | 6 | Customizable shortcuts, UI zoom, more preferences (a second theme pair) | M |
 | 7 | Accessibility audit (keyboard-only use, contrast, a list alternative to the canvas graph) and localisation | L |
-| 8 | Deep links (`perseus-app://open?path=…`, validated), repo maintenance (gc), fork a GitHub repo | M |
-| 9 | Integrated terminal (largest attack-surface addition; needs owner decision #9) | L |
-| 10 | Optional AI helpers with a bring-your-own key (needs owner decision #4) | L |
+| 8 | Integrated terminal (largest attack-surface addition; needs owner decision #9) | L |
+| 9 | Optional AI helpers with a bring-your-own key (needs owner decision #4) | L |
 
 **Small gaps inside rows that are marked ✅ or 🟡**
 
@@ -64,7 +63,6 @@ matrix. Tiers follow the comparison's build order; the size is a rough estimate.
   languages beyond the built-in list.
 - Graph: reorderable and toggleable columns; filtering the graph itself by author; highlighting a
   branch's commits on hover; real ghost branches (today a guess from the row above).
-- Repositories: tab aliases, favorites and per-profile tab sets.
 - Commits: a conventional-commit helper; a "squash selected commits" shortcut and revert of a range
   (neither exists in the code).
 - Git features: Gitflow support branches and the bugfix kind; LFS locks; a worktree indicator in the
@@ -79,6 +77,11 @@ matrix. Tiers follow the comparison's build order; the size is a rough estimate.
 - Pull requests, issues and CI state against real GitHub and GitLab accounts (unit tests only).
 - Everything from the latest round (multi-pick, submodule add, Gitflow, the merge button, the 320,000-row
   scroll) ran on fixture repositories, not on a real project of yours.
+- Forking against the real GitHub and GitLab (a mock host and real git cover the requests, the answers and the
+  remotes it sets up).
+- Registering `perseus-app://` (the Settings button writes to the user's registry, and the installer's
+  registration needs an installer to be built and run): the link handling itself, including a second launch
+  handing a link to the running window, was exercised.
 - macOS and Linux were never run; they only compile and bundle in CI.
 
 **Owner-only**

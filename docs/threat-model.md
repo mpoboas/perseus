@@ -23,6 +23,8 @@ external review. It is not a substitute for one.
 - **Git hosts and OAuth providers**: trusted for what they are, but their responses are validated;
   rate limiting and ETags are respected.
 - **Other local processes**: only the loopback askpass server is reachable (see below).
+- **Links from outside** (`perseus-app://…` from a web page, a chat message or a script): untrusted input
+  that reaches the app without the user typing it.
 
 ## Entry points and mitigations
 
@@ -46,6 +48,9 @@ external review. It is not a substitute for one.
 | Syntax colours as an injection route | The highlighter (`lib/highlight.ts`) turns text into tokens that React renders as text inside spans; it never builds HTML, so file content cannot add elements or attributes |
 | Gitflow writing repository config | `git/flow.rs` writes only the `gitflow.*` keys (the ones `git flow init` uses) to the repository's own config, after validating every branch name and prefix, and only when the user sets Gitflow up; global configuration is never touched |
 | Adding a submodule from a hostile address | The address passes the same validation as clone and remote URLs (no `ext::`, no leading `-`, no control characters) and the folder must be a relative path inside the repository. Git's `file` transport is allowed for this one command only when the address is a folder the user typed, never for `.gitmodules` entries from a repository |
+| A hostile `perseus-app://` link | `links.rs` accepts exactly one form, `open?path=<absolute folder>[&commit=<hex>]`; anything else (other actions, relative or oversized paths, control characters, a malformed commit) is dropped. A link can only open a folder and select a commit: it never runs git, clones or changes a repository. A folder in the recent list opens as is; any other must be a git repository and first gets a yes from a native dialog that the webview cannot answer or suppress (one at a time, so a page cannot flood the user with prompts), and only then enters the recent list that `open_recent_repo` checks. The invariant that paths enter only through the native pickers now also covers this confirmed route. The webview gets no deep-link permission, and the single-instance hand-off only brings the window forward |
+| Fork writing remotes from a host's answer | The fork's address is read from the host's JSON answer, validated like any remote URL (no `ext::`, no leading `-`, no control characters) and used with `--`; names go through `validate::remote_name` and an existing remote is never overwritten. Names sent to the host are limited to the characters hosts allow. Local conditions (name taken, `upstream` already used) are checked before the host is asked, because a fork cannot be taken back from here |
+| Maintenance deleting history | Only fixed tasks exist (no free-form arguments from the webview). `gc` keeps git's two-week grace period for unreachable objects, so dropped stashes that undo may need survive (tested); there is no "prune now". Tasks run through the same cancellable runner as fetch and push |
 | Destructive operations by accident | A confirmation step with an explanation for anything that rewrites history or discards work; force push uses `--force-with-lease`; cancellation kills the whole process tree |
 
 ## Known residual risks

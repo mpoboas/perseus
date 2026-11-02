@@ -12,6 +12,7 @@ import {
   GitBranch,
   Archive,
   CircleDot,
+  GitFork,
   GitPullRequest,
   Plus,
   Search,
@@ -39,6 +40,8 @@ interface Props {
   ci: Record<string, CiState>;
   hostingError: string | null;
   onPrMenu: (pr: PullRequest, x: number, y: number) => void;
+  /** Opens the dialog that forks this repository on its host. */
+  onFork: () => void;
   onOpenIssue: (issue: Issue) => void;
   onStashMenu: (entry: StashEntry, x: number, y: number) => void;
   /** Submodules, worktrees and LFS, rendered below the stashes. */
@@ -78,7 +81,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{parts}</>;
 }
 
-export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, ci, hostingError, onPrMenu, onOpenIssue, onStashMenu, extras, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
+export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, ci, hostingError, onPrMenu, onFork, onOpenIssue, onStashMenu, extras, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -222,6 +225,11 @@ export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, c
                       </button>
                     </li>
                   ))}
+                  <li className="side-note">
+                    <button className="link-btn" onClick={onFork}>
+                      <GitFork size={12} /> Fork this repository…
+                    </button>
+                  </li>
                 </ul>
               )}
             </section>

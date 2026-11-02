@@ -29,10 +29,12 @@ import {
   Pin,
   Settings,
   FolderPlus,
+  Star,
 } from "lucide-react";
 import { ConflictButton } from "./ConflictButton";
 import type { ProfilesSnapshot, PullMode, RecentRepo, RefInfo, RepoInfo, RepoStatus } from "./ipc";
 import { undoName } from "./lib/format";
+import { repoLabel, splitRecents } from "./lib/repos";
 import type { ThemePref } from "./lib/theme";
 import { Avatar, Button, IconButton, MenuButton, type MenuItem, Shortcut, Tooltip } from "./ui";
 import { Picker } from "./ui/Picker";
@@ -50,6 +52,7 @@ interface Props {
   onToggleSidebar: () => void;
   onOpen: () => void;
   onOpenRecent: (path: string) => void;
+  onToggleFavorite: (path: string, favorite: boolean) => void;
   /** Switches to a branch (a remote one gets a tracking branch). */
   onCheckout: (r: RefInfo) => void;
   onFetch: () => void;
@@ -101,6 +104,8 @@ export function Toolbar(p: Props) {
 
   const [showAllRepos, setShowAllRepos] = useState(false);
   const recentRepos = p.recents.filter((r) => r.exists && r.path !== repo?.path);
+  const listed = repo ? p.recents.find((r) => r.path === repo.path) : undefined;
+  const repoName = repo ? (listed ? repoLabel(listed) : repo.name) : "Open a repository";
   const localBranches = p.refs.filter((r) => r.kind === "branch").sort((a, b) => a.name.localeCompare(b.name));
   // A remote branch with no local twin can still be switched to: git makes the tracking branch.
   const remoteOnly = p.refs.filter(
@@ -135,7 +140,7 @@ export function Toolbar(p: Props) {
         )}
         <Picker
           caption="repository"
-          value={repo ? repo.name : "Open a repository"}
+          value={repoName}
           ariaLabel="Switch repository"
           disabled={busy}
           placeholder="Search"
@@ -143,29 +148,54 @@ export function Toolbar(p: Props) {
         >
           {({ query, close }) => {
             const q = query.toLowerCase();
-            const all = recentRepos.filter((r) => !q || r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q));
-            const shown = q || showAllRepos ? all : all.slice(0, 8);
+            const matching = recentRepos.filter(
+              (r) => !q || r.name.toLowerCase().includes(q) || repoLabel(r).toLowerCase().includes(q) || r.path.toLowerCase().includes(q),
+            );
+            const { favorites, others } = splitRecents(matching);
+            const shown = q || showAllRepos ? others : others.slice(0, 8);
+            const row = (r: RecentRepo) => (
+              <div key={r.path} className="pk-row">
+                <button
+                  className="pk-item"
+                  title={r.alias ? `${r.name} — ${r.path}` : r.path}
+                  onClick={() => {
+                    close();
+                    p.onOpenRecent(r.path);
+                  }}
+                >
+                  <span className="pk-name">{repoLabel(r)}</span>
+                  {(q || showAllRepos) && <span className="pk-hint">{r.path.split(/[\\/]/).slice(-2, -1)[0]}</span>}
+                </button>
+                <button
+                  className={r.favorite ? "pk-star on" : "pk-star"}
+                  aria-label={r.favorite ? `Remove ${repoLabel(r)} from favorites` : `Add ${repoLabel(r)} to favorites`}
+                  aria-pressed={r.favorite}
+                  onClick={() => p.onToggleFavorite(r.path, !r.favorite)}
+                >
+                  <Star size={13} fill={r.favorite ? "currentColor" : "none"} />
+                </button>
+              </div>
+            );
             return (
               <>
+                {favorites.length > 0 && (
+                  <>
+                    <div className="pk-head">
+                      <Star size={13} />
+                      Favorites
+                    </div>
+                    {favorites.map(row)}
+                  </>
+                )}
                 <div className="pk-head">
                   <Clock size={13} />
                   Recently opened
                 </div>
-                {shown.map((r) => (
-                  <button
-                    key={r.path}
-                    className="pk-item"
-                    title={r.path}
-                    onClick={() => {
-                      close();
-                      p.onOpenRecent(r.path);
-                    }}
-                  >
-                    <span className="pk-name">{r.name}</span>
-                    {(q || showAllRepos) && <span className="pk-hint">{r.path.split(/[\\/]/).slice(-2, -1)[0]}</span>}
-                  </button>
-                ))}
-                {shown.length === 0 && <div className="pk-empty">{q ? "No repositories match" : "No other repositories yet"}</div>}
+                {shown.map(row)}
+                {shown.length === 0 && favorites.length === 0 && (
+                  <div className="pk-empty">{q ? "No repositories match" : "No other repositories yet"}</div>
+                )}
+                {shown.length === 0 && favorites.length > 0 && <div className="pk-empty">Nothing else yet</div>}
                 <div className="pk-foot">
                   {!q ? (
                     <button className="pk-link" onClick={() => setShowAllRepos((v) => !v)}>

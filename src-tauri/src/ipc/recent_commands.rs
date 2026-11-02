@@ -33,6 +33,26 @@ pub fn open_recent_repo(
     Ok(info)
 }
 
+/// Marks a repository from the list as a favorite (or not). Paths outside the list are refused.
+#[tauri::command]
+pub fn set_repo_favorite(
+    recents: State<'_, RecentStore>,
+    path: String,
+    favorite: bool,
+) -> Result<()> {
+    recents.set_favorite(&path, favorite)
+}
+
+/// Names a repository from the list for display; blank clears the name.
+#[tauri::command]
+pub fn set_repo_alias(
+    recents: State<'_, RecentStore>,
+    path: String,
+    alias: Option<String>,
+) -> Result<()> {
+    recents.set_alias(&path, alias.as_deref())
+}
+
 #[tauri::command]
 pub fn remove_recent_repo(recents: State<'_, RecentStore>, path: String) -> Result<()> {
     recents.remove(&path)

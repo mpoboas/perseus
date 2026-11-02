@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-links-registered"
+description = "Enables the links_registered command without any pre-configured scope."
+commands.allow = ["links_registered"]
+
+[[permission]]
+identifier = "deny-links-registered"
+description = "Denies the links_registered command without any pre-configured scope."
+commands.deny = ["links_registered"]
