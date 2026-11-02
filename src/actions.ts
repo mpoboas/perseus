@@ -187,7 +187,7 @@ export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
   });
   out.push({
     id: "copy",
-    title: "Copy commit id",
+    title: "Copy commit sha",
     description: "",
     confirmLabel: "Copy",
     immediate: true,
@@ -299,6 +299,16 @@ export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
       nameLabel: "Tag name",
       namePlaceholder: "v1.0.0",
       run: { type: "action", action: (n) => ({ action: "tag_create", name: n, target: oid }) },
+    });
+    out.push({
+      id: "new-annotated-tag",
+      title: "Create annotated tag here…",
+      description: `Adds an annotated tag at ${here}: it records who tagged it and when, with the tag name as its message.`,
+      confirmLabel: "Create tag",
+      needsName: true,
+      nameLabel: "Tag name",
+      namePlaceholder: "v1.0.0",
+      run: { type: "action", action: (n) => ({ action: "tag_create", name: n, target: oid, message: n }) },
     });
   }
 

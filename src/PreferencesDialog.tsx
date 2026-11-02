@@ -9,7 +9,13 @@ export const LARGE_FILE_DEFAULT = 50;
 
 const clock = (seconds: number) => new Date(seconds * 1000).toLocaleTimeString([], { hour12: false });
 
-export function PreferencesDialog({ onClose }: { onClose: () => void }) {
+interface Props {
+  dateStyle: "absolute" | "relative";
+  onDateStyle: (s: "absolute" | "relative") => void;
+  onClose: () => void;
+}
+
+export function PreferencesDialog({ dateStyle, onDateStyle, onClose }: Props) {
   const [megabytes, setMegabytes] = usePref<number>(LARGE_FILE_KEY, LARGE_FILE_DEFAULT);
   const [reads, setReads] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -31,6 +37,22 @@ export function PreferencesDialog({ onClose }: { onClose: () => void }) {
       }
     >
       <div className="dialog-body prefs">
+        <section>
+          <h3>Graph</h3>
+          <label className="check-row">
+            Show commit dates as
+            <select
+              className="input prefs-select"
+              aria-label="Date format in the graph"
+              value={dateStyle}
+              onChange={(e) => onDateStyle(e.target.value as "absolute" | "relative")}
+            >
+              <option value="absolute">a date and time (07/10/2026 @ 14:37)</option>
+              <option value="relative">how long ago (26d ago)</option>
+            </select>
+          </label>
+        </section>
+
         <section>
           <h3>Large files</h3>
           <label className="check-row">

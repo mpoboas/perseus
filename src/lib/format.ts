@@ -14,6 +14,14 @@ export function relativeTime(seconds: number, now = Date.now()): string {
   });
 }
 
+/** `07/10/2026 @ 14:37` in the user's own date order; the 24-hour clock keeps it short. */
+export function absoluteTime(seconds: number): string {
+  const d = new Date(seconds * 1000);
+  const day = d.toLocaleDateString(undefined, { day: "2-digit", month: "2-digit", year: "numeric" });
+  const time = d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day} @ ${time}`;
+}
+
 /** "Ada Lovelace" → "AL", "grace" → "G". Always uppercase, at most two letters. */
 export function initials(name: string): string {
   const words = name

@@ -71,7 +71,7 @@ describe("Perseus", () => {
     await page.locator('[role="tab"]', { hasText: "Changes" }).locator(".badge").waitFor({ timeout: 8000 });
     await page.getByRole("button", { name: "Stash changes…" }).click();
     await page.getByLabel("Message (optional)").fill("e2e stash");
-    await page.getByRole("button", { name: "Stash", exact: true }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Stash", exact: true }).click();
     await page.getByText("Changes stashed").waitFor();
     assert.equal(git(repo, "status", "--porcelain").trim(), "", "the working tree is clean again");
     await page.getByRole("button", { name: /Stashes/ }).waitFor();

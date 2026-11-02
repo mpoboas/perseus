@@ -5,7 +5,7 @@
  * first commit; `offset` (0 or 1) is how many such rows precede the commits.
  */
 
-export const ROW_H = 32;
+export const ROW_H = 28;
 export const DRAG_THRESHOLD_PX = 5;
 
 /** A ref chip as painted on a row (x is relative to the canvas, w is its width). */

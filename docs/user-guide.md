@@ -5,7 +5,8 @@
 1. **Open a repository** (`Ctrl+O`), **clone** one, or **create** a new one from the welcome screen
    or the command palette. Repositories you opened before are listed on the welcome screen and
    stay open as tabs.
-2. The **graph** in the middle shows the history, the **sidebar** on the left lists branches, tags,
+2. The **graph** in the middle shows the history (branch and tag labels in their own column on the left,
+   an avatar on every commit, small rings for merges), the **sidebar** on the left lists branches, tags,
    remotes, stashes and (when the repository has them) pull requests, submodules, worktrees and LFS
    patterns, and the **right panel** shows the selected commit or your working changes.
 3. Press **`Ctrl+K`** at any time for the command palette: every action, every branch, every profile.
@@ -24,6 +25,7 @@
 
 ## Branches, merging and history editing
 
+- The toolbar has **Fetch, Pull, Push, Branch, Stash and Pop** (Pop applies the newest stash and removes it).
 - Double-click a branch to check it out; right-click for more (merge, rebase, rename, delete,
   hide from graph, show alone, open in a new worktree, create a pull request).
 - **Drag** a branch or commit onto another to merge, rebase or cherry-pick. A dialog explains the
@@ -79,8 +81,8 @@ open it in the browser or merge it; use the branch menu to create one.
 
 ## Preferences and the activity log
 
-The gear in the toolbar (or *Preferences and activity log…* in the palette) holds the large-file
-threshold and the **activity log**: every git command Perseus ran, with timing and the first line of
+The gear in the toolbar (or *Preferences and activity log…* in the palette) holds how the graph shows
+dates (`07/10/2026 @ 14:37` or `26d ago`), the large-file threshold and the **activity log**: every git command Perseus ran, with timing and the first line of
 any error. Passwords embedded in URLs are replaced by `***`. The log lives in memory only.
 
 Themes (light, dark, follow system) are in the toolbar and the palette.

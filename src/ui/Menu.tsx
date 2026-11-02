@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { createPortal } from "react-dom";
-import { Check } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { Shortcut } from "./bits";
 
 type IconType = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
@@ -24,6 +24,8 @@ export type MenuItem =
       checked?: boolean;
       /** Small dimmed text after the label. */
       hint?: string;
+      /** Entries of a flyout that opens beside this one; picking this item itself does nothing. */
+      submenu?: MenuItem[];
     }
   | { id: string; separator: true }
   | { id: string; section: string };
@@ -46,6 +48,8 @@ interface MenuProps {
 export function Menu({ x, y, items, onPick, onClose, alignRight, minWidth = 200 }: MenuProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ left: x, top: y });
+  const [openSub, setOpenSub] = useState<string | null>(null);
+  const viaKeyboard = useRef(false);
 
   useLayoutEffect(() => {
     const el = ref.current;
@@ -97,36 +101,98 @@ export function Menu({ x, y, items, onPick, onClose, alignRight, minWidth = 200 
     };
   }, [onClose]);
 
+  const renderItem = (item: MenuItem, sub: boolean) => {
+    if ("separator" in item) return <div key={item.id} className="menu-sep" role="separator" />;
+    if ("section" in item)
+      return (
+        <div key={item.id} className="menu-section">
+          {item.section}
+        </div>
+      );
+    if (!isAction(item)) return null;
+    const Icon = item.icon;
+    const className = item.danger ? "menu-item danger" : "menu-item";
+    const body = (
+      <>
+        <span className="menu-icon">{item.checked ? <Check size={14} /> : Icon && <Icon size={14} />}</span>
+        <span className="menu-label">{item.label}</span>
+        {item.hint && <span className="menu-hint">{item.hint}</span>}
+        {item.shortcut && <Shortcut keys={item.shortcut} />}
+      </>
+    );
+    if (item.submenu && !sub) {
+      const open = openSub === item.id;
+      return (
+        <div
+          key={item.id}
+          className="menu-host"
+          onMouseEnter={() => setOpenSub(item.id)}
+          onMouseLeave={() => setOpenSub((cur) => (cur === item.id ? null : cur))}
+        >
+          <button
+            role="menuitem"
+            aria-haspopup="menu"
+            aria-expanded={open}
+            disabled={item.disabled}
+            className={className}
+            onClick={() => setOpenSub(item.id)}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowRight" || e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                viaKeyboard.current = true;
+                setOpenSub(item.id);
+              }
+            }}
+          >
+            {body}
+            <ChevronRight size={14} className="menu-chevron" />
+          </button>
+          {open && (
+            <div
+              className="menu menu-sub"
+              role="menu"
+              onKeyDown={(e) => {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  setOpenSub(null);
+                  e.currentTarget.parentElement?.querySelector<HTMLButtonElement>("button")?.focus();
+                }
+              }}
+              ref={(el) => {
+                if (!el) return;
+                // Flip to the left when there is no room on the right.
+                const host = el.parentElement!.getBoundingClientRect();
+                el.classList.toggle("flip", host.right + el.offsetWidth > window.innerWidth - 6);
+                if (viaKeyboard.current) {
+                  viaKeyboard.current = false;
+                  el.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+                }
+              }}
+            >
+              {item.submenu.map((child) => renderItem(child, true))}
+            </div>
+          )}
+        </div>
+      );
+    }
+    return (
+      <button
+        key={item.id}
+        role={item.checked === undefined ? "menuitem" : "menuitemradio"}
+        aria-checked={item.checked}
+        disabled={item.disabled}
+        className={className}
+        onClick={() => onPick(item.id)}
+      >
+        {body}
+      </button>
+    );
+  };
+
   return createPortal(
     <div ref={ref} className="menu" role="menu" style={{ ...pos, minWidth }}>
-      {items.map((item) => {
-        if ("separator" in item) return <div key={item.id} className="menu-sep" role="separator" />;
-        if ("section" in item)
-          return (
-            <div key={item.id} className="menu-section">
-              {item.section}
-            </div>
-          );
-        if (!isAction(item)) return null;
-        const Icon = item.icon;
-        return (
-          <button
-            key={item.id}
-            role={item.checked === undefined ? "menuitem" : "menuitemradio"}
-            aria-checked={item.checked}
-            disabled={item.disabled}
-            className={item.danger ? "menu-item danger" : "menu-item"}
-            onClick={() => onPick(item.id)}
-          >
-            <span className="menu-icon">
-              {item.checked ? <Check size={14} /> : Icon && <Icon size={14} />}
-            </span>
-            <span className="menu-label">{item.label}</span>
-            {item.hint && <span className="menu-hint">{item.hint}</span>}
-            {item.shortcut && <Shortcut keys={item.shortcut} />}
-          </button>
-        );
-      })}
+      {items.map((item) => renderItem(item, false))}
     </div>,
     document.body,
   );

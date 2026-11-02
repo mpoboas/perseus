@@ -53,7 +53,7 @@ was tested, not that it matches GitKraken's polish.
 | Ghost branches (show a commit's containing branch) | Free | ❌ |
 | Hover highlight of a branch's commits | Free | ❌ (row hover and selection only) |
 | Hover tooltip with commit details | Free | ✅ |
-| Configurable columns (author, date, sha), resize/reorder, saved per repo | Free | 🟡 resizable columns, saved; not reorderable or toggleable |
+| Configurable columns (author, date, sha), resize/reorder, saved per repo | Free | 🟡 branch/tag, author and date columns resize and are saved; not reorderable or toggleable. Same layout as GitKraken: refs left of the graph, avatar nodes |
 | Filter by author / team | Free | 🟡 author filter in search; the graph itself is not filtered |
 | Hide and solo branches/tags/remotes | Free | ✅ remembered per repository |
 | Search commits by message, sha, author | Free | ✅ message, author, date range, path |
@@ -183,7 +183,7 @@ was tested, not that it matches GitKraken's polish.
 | Customizable keyboard shortcuts | Free | ❌ fixed; `?` lists them |
 | Themes, UI zoom, preferences screens | Free | 🟡 light / dark / follow system; one preference (large-file limit); no zoom |
 | Integrated terminal | Public repos free | ❌ |
-| Right-click context menus | Free | ✅ graph, sidebar, files |
+| Right-click context menus | Free | ✅ graph, sidebar, files; commit and branch menus follow GitKraken's grouping, with a Reset flyout |
 | Hover/drag feedback and confirm dialogs | Free | ✅ |
 | Installers and auto-update | Free | 🟡 CI builds unsigned installers (NSIS, dmg, AppImage, deb); no signing, no auto-update |
 

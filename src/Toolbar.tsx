@@ -3,6 +3,8 @@ import {
   ArrowDownToLine,
   ArrowUp,
   ArrowUpFromLine,
+  ArchiveRestore,
+  GitBranchPlus,
   ChevronDown,
   CircleHelp,
   FolderOpen,
@@ -52,6 +54,10 @@ interface Props {
   onPushVariant: (v: "force" | "tags") => void;
   onRemotes: () => void;
   onStash: () => void;
+  onNewBranch: () => void;
+  /** Applies the newest stash and removes it. */
+  onPop: () => void;
+  stashCount: number;
   onClone: () => void;
   onInit: () => void;
   onSearch: () => void;
@@ -234,6 +240,23 @@ export function Toolbar(p: Props) {
               )}
             />
           </div>
+          <div className="tb-sep" aria-hidden="true" />
+          <Tooltip label="Create a branch here">
+            <Button icon={GitBranchPlus} disabled={busy} onClick={p.onNewBranch}>
+              Branch
+            </Button>
+          </Tooltip>
+          <Tooltip label="Stash your changes">
+            <Button icon={Archive} disabled={busy || !status?.entries.length} onClick={p.onStash}>
+              Stash
+            </Button>
+          </Tooltip>
+          <Tooltip label={p.stashCount > 0 ? "Apply the newest stash and remove it" : "No stashes to pop"}>
+            <Button icon={ArchiveRestore} disabled={busy || p.stashCount === 0} onClick={p.onPop}>
+              Pop
+              {p.stashCount > 0 && <span className="count-pill">{p.stashCount}</span>}
+            </Button>
+          </Tooltip>
           {p.loading && (
             <Button variant="ghost" icon={X} onClick={p.onCancelLoad}>
               Stop loading

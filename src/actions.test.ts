@@ -93,6 +93,7 @@ describe("menuActions", () => {
       "delete-branch",
       "force-delete-branch",
       "new-tag",
+      "new-annotated-tag",
       "interactive-rebase",
       "reset-soft",
       "reset-mixed",
@@ -121,6 +122,7 @@ describe("menuActions", () => {
       "rename-branch",
       "create-pr",
       "new-tag",
+      "new-annotated-tag",
       "revert",
       "new-branch",
       "copy",
@@ -133,6 +135,7 @@ describe("menuActions", () => {
       "cherry-pick",
       "rebase",
       "new-tag",
+      "new-annotated-tag",
       "interactive-rebase",
       "reset-soft",
       "reset-mixed",
@@ -144,6 +147,7 @@ describe("menuActions", () => {
     expect(menuActions(headCommit, head).map((a) => a.id)).toEqual([
       "checkout",
       "new-tag",
+      "new-annotated-tag",
       "revert",
       "new-branch",
       "copy",
@@ -169,6 +173,7 @@ describe("menuActions", () => {
       "delete-branch",
       "force-delete-branch",
       "new-tag",
+      "new-annotated-tag",
       "revert",
       "new-branch",
       "copy",
@@ -217,6 +222,7 @@ describe("branch, tag, reset and revert entries", () => {
     const ids = menuActions(tag, head).map((a) => a.id);
     expect(ids).toEqual(expect.arrayContaining(["push-tag", "delete-tag", "delete-remote-tag"]));
     expect(ids).not.toContain("new-tag");
+    expect(ids).not.toContain("new-annotated-tag");
     expect(run(tag, "delete-remote-tag")).toEqual({ action: "tag_delete_remote", name: "v1" });
   });
 
@@ -237,5 +243,15 @@ describe("branch, tag, reset and revert entries", () => {
     const merge: Endpoint = { type: "commit", oid: B, summary: "Merge x", parents: 2 };
     expect(run(merge, "revert")).toEqual({ action: "revert", oid: B, mainline: 1 });
     expect(run(otherCommit, "revert")).toEqual({ action: "revert", oid: B, mainline: null });
+  });
+});
+
+describe("annotated tags", () => {
+  it("carry the tag name as their message", () => {
+    const a = menuActions({ type: "commit", oid: "b".repeat(40), summary: "x" }, { branch: "main", oid: "a".repeat(40) }).find(
+      (x) => x.id === "new-annotated-tag",
+    );
+    const act = a?.run.type === "action" && typeof a.run.action === "function" ? a.run.action("v3") : null;
+    expect(act).toEqual({ action: "tag_create", name: "v3", target: "b".repeat(40), message: "v3" });
   });
 });

@@ -136,6 +136,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { Toolbar } from "./Toolbar";
+import { layoutMenu } from "./menuLayout";
 import { Badge, Menu, type MenuItem, Splitter, useToast } from "./ui";
 import { Welcome } from "./Welcome";
 
@@ -209,7 +210,9 @@ function App() {
   const [rightW, setRightW] = usePref("layout.rightW", 380);
   const [diffH, setDiffH] = usePref("layout.diffH", 320);
   const [authorW, setAuthorW] = usePref("layout.authorW", 170);
-  const [dateW, setDateW] = usePref("layout.dateW", 96);
+  const [dateW, setDateW] = usePref("layout.dateW", 150);
+  const [refsW, setRefsW] = usePref("layout.refsW", 190);
+  const [dateStyle, setDateStyle] = usePref<"absolute" | "relative">("layout.dateStyle", "absolute");
 
   // Rows live outside React state: chunks of 500 would otherwise trigger a re-render each.
   const store = useRef(new CommitStore());
@@ -601,13 +604,53 @@ function App() {
     else if (reason) toast.info(reason);
   };
 
+  /** Where this commit or branch lives on the host (GitHub or GitLab), or null without one. */
+  const webLink = (kind: "commit" | "branch", value: string): string | null => {
+    if (!hosting) return null;
+    const base = hosting.web_url.replace(/\/$/, "");
+    const dash = hosting.kind === "git_lab" ? "/-" : "";
+    return kind === "commit" ? `${base}${dash}/commit/${value}` : `${base}${dash}/tree/${value}`;
+  };
+
+  /** Menu entries that need app state (sync, copy, export), shared by the graph and sidebar menus. */
+  const appActions = (e: Endpoint): GraphAction[] => {
+    const out: GraphAction[] = [];
+    const plain = (id: string, title: string, run: GraphAction["run"]): GraphAction => ({
+      id,
+      title,
+      description: "",
+      confirmLabel: title,
+      immediate: true,
+      run,
+    });
+    const ui = (fn: () => void) => ({ type: "ui" as const, run: fn });
+    if (e.type === "ref" && e.kind === "branch" && e.isHead) {
+      if (status?.upstream) out.push(plain("pull-head", "Pull (fast-forward if possible)", { type: "git", op: { op: "pull", mode: pullMode } }));
+      out.push(plain("push-head", status?.upstream ? "Push" : "Publish (set upstream)", { type: "git", op: { op: "push", set_upstream: !status?.upstream } }));
+    }
+    if (e.type === "ref" && e.kind !== "tag") {
+      const name = e.kind === "remote" ? e.name.split("/").slice(1).join("/") : e.name;
+      out.push(plain("copy-branch", "Copy branch name", { type: "copy", text: e.name }));
+      const branchUrl = e.kind === "branch" ? webLink("branch", name) : null;
+      if (branchUrl) out.push(plain("copy-link-branch", `Copy link to branch: ${e.name}`, { type: "copy", text: branchUrl }));
+    }
+    const commitUrl = webLink("commit", e.oid);
+    if (commitUrl) out.push(plain("copy-link", `Copy link to this commit on ${hosting?.host}`, { type: "copy", text: commitUrl }));
+    out.push(plain("patch", "Create patch from commit", ui(() => void doExportPatch({ source: "commit", oid: e.oid }))));
+    return out;
+  };
+
   const onMenu = (subject: Subject, x: number, y: number) => {
     const e = endpointFor(subject);
     if (!e || busy) return;
     setMenu({
       x,
       y,
-      actions: [...menuActions(e, currentHead()), ...(e.type === "ref" ? filterActions(e.name) : [])].filter(
+      actions: [
+        ...menuActions(e, currentHead()),
+        ...appActions(e),
+        ...(e.type === "ref" ? filterActions(e.name) : []),
+      ].filter(
         (a) => a.id !== "create-pr" || hosting,
       ),
     });
@@ -990,6 +1033,7 @@ function App() {
       y,
       actions: [
         ...menuActions(e, currentHead()),
+        ...appActions(e),
         ...(ref.kind === "branch" && !ref.is_head
           ? [
               {
@@ -1431,8 +1475,7 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [repo, status, refs, profiles, recents, sidebarOpen, busy, cancellable]);
 
-  const menuItems = (actions: GraphAction[]): MenuItem[] =>
-    actions.map((a) => ({ id: a.id, label: a.title, danger: a.danger }));
+  const menuItems = (actions: GraphAction[]): MenuItem[] => layoutMenu(actions, status?.branch ?? null);
 
   const changeCount = status?.entries.length ?? 0;
   const publish = !!status?.branch && !status.upstream;
@@ -1506,6 +1549,11 @@ function App() {
         onTheme={setTheme}
         onShortcuts={() => setShortcutsOpen(true)}
         onPreferences={() => setPrefsOpen(true)}
+        onNewBranch={() => setNewBranchOpen(true)}
+        onPop={() =>
+          void doAction("Popping the stash…", { action: "stash_pop", index: 0 }, { done: "Stash applied and removed", fail: "Could not pop the stash" })
+        }
+        stashCount={stashes.length}
       />
 
       {tabs.length > 0 && repo && (
@@ -1617,6 +1665,9 @@ function App() {
                 headRow={headRow}
                 headBranch={status?.branch ?? null}
                 refKinds={refKinds}
+                refsW={refsW}
+                dateStyle={dateStyle}
+                onResizeRefs={setRefsW}
                 authorW={authorW}
                 dateW={dateW}
                 onResizeAuthor={setAuthorW}
@@ -1771,7 +1822,7 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {prefsOpen && <PreferencesDialog onClose={() => setPrefsOpen(false)} />}
+      {prefsOpen && <PreferencesDialog dateStyle={dateStyle} onDateStyle={setDateStyle} onClose={() => setPrefsOpen(false)} />}
       {stashOpen && status && (
         <StashDialog
           changed={status.entries.length}

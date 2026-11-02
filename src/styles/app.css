@@ -583,6 +583,12 @@ mark {
   overflow: hidden;
   white-space: nowrap;
 }
+.gh-refs .splitter {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+}
 .gh-grow {
   flex: 1;
   padding-left: 6px;
@@ -628,7 +634,7 @@ mark {
   display: flex;
   align-items: center;
   gap: 18px;
-  height: 32px;
+  height: 28px;
   padding: 0 16px;
 }
 .drop-target {
@@ -2170,4 +2176,15 @@ mark {
   gap: 8px;
   align-items: baseline;
   flex-wrap: wrap;
+}
+
+.tb-sep {
+  align-self: stretch;
+  width: 1px;
+  margin: 6px 4px;
+  background: var(--border);
+}
+.prefs-select {
+  margin-left: 8px;
+  max-width: 320px;
 }

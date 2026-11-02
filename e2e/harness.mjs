@@ -108,6 +108,6 @@ export async function launch({ recents = [], port = 9444 } = {}) {
 /** Center of display row `i` of the graph (row 0 is the working-tree row when `wip` is set). */
 export async function rowPoint(page, i) {
   const box = await page.locator(".graph-scroller").boundingBox();
-  const ROW_H = 32;
+  const ROW_H = 28;
   return { x: box.x + 400, y: box.y + i * ROW_H + ROW_H / 2 };
 }

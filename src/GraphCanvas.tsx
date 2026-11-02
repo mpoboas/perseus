@@ -11,21 +11,23 @@ import {
   subjectAt,
 } from "./graphLayout";
 import type { RefInfo } from "./ipc";
-import { avatarColor, initials, relativeTime } from "./lib/format";
+import { absoluteTime, avatarColor, initials, relativeTime } from "./lib/format";
 import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
 
-const LANE_W = 16;
+const LANE_W = 22;
 const PAD = 12;
-const MAX_GRAPH_LANES = 14;
+const MAX_GRAPH_LANES = 12;
+/** Merge commits are small hollow rings; every other commit is an avatar disc. */
 const NODE_R = 5;
-const CHIP_H = 20;
-const AVATAR_D = 20;
+const AVATAR_R = 9;
+const CHIP_H = 18;
+const AVATAR_D = 18;
+/** Gap kept between the ref column's text and its edge. */
+const REF_PAD = 8;
 const TOOLTIP_DELAY_MS = 450;
 const EDGE_SCROLL_ZONE = 28;
 const EDGE_SCROLL_STEP = 14;
 const LANE_COUNT = 10;
-
-const laneX = (lane: number) => PAD + lane * LANE_W + LANE_W / 2;
 
 /** Colors the canvas needs, read from the CSS tokens so the graph follows the theme. */
 interface Palette {
@@ -114,8 +116,12 @@ interface Props {
   headRow: number | null;
   headBranch: string | null;
   refKinds: ReadonlyMap<string, RefInfo["kind"]>;
+  refsW: number;
   authorW: number;
   dateW: number;
+  /** "absolute" shows 07/10/2026 @ 14:37, "relative" shows 26d ago. */
+  dateStyle: "absolute" | "relative";
+  onResizeRefs: (w: number) => void;
   onResizeAuthor: (w: number) => void;
   onResizeDate: (w: number) => void;
 }
@@ -148,8 +154,11 @@ export function GraphCanvas({
   headRow,
   headBranch,
   refKinds,
+  refsW,
   authorW,
   dateW,
+  dateStyle,
+  onResizeRefs,
   onResizeAuthor,
   onResizeDate,
 }: Props) {
@@ -165,8 +174,8 @@ export function GraphCanvas({
 
   const offset = wip ? 1 : 0;
   // Everything the draw loop needs, kept in a ref so `draw` stays stable between renders.
-  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, offset });
-  latest.current = { count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, offset };
+  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, offset });
+  latest.current = { count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, offset };
 
   /** Where each visible commit's ref chips were painted, for hit-testing. */
   const badges = useRef(new Map<number, Badge[]>());
@@ -202,6 +211,9 @@ export function GraphCanvas({
       latest.current;
     const authW = latest.current.authorW;
     const datW = latest.current.dateW;
+    const base = latest.current.refsW;
+    const absolute = latest.current.dateStyle === "absolute";
+    const laneX = (ln: number) => base + PAD + ln * LANE_W + LANE_W / 2;
     const top = sc.scrollTop;
     const total = n + off;
     const firstDisplay = Math.max(0, Math.floor(top / ROW_H));
@@ -227,13 +239,24 @@ export function GraphCanvas({
     // Column dividers.
     const authorX = w - datW - authW;
     ctx.fillStyle = pal.border;
+    ctx.fillRect(Math.round(base) - 0.5, 0, 1, h);
     ctx.fillRect(Math.round(authorX) - 0.5, 0, 1, h);
     ctx.fillRect(Math.round(w - datW) - 0.5, 0, 1, h);
 
-    // Pass 2: edges and nodes, clipped to the graph column.
+    // Where each visible row's ref chips sit in the left column; drawn in pass 3, but the
+    // connector from the last chip to the node is part of the graph and is drawn here.
+    ctx.font = `600 11px ${pal.font}`;
+    const chipLayouts = new Map<number, ChipLayout>();
+    for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
+      const row = store.rows[d - off];
+      if (!row || row.refs.length === 0) continue;
+      chipLayouts.set(d, layoutChips(ctx, chipsFor(row.refs, headName, kinds), base - REF_PAD * 2));
+    }
+
+    // Pass 2: edges and nodes, clipped to the refs and graph columns.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, gW, h);
+    ctx.rect(0, 0, base + gW, h);
     ctx.clip();
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
@@ -251,7 +274,7 @@ export function GraphCanvas({
       ctx.setLineDash([]);
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.arc(x, cy, NODE_R, 0, Math.PI * 2);
+      ctx.arc(x, cy, AVATAR_R - 1, 0, Math.PI * 2);
       ctx.fillStyle = pal.bg;
       ctx.fill();
       ctx.setLineDash([2.5, 2.5]);
@@ -283,10 +306,23 @@ export function GraphCanvas({
         line(ctx, nx, cy, laneX(ln), y + ROW_H);
       }
 
+      // A line from the ref chips to the node ties the label to its commit.
+      const layout = chipLayouts.get(d);
+      if (layout && layout.items.length > 0) {
+        ctx.strokeStyle = lane(g.color);
+        ctx.globalAlpha = 0.55;
+        ctx.lineWidth = 1.5;
+        line(ctx, REF_PAD + layout.end + 3, cy, nx, cy);
+        ctx.globalAlpha = 1;
+        ctx.lineWidth = 2;
+      }
+
+      const merge = row.parents.length > 1;
+      const radius = merge ? NODE_R : AVATAR_R;
       const isHead = r === headIdx;
       if (isHead) {
         ctx.beginPath();
-        ctx.arc(nx, cy, NODE_R + 3.5, 0, Math.PI * 2);
+        ctx.arc(nx, cy, radius + 4, 0, Math.PI * 2);
         ctx.strokeStyle = pal.head;
         ctx.lineWidth = 1.5;
         ctx.stroke();
@@ -294,20 +330,29 @@ export function GraphCanvas({
       }
       // A background-colored halo separates the node from the lines running through it.
       ctx.beginPath();
-      ctx.arc(nx, cy, NODE_R + 1.5, 0, Math.PI * 2);
+      ctx.arc(nx, cy, radius + 1.5, 0, Math.PI * 2);
       ctx.fillStyle = pal.bg;
       ctx.fill();
-      ctx.beginPath();
-      ctx.arc(nx, cy, NODE_R, 0, Math.PI * 2);
-      if (row.parents.length > 1) {
-        // Merge commits are hollow rings.
+      if (merge) {
+        ctx.beginPath();
+        ctx.arc(nx, cy, NODE_R, 0, Math.PI * 2);
         ctx.strokeStyle = lane(g.color);
         ctx.lineWidth = 2.25;
         ctx.stroke();
         ctx.lineWidth = 2;
       } else {
-        ctx.fillStyle = lane(g.color);
+        ctx.beginPath();
+        ctx.arc(nx, cy, radius, 0, Math.PI * 2);
+        ctx.fillStyle = avatarColor(row.author);
         ctx.fill();
+        ctx.strokeStyle = lane(g.color);
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.font = `700 8px ${pal.font}`;
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(initials(row.author), nx, cy + 0.5);
       }
     }
     ctx.restore();
@@ -315,7 +360,7 @@ export function GraphCanvas({
     // Pass 3: text columns. Right-aligned ones first so the message can fill what remains.
     ctx.textBaseline = "middle";
     const messageRight = authorX - 10;
-    const messageLeft = gW + 6;
+    const messageLeft = base + gW + 6;
     const clipped = (x: number, width: number, d: number, fn: () => void) => {
       ctx.save();
       ctx.beginPath();
@@ -361,7 +406,8 @@ export function GraphCanvas({
       ctx.font = `12px ${pal.font}`;
       ctx.fillStyle = pal.faint;
       ctx.textAlign = "right";
-      clipped(w - datW, datW, d, () => ctx.fillText(relativeTime(row.time, now), w - 12, cy));
+      const stamp = absolute ? absoluteTime(row.time) : relativeTime(row.time, now);
+      clipped(w - datW, datW, d, () => ctx.fillText(stamp, w - 12, cy));
 
       // Author: avatar + name
       ctx.textAlign = "left";
@@ -379,57 +425,50 @@ export function GraphCanvas({
       const nameX = authorX + 12 + AVATAR_D + 7;
       clipped(nameX, w - datW - nameX - 6, d, () => ctx.fillText(row.author, nameX, cy));
 
-      // Ref chips, then the message.
-      let x = messageLeft;
+      // Ref chips live in their own column on the left.
+      const layout = chipLayouts.get(d);
       const rowBadges: Badge[] = [];
-      const chips = chipsFor(row.refs, headName, kinds);
-      const limit = messageLeft + (messageRight - messageLeft) * 0.6;
-      ctx.font = `600 11.5px ${pal.font}`;
-      let shown = 0;
-      for (const chip of chips) {
-        const tw = ctx.measureText(chip.label).width;
-        const cw = tw + 14;
-        if (x + cw > limit && shown > 0) break;
-        const color =
-          chip.kind === "head" ? pal.head
-          : chip.kind === "remote" ? pal.remote
-          : chip.kind === "tag" ? pal.tag
-          : pal.branch;
-        ctx.beginPath();
-        ctx.roundRect(x, cy - CHIP_H / 2, cw, CHIP_H, 6);
-        if (chip.kind === "remote" || chip.kind === "tag") {
-          ctx.globalAlpha = 0.18;
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.globalAlpha = 1;
-          ctx.strokeStyle = color;
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          ctx.fillStyle = color;
-        } else {
-          ctx.fillStyle = color;
-          ctx.fill();
-          ctx.fillStyle = pal.onChip;
+      if (layout) {
+        ctx.font = `600 11px ${pal.font}`;
+        for (const it of layout.items) {
+          const color =
+            it.chip.kind === "head" ? pal.head
+            : it.chip.kind === "remote" ? pal.remote
+            : it.chip.kind === "tag" ? pal.tag
+            : pal.branch;
+          const x = REF_PAD + it.x;
+          ctx.beginPath();
+          ctx.roundRect(x, cy - CHIP_H / 2, it.w, CHIP_H, 5);
+          if (it.chip.kind === "remote" || it.chip.kind === "tag") {
+            ctx.globalAlpha = 0.18;
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.fillStyle = color;
+          } else {
+            ctx.fillStyle = color;
+            ctx.fill();
+            ctx.fillStyle = pal.onChip;
+          }
+          ctx.textAlign = "left";
+          ctx.fillText(it.label, x + 6, cy + 0.5);
+          rowBadges.push({ ref: it.chip.ref, x, w: it.w });
         }
-        ctx.textAlign = "left";
-        ctx.fillText(chip.label, x + 7, cy + 0.5);
-        rowBadges.push({ ref: chip.ref, x, w: cw });
-        x += cw + 5;
-        shown++;
-      }
-      if (shown < chips.length) {
-        const more = `+${chips.length - shown}`;
-        ctx.fillStyle = pal.faint;
-        ctx.fillText(more, x + 2, cy + 0.5);
-        x += ctx.measureText(more).width + 8;
+        if (layout.more > 0) {
+          ctx.fillStyle = pal.faint;
+          ctx.textAlign = "left";
+          ctx.fillText(`+${layout.more}`, REF_PAD + layout.end + 6, cy + 0.5);
+        }
       }
       if (rowBadges.length) badges.current.set(r, rowBadges);
 
       ctx.font = `13px ${pal.font}`;
       ctx.fillStyle = row.parents.length > 1 ? pal.dim : pal.text;
       ctx.textAlign = "left";
-      const start = x + (rowBadges.length ? 2 : 0);
-      clipped(start, messageRight - start, d, () => ctx.fillText(row.summary, start, cy));
+      clipped(messageLeft, messageRight - messageLeft, d, () => ctx.fillText(row.summary, messageLeft, cy));
     }
   }, [store]);
 
@@ -474,7 +513,7 @@ export function GraphCanvas({
     setGraphW(PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W);
   }, [count, store]);
 
-  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, schedule]);
+  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, schedule]);
 
   // Keep the selected row visible (keyboard navigation).
   useEffect(() => {
@@ -640,6 +679,18 @@ export function GraphCanvas({
   return (
     <div className="graph-wrap">
       <div className="graph-header" style={{ paddingRight: scrollbarW }}>
+        <div className="gh-cell gh-refs" style={{ width: refsW }}>
+          Branch / tag
+          <Splitter
+            orientation="vertical"
+            label="Resize branch and tag column"
+            value={refsW}
+            min={120}
+            max={420}
+            reset={190}
+            onChange={onResizeRefs}
+          />
+        </div>
         <div className="gh-cell" style={{ width: graphW }}>
           Graph
         </div>
@@ -663,12 +714,12 @@ export function GraphCanvas({
             label="Resize date column"
             value={dateW}
             min={64}
-            max={200}
-            reset={96}
+            max={240}
+            reset={150}
             invert
             onChange={onResizeDate}
           />
-          Date
+          Date / time
         </div>
       </div>
 
@@ -778,4 +829,38 @@ function chipsFor(
   }
   const rank = { head: 0, branch: 1, remote: 2, tag: 3 } as const;
   return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
+}
+
+interface ChipLayout {
+  items: { chip: Chip; x: number; w: number; label: string }[];
+  /** Hidden chips that did not fit. */
+  more: number;
+  /** Right edge of the last chip (relative to the column's padding). */
+  end: number;
+}
+
+/**
+ * Lays chips out left to right inside `maxW`. The first chip is always shown, shortened with an
+ * ellipsis if it alone is too wide; the rest are dropped into a "+N" count.
+ */
+function layoutChips(ctx: CanvasRenderingContext2D, chips: Chip[], maxW: number): ChipLayout {
+  const items: ChipLayout["items"] = [];
+  let x = 0;
+  const reserve = 26;
+  for (const chip of chips) {
+    let label = chip.label;
+    let w = ctx.measureText(label).width + 12;
+    if (items.length === 0 && w > maxW - (chips.length > 1 ? reserve : 0)) {
+      const room = Math.max(24, maxW - (chips.length > 1 ? reserve : 0)) - 12;
+      while (label.length > 1 && ctx.measureText(`${label}…`).width > room) label = label.slice(0, -1);
+      label = `${label}…`;
+      w = ctx.measureText(label).width + 12;
+    }
+    const more = chips.length - items.length - 1;
+    if (items.length > 0 && x + w > maxW - (more > 0 ? reserve : 0)) break;
+    items.push({ chip, x, w, label });
+    x += w + 4;
+  }
+  const last = items[items.length - 1];
+  return { items, more: chips.length - items.length, end: last ? last.x + last.w : 0 };
 }
