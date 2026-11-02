@@ -552,16 +552,54 @@ fn check(status: ExitStatus, stderr: &[u8], stdout: &[u8], ok_codes: &[i32]) -> 
         return Ok(());
     }
     let text = String::from_utf8_lossy(if stderr.is_empty() { stdout } else { stderr });
-    let text = text.trim();
+    let text = failure_text(&text);
     let msg = if text.is_empty() {
         match status.code() {
             Some(c) => format!("git exited with status {c}"),
             None => "git was terminated".to_string(),
         }
     } else {
-        text.chars().take(MAX_ERROR_CHARS).collect()
+        text
     };
     Err(AppError::Git(msg))
+}
+
+/// True for the progress lines git prints while it works ("Writing objects:  45% (50/110)").
+fn is_progress(line: &str) -> bool {
+    let line = line.trim_start_matches("remote:").trim();
+    line.contains("% (")
+        || line.starts_with("Total ")
+        || line.starts_with("Delta compression using")
+        || line.starts_with("Enumerating objects")
+        || line.starts_with("Counting objects")
+}
+
+/// What to tell the user when git failed: its messages without the progress chatter (which with
+/// `--progress` can fill thousands of characters and push the actual reason out of view), the end
+/// of it if it is still long, and a hint for failures people cannot work out from git's wording.
+fn failure_text(raw: &str) -> String {
+    let mut lines: Vec<&str> = Vec::new();
+    for line in raw.split(['\r', '\n']) {
+        let line = line.trim_end();
+        if line.trim().is_empty() || is_progress(line) || lines.last() == Some(&line) {
+            continue;
+        }
+        lines.push(line);
+    }
+    let mut text = lines.join("\n");
+    let count = text.chars().count();
+    if count > MAX_ERROR_CHARS {
+        let tail: String = text.chars().skip(count - MAX_ERROR_CHARS).collect();
+        text = format!("…{tail}");
+    }
+    if text.contains("workflow") && text.contains("scope") {
+        text.push_str(
+            "\n\nHint: GitHub refuses to let this sign-in change files in .github/workflows. \
+             Sign in again with the `workflow` permission (a personal access token with the \
+             `workflow` scope, or a new login from Git Credential Manager), then push again.",
+        );
+    }
+    text
 }
 
 #[cfg(test)]
@@ -602,7 +640,52 @@ pub mod testutil {
 #[cfg(test)]
 mod tests {
     use super::testutil::*;
-    use super::{recent_commands, redact};
+    use super::{MAX_ERROR_CHARS, failure_text, recent_commands, redact};
+
+    #[test]
+    fn failure_text_drops_progress_and_keeps_the_reason() {
+        let mut raw = String::from("Enumerating objects: 5, done.\r");
+        for n in 0..300 {
+            raw.push_str(&format!(
+                "Writing objects:  {}% ({n}/300), 1.0 MiB | 2.0 MiB/s\r",
+                n / 3
+            ));
+        }
+        raw.push_str("Total 300 (delta 10), reused 0 (delta 0)\n");
+        raw.push_str("remote: error: GH013: Repository rule violations found\n");
+        raw.push_str("To https://github.com/o/r.git\n");
+        raw.push_str(" ! [remote rejected] birth -> birth (push declined)\n");
+        raw.push_str("error: failed to push some refs to 'https://github.com/o/r.git'\n");
+        let text = failure_text(&raw);
+        assert!(!text.contains("Writing objects"), "{text}");
+        assert!(
+            text.contains("[remote rejected] birth -> birth (push declined)"),
+            "{text}"
+        );
+        assert!(text.contains("GH013"), "{text}");
+        assert!(text.lines().count() <= 5, "{text}");
+    }
+
+    #[test]
+    fn a_missing_workflow_scope_gets_an_explanation() {
+        let text = failure_text(
+            " ! [remote rejected] birth -> birth (refusing to allow an OAuth App to create or update workflow `.github/workflows/ci.yml` without `workflow` scope)\n",
+        );
+        assert!(text.contains("remote rejected"));
+        assert!(
+            text.contains("Hint:") && text.contains("`workflow`"),
+            "{text}"
+        );
+        assert!(!failure_text("fatal: not a git repository").contains("Hint:"));
+    }
+
+    #[test]
+    fn long_failures_keep_their_end() {
+        let raw = format!("{}\nthe real reason", "x".repeat(MAX_ERROR_CHARS * 2));
+        let text = failure_text(&raw);
+        assert!(text.ends_with("the real reason"));
+        assert!(text.chars().count() <= MAX_ERROR_CHARS + 1);
+    }
 
     #[test]
     fn failure_carries_git_stderr() {
