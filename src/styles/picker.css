@@ -288,3 +288,11 @@
   width: 100%;
   resize: vertical;
 }
+
+/* ---------- Gitflow ---------- */
+
+.flow-prefixes {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+}

@@ -14,6 +14,7 @@ import {
   FolderPlus,
   Keyboard,
   Package,
+  GitMerge,
   Search,
   Settings,
   Moon,
@@ -122,6 +123,12 @@ import {
   unwatchRepo,
   updateSubmodules,
   addSubmodule,
+  flowFinish,
+  flowInit,
+  flowStart,
+  flowStatus,
+  type FlowConfig,
+  type FlowKind,
   watchAskpass,
   watchRepo,
 } from "./ipc";
@@ -141,6 +148,7 @@ import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
 import { AddSubmoduleDialog } from "./AddSubmoduleDialog";
+import { FlowFinishDialog, FlowInitDialog, FlowStartDialog } from "./GitflowDialogs";
 import { CherryPickDialog, type PickCommit } from "./CherryPickDialog";
 import { profileFor, type ProfileRule } from "./lib/profileRules";
 import { ProfilesDialog, RULES_KEY } from "./ProfilesDialog";
@@ -195,6 +203,13 @@ function App() {
   const [cancellable, setCancellable] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
   const [addSubmoduleOpen, setAddSubmoduleOpen] = useState(false);
+  /** Which Gitflow dialog is open. `then` is the branch to start once the set-up it interrupted is done. */
+  const [flowDialog, setFlowDialog] = useState<
+    | { type: "init"; initial: FlowConfig; then: FlowKind | null }
+    | { type: "start"; kind: FlowKind }
+    | { type: "finish"; kind: FlowKind; name: string }
+    | null
+  >(null);
   /** Commit rows picked with Ctrl/Shift+click (two or more; a single one is just the selection). */
   const [picked, setPicked] = useState<number[]>([]);
   const pickedSet = useMemo(() => new Set(picked), [picked]);
@@ -1371,6 +1386,43 @@ function App() {
     [picked, select],
   );
 
+  // ---- Gitflow ----
+
+  const openFlowSetup = async (then: FlowKind | null = null) => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      setFlowDialog({ type: "init", initial: (await flowStatus(info.id)).config, then });
+    } catch (e) {
+      report("Could not read the Gitflow settings", e);
+    }
+  };
+
+  const openFlowStart = async (kind: FlowKind) => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      const s = await flowStatus(info.id);
+      setFlowDialog(s.initialized ? { type: "start", kind } : { type: "init", initial: s.config, then: kind });
+    } catch (e) {
+      report("Could not read the Gitflow settings", e);
+    }
+  };
+
+  /** Finishes the feature, release or hotfix that is checked out. */
+  const openFlowFinishCurrent = async () => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      const s = await flowStatus(info.id);
+      if (!s.initialized) toast.info("Gitflow is not set up in this repository yet");
+      else if (!s.current) toast.info("The checked-out branch is not a feature, release or hotfix");
+      else setFlowDialog({ type: "finish", kind: s.current.kind, name: s.current.name });
+    } catch (e) {
+      report("Could not read the Gitflow settings", e);
+    }
+  };
+
   const selectWip = useCallback(() => {
     setSelected("wip");
     setPicked([]);
@@ -1629,6 +1681,11 @@ function App() {
       add({ id: "patch-export-staged", title: "Export staged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: true }) });
       add({ id: "patch-apply", title: "Apply a patch file…", group: "Actions", icon: Archive, run: () => void doApplyPatch(false) });
       add({ id: "patch-apply-index", title: "Apply a patch file and stage it…", group: "Actions", icon: Archive, run: () => void doApplyPatch(true) });
+      add({ id: "flow-setup", title: "Gitflow: set up…", group: "Actions", icon: GitMerge, run: () => void openFlowSetup() });
+      add({ id: "flow-feature", title: "Gitflow: start a feature…", group: "Actions", icon: GitMerge, run: () => void openFlowStart("feature") });
+      add({ id: "flow-release", title: "Gitflow: start a release…", group: "Actions", icon: GitMerge, run: () => void openFlowStart("release") });
+      add({ id: "flow-hotfix", title: "Gitflow: start a hotfix…", group: "Actions", icon: GitMerge, run: () => void openFlowStart("hotfix") });
+      add({ id: "flow-finish", title: "Gitflow: finish the current branch…", group: "Actions", icon: GitMerge, run: () => void openFlowFinishCurrent() });
       add({ id: "add-submodule", title: "Add a submodule…", group: "Actions", icon: Package, run: () => setAddSubmoduleOpen(true) });
       add({ id: "remotes", title: "Manage remotes…", group: "Actions", icon: Cable, run: () => setRemotesOpen(true) });
       if (status?.upstream) {
@@ -1816,6 +1873,8 @@ function App() {
                       busy={!!busy}
                       onOpen={(p) => void openNested(p)}
                       onAddSubmodule={() => setAddSubmoduleOpen(true)}
+                      onFlowStart={(k) => void openFlowStart(k)}
+                      onFlowFinish={(kind, name) => setFlowDialog({ type: "finish", kind, name })}
                       onUpdateSubmodules={(p) =>
                         void act("Updating submodules…", "all", (id) => updateSubmodules(id, p), {
                           done: "Submodules updated",
@@ -2066,6 +2125,49 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {flowDialog?.type === "init" && (
+        <FlowInitDialog
+          initial={flowDialog.initial}
+          onClose={() => setFlowDialog(null)}
+          onInit={(config) => {
+            const then = flowDialog.then;
+            setFlowDialog(null);
+            void act("Setting up Gitflow…", "all", (id) => flowInit(id, config), {
+              done: "Gitflow is set up",
+              fail: "Could not set up Gitflow",
+            }).then((ok) => ok && then && setFlowDialog({ type: "start", kind: then }));
+          }}
+        />
+      )}
+      {flowDialog?.type === "start" && (
+        <FlowStartDialog
+          kind={flowDialog.kind}
+          onClose={() => setFlowDialog(null)}
+          onStart={(name) => {
+            const kind = flowDialog.kind;
+            setFlowDialog(null);
+            void act(`Starting the ${kind}…`, "all", (id) => flowStart(id, kind, name), {
+              done: `Started ${kind} ${name}`,
+              fail: `Could not start the ${kind}`,
+            });
+          }}
+        />
+      )}
+      {flowDialog?.type === "finish" && (
+        <FlowFinishDialog
+          kind={flowDialog.kind}
+          name={flowDialog.name}
+          onClose={() => setFlowDialog(null)}
+          onFinish={(options) => {
+            const { kind, name } = flowDialog;
+            setFlowDialog(null);
+            void act(`Finishing the ${kind}…`, "all", (id) => flowFinish(id, kind, name, options), {
+              done: `Finished ${kind} ${name}`,
+              fail: `Could not finish the ${kind}`,
+            });
+          }}
+        />
+      )}
       {addSubmoduleOpen && (
         <AddSubmoduleDialog
           onClose={() => setAddSubmoduleOpen(false)}

@@ -667,6 +667,84 @@ describe("Perseus cherry-picking several commits", () => {
   });
 });
 
+describe("Perseus using Gitflow", () => {
+  let app;
+  let page;
+  let repo;
+
+  before(async () => {
+    repo = join(scratchDir("perseus-flow-"), "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "base.txt"), "base\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "base");
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9451 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  const palette = async (query) => {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill(query);
+    await page.keyboard.press("Enter");
+  };
+
+  it("sets Gitflow up when starting the first feature, then starts it", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText(/1 commit/).waitFor();
+    await palette("gitflow start a feature");
+    // Not set up yet: the set-up dialog comes first, then the one for the feature.
+    await page.getByRole("dialog", { name: /Set up Gitflow/ }).waitFor();
+    await page.getByRole("button", { name: "Set up Gitflow" }).click();
+    await page.getByLabel("Feature name").fill("login");
+    await page.getByRole("button", { name: "Start feature" }).click();
+    await page.getByText("Started feature login").waitFor();
+
+    assert.equal(git(repo, "branch", "--show-current").trim(), "feature/login");
+    assert.match(git(repo, "branch", "--list", "develop"), /develop/);
+    assert.equal(git(repo, "config", "--local", "gitflow.prefix.feature").trim(), "feature/");
+    await page.getByRole("button", { name: /Gitflow/ }).waitFor();
+  });
+
+  it("finishes the feature from the sidebar: merged into develop and removed", async () => {
+    writeFileSync(join(repo, "login.txt"), "login\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "add login");
+    await page.getByRole("button", { name: "Finish feature login" }).click({ force: true });
+    await page.getByRole("button", { name: "Finish feature", exact: true }).click();
+    await page.getByText("Finished feature login").waitFor();
+
+    assert.equal(git(repo, "branch", "--show-current").trim(), "develop");
+    assert.equal(git(repo, "branch", "--list", "feature/login").trim(), "");
+    assert.equal(git(repo, "log", "-1", "--format=%s").trim(), "Merge branch 'feature/login' into develop");
+  });
+
+  it("starts and finishes a release, which is tagged", async () => {
+    await palette("gitflow start a release");
+    await page.getByLabel("Version").fill("1.0.0");
+    await page.getByRole("button", { name: "Start release" }).click();
+    await page.getByText("Started release 1.0.0").waitFor();
+    writeFileSync(join(repo, "VERSION"), "1.0.0\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "bump version");
+
+    await palette("gitflow finish the current");
+    await page.getByLabel("Tag message (optional)").fill("First release");
+    await page.getByRole("dialog").getByRole("button", { name: "Finish release", exact: true }).click();
+    await page.getByText("Finished release 1.0.0").waitFor();
+
+    assert.match(git(repo, "tag", "--list", "1.0.0"), /1\.0\.0/);
+    assert.match(git(repo, "tag", "-n1", "1.0.0"), /First release/);
+    assert.equal(git(repo, "branch", "--show-current").trim(), "develop");
+    assert.equal(git(repo, "branch", "--list", "release/1.0.0").trim(), "");
+    assert.ok(git(repo, "ls-tree", "--name-only", "main").includes("VERSION"), "main has the release");
+  });
+});
+
 describe("Perseus asking for a login", () => {
   let app;
   let page;

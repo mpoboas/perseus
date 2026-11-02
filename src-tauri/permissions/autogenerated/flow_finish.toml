@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-flow-finish"
+description = "Enables the flow_finish command without any pre-configured scope."
+commands.allow = ["flow_finish"]
+
+[[permission]]
+identifier = "deny-flow-finish"
+description = "Denies the flow_finish command without any pre-configured scope."
+commands.deny = ["flow_finish"]

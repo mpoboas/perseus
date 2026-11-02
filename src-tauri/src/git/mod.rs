@@ -6,6 +6,7 @@ pub mod conflicts;
 pub mod detail;
 pub mod diff;
 pub mod extras;
+pub mod flow;
 pub mod graph;
 pub mod history;
 pub mod lanes;

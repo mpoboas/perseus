@@ -6,6 +6,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::error::{AppError, Result};
 use crate::git::cli::{self, LogEntry};
 use crate::git::extras::{self, LargeFile, LfsAction, LfsStatus, Submodule, Worktree};
+use crate::git::flow;
 use crate::git::repo::{RepoId, RepoInfo};
 use crate::git::undo;
 use crate::git::validate;
@@ -33,6 +34,50 @@ pub async fn update_submodules(
 ) -> Result<()> {
     let git = git_for(&state, &profiles, repo_id)?;
     blocking(move || extras::update_submodules(&git, path.as_deref())).await
+}
+
+/// Gitflow: what is set up and which feature, release and hotfix branches exist.
+#[tauri::command]
+pub async fn flow_status(state: State<'_, AppState>, repo_id: RepoId) -> Result<flow::FlowStatus> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || flow::status(&git)).await
+}
+
+/// Records the Gitflow configuration (and creates the develop branch if it is missing).
+#[tauri::command]
+pub async fn flow_init(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    config: flow::FlowConfig,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || flow::init(&git, &config)).await
+}
+
+#[tauri::command]
+pub async fn flow_start(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    kind: flow::FlowKind,
+    name: String,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || flow::start(&git, kind, &name)).await
+}
+
+#[tauri::command]
+pub async fn flow_finish(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    kind: flow::FlowKind,
+    name: String,
+    options: flow::FinishOptions,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || flow::finish(&git, kind, &name, &options)).await
 }
 
 /// Adds a submodule (using the active profile's login for a private remote); the change is staged.

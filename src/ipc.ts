@@ -755,6 +755,47 @@ export interface LogEntry {
   read_only: boolean;
 }
 
+// ---- Gitflow ----
+
+export type FlowKind = "feature" | "release" | "hotfix";
+
+export interface FlowConfig {
+  main: string;
+  develop: string;
+  /** Branch prefixes end in a slash: `feature/`. */
+  feature: string;
+  release: string;
+  hotfix: string;
+  /** Put in front of a release's version to make its tag (`v` gives `v1.2.0`). */
+  tag_prefix: string;
+}
+
+export interface FlowStatus {
+  initialized: boolean;
+  /** What is recorded, or the suggested defaults when Gitflow is not set up yet. */
+  config: FlowConfig;
+  features: string[];
+  releases: string[];
+  hotfixes: string[];
+  /** The checked-out branch, when it is one of Gitflow's. */
+  current: { kind: FlowKind; name: string } | null;
+}
+
+export interface FlowFinishOptions {
+  keep_branch?: boolean;
+  /** Features: merge the branch as one commit. */
+  squash?: boolean;
+  /** Releases and hotfixes: the tag's message. */
+  tag_message?: string | null;
+}
+
+export const flowStatus = (repoId: number) => invoke<FlowStatus>("flow_status", { repoId });
+export const flowInit = (repoId: number, config: FlowConfig) => invoke<void>("flow_init", { repoId, config });
+export const flowStart = (repoId: number, kind: FlowKind, name: string) =>
+  invoke<void>("flow_start", { repoId, kind, name });
+export const flowFinish = (repoId: number, kind: FlowKind, name: string, options: FlowFinishOptions) =>
+  invoke<void>("flow_finish", { repoId, kind, name, options });
+
 /** Adds a submodule from a URL or a folder on this computer; the result is staged, not committed. */
 export const addSubmodule = (repoId: number, url: string, path: string) =>
   invoke<void>("add_submodule", { repoId, url, path });

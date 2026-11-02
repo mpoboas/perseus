@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-flow-init"
+description = "Enables the flow_init command without any pre-configured scope."
+commands.allow = ["flow_init"]
+
+[[permission]]
+identifier = "deny-flow-init"
+description = "Denies the flow_init command without any pre-configured scope."
+commands.deny = ["flow_init"]

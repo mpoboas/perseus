@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, FileStack, FolderGit2, GitFork, Package, RefreshCw, Trash2 } from "lucide-react";
-import { type LfsStatus, type Submodule, type Worktree, lfsStatus, lfsTrack, listSubmodules, listWorktrees } from "./ipc";
+import { Check, ChevronDown, ChevronRight, FileStack, FolderGit2, GitFork, GitMerge, Package, Plus, RefreshCw, Trash2 } from "lucide-react";
+import { type FlowKind, type FlowStatus, type LfsStatus, type Submodule, type Worktree, flowStatus, lfsStatus, lfsTrack, listSubmodules, listWorktrees } from "./ipc";
 import { usePref } from "./lib/prefs";
 import { IconButton } from "./ui";
 
@@ -13,6 +13,8 @@ interface Props {
   onOpen: (path: string) => void;
   onUpdateSubmodules: (path: string | null) => void;
   onAddSubmodule: () => void;
+  onFlowStart: (kind: FlowKind) => void;
+  onFlowFinish: (kind: FlowKind, name: string) => void;
   onRemoveWorktree: (w: Worktree) => void;
   onTrackLfs: (pattern: string) => void;
 }
@@ -25,20 +27,22 @@ const STATE_HINT: Record<Submodule["state"], string> = {
 };
 
 /** Submodules, linked worktrees and Git LFS: shown only for repositories that use them. */
-export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodules, onAddSubmodule, onRemoveWorktree, onTrackLfs }: Props) {
+export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodules, onAddSubmodule, onFlowStart, onFlowFinish, onRemoveWorktree, onTrackLfs }: Props) {
   const [submodules, setSubmodules] = useState<Submodule[]>([]);
   const [worktrees, setWorktrees] = useState<Worktree[]>([]);
   const [lfs, setLfs] = useState<LfsStatus | null>(null);
+  const [flow, setFlow] = useState<FlowStatus | null>(null);
   const [pattern, setPattern] = useState("");
   const [collapsed, setCollapsed] = usePref<Record<string, boolean>>("sidebar.extras.collapsed", {});
 
   useEffect(() => {
     let live = true;
-    void Promise.allSettled([listSubmodules(repoId), listWorktrees(repoId), lfsStatus(repoId)]).then(([s, w, l]) => {
+    void Promise.allSettled([listSubmodules(repoId), listWorktrees(repoId), lfsStatus(repoId), flowStatus(repoId)]).then(([s, w, l, f]) => {
       if (!live) return;
       setSubmodules(s.status === "fulfilled" ? s.value : []);
       setWorktrees(w.status === "fulfilled" ? w.value : []);
       setLfs(l.status === "fulfilled" ? l.value : null);
+      setFlow(f.status === "fulfilled" ? f.value : null);
     });
     return () => {
       live = false;
@@ -55,6 +59,13 @@ export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodul
     </button>
   );
 
+  const flowGroups: { kind: FlowKind; title: string; names: string[] }[] = flow?.initialized
+    ? [
+        { kind: "feature", title: "Features", names: flow.features },
+        { kind: "release", title: "Releases", names: flow.releases },
+        { kind: "hotfix", title: "Hotfixes", names: flow.hotfixes },
+      ]
+    : [];
   const showLfs = lfs !== null && (lfs.patterns.length > 0 || lfs.installed);
   return (
     <>
@@ -88,6 +99,36 @@ export function ExtrasSections({ repoId, version, busy, onOpen, onUpdateSubmodul
                   <Package size={12} /> Add a submodule…
                 </button>
               </li>
+            </ul>
+          )}
+        </section>
+      )}
+      {flow?.initialized && (
+        <section className="side-section">
+          {head("flow", <GitMerge size={14} />, "Gitflow", flow.features.length + flow.releases.length + flow.hotfixes.length)}
+          {!collapsed.flow && (
+            <ul>
+              {flowGroups.map((g) => (
+                <li key={g.kind} className="flow-group">
+                  <div className="flow-head">
+                    <span>{g.title}</span>
+                    <IconButton icon={Plus} label={`Start a ${g.kind}`} size="sm" disabled={busy} onClick={() => onFlowStart(g.kind)} />
+                  </div>
+                  {g.names.map((n) => {
+                    const here = flow.current?.kind === g.kind && flow.current.name === n;
+                    return (
+                      <div key={n} className="side-row-wrap">
+                        <span className="side-row flow-name" style={{ paddingLeft: 28 }} title={here ? "Checked out" : undefined}>
+                          {here ? <Check size={13} className="side-icon" /> : <GitMerge size={13} className="side-icon" />}
+                          <span className="side-label">{n}</span>
+                        </span>
+                        <IconButton icon={GitMerge} label={`Finish ${g.kind} ${n}`} size="sm" className="row-action" disabled={busy} onClick={() => onFlowFinish(g.kind, n)} />
+                      </div>
+                    );
+                  })}
+                  {g.names.length === 0 && <div className="side-note">None</div>}
+                </li>
+              ))}
             </ul>
           )}
         </section>
