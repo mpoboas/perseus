@@ -8,13 +8,15 @@ import {
   Cloud,
   Folder,
   GitBranch,
+  Archive,
   Plus,
   Search,
   Tag,
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { RefInfo } from "./ipc";
+import type { RefInfo, StashEntry } from "./ipc";
+import { relativeTime } from "./lib/format";
 import { fuzzyMatch } from "./lib/fuzzy";
 import { usePref } from "./lib/prefs";
 import { type RefNode, buildRefTree } from "./lib/refTree";
@@ -22,6 +24,8 @@ import { EmptyState, IconButton, Tooltip } from "./ui";
 
 interface Props {
   refs: RefInfo[];
+  stashes: StashEntry[];
+  onStashMenu: (entry: StashEntry, x: number, y: number) => void;
   busy: boolean;
   onJump: (target: string) => void;
   onCheckout: (ref: RefInfo) => void;
@@ -57,7 +61,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{parts}</>;
 }
 
-export function Sidebar({ refs, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
+export function Sidebar({ refs, stashes, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -164,6 +168,38 @@ export function Sidebar({ refs, busy, onJump, onCheckout, onCreateBranch, onMenu
             </section>
           );
         })}
+        {stashes.length > 0 && !filtering && (
+          <section className="side-section">
+            <button className="side-head" aria-expanded={!collapsed.stashes} onClick={() => toggle("stashes")}>
+              {collapsed.stashes ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+              <Archive size={14} />
+              <span>Stashes</span>
+              <span className="side-count">{stashes.length}</span>
+            </button>
+            {!collapsed.stashes && (
+              <ul>
+                {stashes.map((s) => (
+                  <li key={s.index}>
+                    <button
+                      className="side-row"
+                      style={{ paddingLeft: 28 }}
+                      title="Right-click to apply, pop or drop"
+                      onContextMenu={(e) => {
+                        e.preventDefault();
+                        onStashMenu(s, e.clientX, e.clientY);
+                      }}
+                      onDoubleClick={(e) => onStashMenu(s, e.clientX, e.clientY)}
+                    >
+                      <Archive size={13} className="side-icon" />
+                      <span className="side-label">{s.message.replace(/^(WIP on|On) [^:]+: /, "")}</span>
+                      <span className="side-count">{relativeTime(s.time)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
         {filtering && !SECTIONS.some((s) => refs.some((r) => r.kind === s.kind && fuzzyMatch(filter, r.name))) && (
           <EmptyState icon={Search} title="No matches" hint={`Nothing is named like “${filter.trim()}”.`}>
             <button className="link-btn" onClick={() => setFilter("")}>

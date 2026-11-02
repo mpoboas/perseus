@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert } from "lucide-react";
+import { Archive, CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert, Undo2 } from "lucide-react";
 import { FileRow } from "./FileRow";
 import type { DiffTarget, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
 import { usePref } from "./lib/prefs";
-import { Avatar, Badge, Button, EmptyState, Shortcut } from "./ui";
+import { Avatar, Badge, Button, EmptyState, IconButton, Shortcut } from "./ui";
 
 interface Props {
   status: RepoStatus | null;
@@ -17,6 +17,9 @@ interface Props {
   onCommit: (message: string, amend: boolean) => Promise<boolean>;
   onContinue: () => void;
   onAbort: () => void;
+  /** Asks for confirmation, then throws the local changes of these paths away. */
+  onDiscard: (paths: string[], untracked: boolean) => void;
+  onStash: () => void;
 }
 
 const OPERATION_LABEL = {
@@ -40,6 +43,8 @@ interface Group {
   /** Checked boxes mean "this is in the next commit". */
   checked: boolean;
   bulk?: { label: string; run: () => void };
+  /** Throw away local changes to these entries (asks first). */
+  discard?: (entries: StatusEntry[]) => void;
 }
 
 export function ChangesPanel({
@@ -53,6 +58,8 @@ export function ChangesPanel({
   onCommit,
   onContinue,
   onAbort,
+  onDiscard,
+  onStash,
 }: Props) {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
@@ -95,6 +102,7 @@ export function ChangesPanel({
       stats: (e) => e.worktree_stats,
       checked: false,
       bulk: { label: "Stage all", run: () => onStage(unstaged.map((e) => e.path)) },
+      discard: (es) => onDiscard(es.map((e) => e.path), false),
     },
     {
       id: "untracked",
@@ -105,6 +113,7 @@ export function ChangesPanel({
       stats: () => null,
       checked: false,
       bulk: { label: "Stage all", run: () => onStage(untracked.map((e) => e.path)) },
+      discard: (es) => onDiscard(es.map((e) => e.path), true),
     },
   ];
 
@@ -162,6 +171,14 @@ export function ChangesPanel({
           </div>
         )}
 
+        {status.entries.length > 0 && !status.operation && (
+          <div className="changes-tools">
+            <Button size="sm" variant="ghost" icon={Archive} disabled={busy} onClick={onStash}>
+              Stash changes…
+            </Button>
+          </div>
+        )}
+
         {status.entries.length === 0 && !status.operation && (
           <EmptyState icon={CheckCircle2} title="Working tree clean" hint="Nothing to commit. Edit a file and it will show up here." />
         )}
@@ -180,6 +197,11 @@ export function ChangesPanel({
                 {g.bulk && (
                   <Button size="sm" variant="ghost" disabled={busy} onClick={g.bulk.run}>
                     {g.bulk.label}
+                  </Button>
+                )}
+                {g.discard && (
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={() => g.discard?.(g.entries)}>
+                    Discard all
                   </Button>
                 )}
                 {g.id === "conflicts" && <ShieldAlert size={14} className="conflict-icon" />}
@@ -219,6 +241,15 @@ export function ChangesPanel({
                           <Button size="sm" variant="ghost" disabled={busy} onClick={() => onStage([e.path])} title="Mark resolved (stage)">
                             Resolved
                           </Button>
+                        ) : g.discard ? (
+                          <IconButton
+                            icon={Undo2}
+                            label={`Discard changes to ${e.path}`}
+                            size="sm"
+                            className="row-action"
+                            disabled={busy}
+                            onClick={() => g.discard?.([e])}
+                          />
                         ) : undefined
                       }
                     />

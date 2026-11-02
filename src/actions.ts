@@ -5,7 +5,7 @@
  * rule is phrased relative to HEAD. When a gesture does not involve HEAD we say
  * so instead of silently switching branches under the user.
  */
-import type { GitOp, RefInfo, SwitchTarget } from "./ipc";
+import type { GitAction, GitOp, RefInfo, SwitchTarget } from "./ipc";
 
 export interface Head {
   /** Checked-out branch, or null on a detached HEAD. */
@@ -15,13 +15,15 @@ export interface Head {
 }
 
 export type Endpoint =
-  | { type: "ref"; name: string; kind: RefInfo["kind"]; oid: string; isHead: boolean }
-  | { type: "commit"; oid: string; summary: string };
+  | { type: "ref"; name: string; kind: RefInfo["kind"]; oid: string; isHead: boolean; parents?: number }
+  | { type: "commit"; oid: string; summary: string; parents?: number };
 
 export type ActionRun =
   | { type: "git"; op: GitOp }
   | { type: "switch"; target: SwitchTarget }
   | { type: "new_branch"; start: string }
+  /** A quick action; a function receives the name the user typed in the dialog. */
+  | { type: "action"; action: GitAction | ((name: string) => GitAction) }
   | { type: "copy"; text: string };
 
 export interface GraphAction {
@@ -34,8 +36,12 @@ export interface GraphAction {
   /** Skip the confirm dialog (checkout and copy are immediate and easily undone). */
   immediate?: boolean;
   danger?: boolean;
-  /** The dialog asks for a branch name. */
+  /** The dialog asks for a name (a new branch by default). */
   needsName?: boolean;
+  nameLabel?: string;
+  /** Pre-filled value, e.g. the current name when renaming. */
+  nameInitial?: string;
+  namePlaceholder?: string;
   run: ActionRun;
 }
 
@@ -164,6 +170,7 @@ export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
     }
   }
 
+  out.push(...manageActions(subject, head));
   out.push({
     id: "new-branch",
     title: `Create branch here…`,
@@ -180,5 +187,146 @@ export function menuActions(subject: Endpoint, head: Head): GraphAction[] {
     immediate: true,
     run: { type: "copy", text: oid },
   });
+  return out;
+}
+
+const act = (a: GitAction): GraphAction["run"] => ({ type: "action", action: a });
+
+/** Branch, tag, reset and revert entries for the right-click menu. */
+export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
+  const out: GraphAction[] = [];
+  const oid = subject.oid;
+
+  if (subject.type === "ref") {
+    if (subject.kind === "branch") {
+      out.push({
+        id: "rename-branch",
+        title: `Rename ${describe(subject)}…`,
+        description: `Gives the local branch ${describe(subject)} a new name. Its commits and upstream stay as they are.`,
+        confirmLabel: "Rename",
+        needsName: true,
+        nameLabel: "New name",
+        nameInitial: subject.name,
+        run: {
+          type: "action",
+          action: (n) => ({ action: "branch_rename", old: subject.name, new: n }),
+        },
+      });
+      if (!subject.isHead) {
+        out.push({
+          id: "delete-branch",
+          title: `Delete branch ${describe(subject)}`,
+          description: `Removes the local branch ${describe(subject)}. Git refuses when it holds commits that are not merged anywhere else.`,
+          confirmLabel: "Delete",
+          danger: true,
+          run: act({ action: "branch_delete", name: subject.name }),
+        });
+        out.push({
+          id: "force-delete-branch",
+          title: `Force delete ${describe(subject)}…`,
+          description: `Deletes ${describe(subject)} even if it has unmerged commits.`,
+          warning:
+            "Commits that only this branch contains become unreachable. You can still find them in the reflog for a while, but they will no longer show in the graph.",
+          confirmLabel: "Force delete",
+          danger: true,
+          run: act({ action: "branch_delete", name: subject.name, force: true }),
+        });
+      }
+    } else if (subject.kind === "remote") {
+      const [remote, ...rest] = subject.name.split("/");
+      const branch = rest.join("/");
+      if (remote && branch) {
+        out.push({
+          id: "delete-remote-branch",
+          title: `Delete ${describe(subject)} on the remote…`,
+          description: `Deletes the branch ${branch} from ${remote} itself, for everyone who uses it.`,
+          warning: "This changes the remote repository and cannot be undone from here.",
+          confirmLabel: "Delete on remote",
+          danger: true,
+          run: act({ action: "branch_delete_remote", remote, name: branch }),
+        });
+      }
+    } else if (subject.kind === "tag") {
+      out.push({
+        id: "push-tag",
+        title: `Push tag ${describe(subject)} to origin`,
+        description: `Publishes the tag ${describe(subject)} to the remote called origin.`,
+        confirmLabel: "Push tag",
+        run: act({ action: "tag_push", name: subject.name }),
+      });
+      out.push({
+        id: "delete-tag",
+        title: `Delete tag ${describe(subject)}`,
+        description: `Removes the tag ${describe(subject)} from this repository. A copy on the remote is not touched.`,
+        confirmLabel: "Delete tag",
+        danger: true,
+        run: act({ action: "tag_delete", name: subject.name }),
+      });
+      out.push({
+        id: "delete-remote-tag",
+        title: `Delete tag ${describe(subject)} on origin…`,
+        description: `Removes the tag from the remote called origin.`,
+        warning: "This changes the remote repository.",
+        confirmLabel: "Delete on origin",
+        danger: true,
+        run: act({ action: "tag_delete_remote", name: subject.name }),
+      });
+    }
+  }
+
+  const here = subject.type === "ref" ? describe(subject) : `commit ${short(oid)}`;
+  if (!(subject.type === "ref" && subject.kind === "tag")) {
+    out.push({
+      id: "new-tag",
+      title: "Create tag here…",
+      description: `Adds a tag at ${here}. Tags are stored in this repository; push them to share.`,
+      confirmLabel: "Create tag",
+      needsName: true,
+      nameLabel: "Tag name",
+      namePlaceholder: "v1.0.0",
+      run: { type: "action", action: (n) => ({ action: "tag_create", name: n, target: oid }) },
+    });
+  }
+
+  if (head.branch && head.oid !== null && oid !== head.oid) {
+    const onto = `${headLabel(head)} to ${here}`;
+    out.push({
+      id: "reset-soft",
+      title: `Reset ${headLabel(head)} to here (soft)`,
+      description: `Moves ${onto}. Every change after it stays staged, ready to commit again.`,
+      confirmLabel: "Reset (soft)",
+      run: act({ action: "reset", mode: "soft", target: oid }),
+    });
+    out.push({
+      id: "reset-mixed",
+      title: `Reset ${headLabel(head)} to here (mixed)`,
+      description: `Moves ${onto}. Every change after it stays in your files, unstaged.`,
+      confirmLabel: "Reset (mixed)",
+      run: act({ action: "reset", mode: "mixed", target: oid }),
+    });
+    out.push({
+      id: "reset-hard",
+      title: `Reset ${headLabel(head)} to here (hard)…`,
+      description: `Moves ${onto} and makes your files match it exactly.`,
+      warning:
+        "Uncommitted changes and every commit after this point are discarded from your working copy. Committed work can still be recovered through the reflog; uncommitted work cannot.",
+      confirmLabel: "Reset (hard)",
+      danger: true,
+      run: act({ action: "reset", mode: "hard", target: oid }),
+    });
+  }
+
+  if (subject.type === "commit" || (subject.type === "ref" && subject.kind !== "tag")) {
+    const merge = (subject.parents ?? 1) > 1;
+    out.push({
+      id: "revert",
+      title: `Revert ${here}`,
+      description: merge
+        ? `Creates a new commit that undoes the merge ${here}, keeping the first parent's side.`
+        : `Creates a new commit on ${headLabel(head)} that undoes the changes of ${here}.`,
+      confirmLabel: "Revert",
+      run: act({ action: "revert", oid, mainline: merge ? 1 : null }),
+    });
+  }
   return out;
 }

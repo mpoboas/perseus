@@ -6,6 +6,8 @@ import {
   GitBranch,
   GitBranchPlus,
   History,
+  Archive,
+  Cable,
   Keyboard,
   Moon,
   PanelLeft,
@@ -31,20 +33,29 @@ import {
   type FileChange,
   type ChangeSet,
   type GitOp,
+  type GitAction,
   type ProfilesSnapshot,
+  type PullMode,
   type RecentRepo,
   type RefInfo,
+  type RemoteInfo,
   type RepoInfo,
   type RepoStatus,
+  type StashEntry,
+  cancelGitOp,
   cancelStream,
   closeRepo,
   commitDetail,
   commitFiles,
   createCommit,
+  gitAction,
   listProfiles,
   listRecentRepos,
   listRefs,
+  listRemotes,
+  listStashes,
   newBranch,
+  newOpId,
   openRecentRepo,
   pickAndOpenRepo,
   removeRecentRepo,
@@ -61,6 +72,8 @@ import {
 import { usePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
 import { NewBranchDialog } from "./NewBranchDialog";
+import { RemotesDialog } from "./RemotesDialog";
+import { StashDialog } from "./StashDialog";
 import { ProfilesDialog } from "./ProfilesDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
@@ -85,6 +98,11 @@ function App() {
   const [repo, setRepo] = useState<RepoInfo | null>(null);
   const [recents, setRecents] = useState<RecentRepo[]>([]);
   const [refs, setRefs] = useState<RefInfo[]>([]);
+  const [stashes, setStashes] = useState<StashEntry[]>([]);
+  const [remotes, setRemotes] = useState<RemoteInfo[]>([]);
+  const [cancellable, setCancellable] = useState(false);
+  const [stashOpen, setStashOpen] = useState(false);
+  const [remotesOpen, setRemotesOpen] = useState(false);
   const [status, setStatus] = useState<RepoStatus | null>(null);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -109,6 +127,7 @@ function App() {
   const [menu, setMenu] = useState<{ x: number; y: number; actions: GraphAction[] } | null>(null);
   const [confirm, setConfirm] = useState<GraphAction[] | null>(null);
 
+  const [pullMode, setPullMode] = usePref<PullMode>("git.pullMode", "ff_only");
   const [sidebarOpen, setSidebarOpen] = usePref("layout.sidebarOpen", true);
   const [sidebarW, setSidebarW] = usePref("layout.sidebarW", 248);
   const [rightW, setRightW] = usePref("layout.rightW", 380);
@@ -126,6 +145,7 @@ function App() {
   /** Commit to re-select once a reload finishes (row numbers change when history reloads). */
   const keepOid = useRef<string | null>(null);
   const watchId = useRef<number | null>(null);
+  const opIdRef = useRef<number | null>(null);
   const busyRef = useRef<string | null>(null);
   const lastActEnd = useRef(0);
   const adoptedAt = useRef(0);
@@ -233,8 +253,16 @@ function App() {
   const loadRefs = useCallback(
     async (info: RepoInfo) => {
       try {
-        const r = await listRefs(info.id);
-        if (repoRef.current?.id === info.id) setRefs(r);
+        const [r, st, rm] = await Promise.all([
+          listRefs(info.id),
+          listStashes(info.id).catch(() => [] as StashEntry[]),
+          listRemotes(info.id).catch(() => [] as RemoteInfo[]),
+        ]);
+        if (repoRef.current?.id === info.id) {
+          setRefs(r);
+          setStashes(st);
+          setRemotes(rm);
+        }
       } catch (e) {
         report("Could not list branches", e);
       }
@@ -293,7 +321,29 @@ function App() {
   );
 
   const gitOp = (label: string, op: GitOp, opts?: ActOptions) =>
-    act(label, "all", (id) => runGitOp(id, op, setProgress), opts);
+    act(
+      label,
+      "all",
+      async (id) => {
+        const opId = newOpId();
+        opIdRef.current = opId;
+        setCancellable(true);
+        try {
+          await runGitOp(id, op, setProgress, opId);
+        } finally {
+          opIdRef.current = null;
+          setCancellable(false);
+        }
+      },
+      opts,
+    );
+
+  const cancelRunning = () => {
+    if (opIdRef.current !== null) void cancelGitOp(opIdRef.current);
+  };
+
+  const doAction = (label: string, action: GitAction, opts?: ActOptions) =>
+    act(label, "all", (id) => gitAction(id, action), opts);
 
   /** Outside changes (an editor, a terminal, another git client) refresh what moved, quietly. */
   onChangedRef.current = (c) => {
@@ -345,14 +395,15 @@ function App() {
     if (s.kind === "wip") return null;
     const row = store.current.rows[s.row];
     if (!row) return null;
-    const commit: Endpoint = { type: "commit", oid: row.oid, summary: row.summary };
+    const parents = row.parents.length;
+    const commit: Endpoint = { type: "commit", oid: row.oid, summary: row.summary, parents };
     if (s.kind === "commit") return commit;
 
     // The green HEAD badge stands for the checked-out branch, or for the commit if detached.
     const name = s.name === "HEAD" ? (status?.branch ?? null) : s.name;
     const ref = name ? refs.find((r) => r.name === name) : undefined;
     if (!ref) return commit;
-    return { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head };
+    return { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head, parents };
   };
 
   const labelFor = (s: Subject): string => {
@@ -385,6 +436,15 @@ function App() {
           fail: "Could not create the branch",
         });
         break;
+      case "action": {
+        const quick = typeof run.action === "function" ? run.action(name) : run.action;
+        const title = quick.action.replace(/_/g, " ");
+        void doAction(`${title}…`, quick, {
+          done: `${title.replace(/^./, (c) => c.toUpperCase())} done`,
+          fail: `${action.confirmLabel} failed`,
+        });
+        break;
+      }
       case "copy":
         navigator.clipboard.writeText(run.text).then(
           () => toast.success("Copied to the clipboard"),
@@ -415,9 +475,64 @@ function App() {
     setMenu({ x, y, actions: menuActions(e, currentHead()) });
   };
 
+  /** Throwing changes away cannot be undone, so it always asks first. */
+  const askDiscard = (paths: string[], untracked: boolean) => {
+    const what = paths.length === 1 ? paths[0] : `${paths.length} files`;
+    setConfirm([
+      {
+        id: "discard",
+        title: `Discard changes to ${what}`,
+        description: untracked
+          ? `Deletes ${what} from disk. These files are not tracked by git, so nothing can bring them back.`
+          : `Restores ${what} to the last committed version, dropping staged and unstaged edits.`,
+        warning: "This cannot be undone.",
+        confirmLabel: "Discard",
+        danger: true,
+        run: { type: "action", action: { action: "discard", paths, untracked } },
+      },
+    ]);
+  };
+
+  const onStashMenu = (entry: StashEntry, x: number, y: number) => {
+    if (busy) return;
+    const label = entry.message.replace(/^(WIP on|On) [^:]+: /, "") || `stash ${entry.index}`;
+    setMenu({
+      x,
+      y,
+      actions: [
+        {
+          id: "stash-apply",
+          title: `Apply “${label}”`,
+          description: "",
+          confirmLabel: "Apply",
+          immediate: true,
+          run: { type: "action", action: { action: "stash_apply", index: entry.index } },
+        },
+        {
+          id: "stash-pop",
+          title: `Pop “${label}” (apply and remove)`,
+          description: "",
+          confirmLabel: "Pop",
+          immediate: true,
+          run: { type: "action", action: { action: "stash_pop", index: entry.index } },
+        },
+        {
+          id: "stash-drop",
+          title: `Drop “${label}”`,
+          description: "Deletes this stash. Its changes cannot be brought back from here.",
+          warning: "Dropped stashes can sometimes be recovered with git fsck, but Perseus cannot do it for you.",
+          confirmLabel: "Drop",
+          danger: true,
+          run: { type: "action", action: { action: "stash_drop", index: entry.index } },
+        },
+      ],
+    });
+  };
+
   const onRefMenu = (ref: RefInfo, x: number, y: number) => {
     if (busy) return;
-    const e: Endpoint = { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head };
+    const parents = store.current.rows[store.current.index.get(ref.target) ?? -1]?.parents.length;
+    const e: Endpoint = { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head, parents };
     setMenu({ x, y, actions: menuActions(e, currentHead()) });
   };
 
@@ -432,6 +547,8 @@ function App() {
     setRepo(picked);
     startWatching(picked);
     setRefs([]);
+    setStashes([]);
+    setRemotes([]);
     setStatus(null);
     setDiff(null);
     setSelected(null);
@@ -477,6 +594,8 @@ function App() {
     watchId.current = null;
     setRepo(null);
     setRefs([]);
+    setStashes([]);
+    setRemotes([]);
     setStatus(null);
     setDiff(null);
     setSelected(null);
@@ -681,7 +800,7 @@ function App() {
     if (repo) {
       add({ id: "fetch", title: "Fetch", group: "Actions", icon: RefreshCw, run: () => void gitOp("Fetching…", { op: "fetch" }, { done: "Fetch complete", fail: "Fetch failed" }) });
       if (status?.upstream)
-        add({ id: "pull", title: "Pull", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull" }, { done: "Pulled", fail: "Pull failed" }) });
+        add({ id: "pull", title: "Pull", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: pullMode }, { done: "Pulled", fail: "Pull failed" }) });
       if (status?.branch)
         add({
           id: "push",
@@ -690,6 +809,13 @@ function App() {
           icon: ArrowUpFromLine,
           run: () => void gitOp(publish ? "Publishing…" : "Pushing…", { op: "push", set_upstream: publish }, { done: publish ? "Published" : "Pushed", fail: "Push failed" }),
         });
+      add({ id: "stash", title: "Stash changes…", group: "Actions", icon: Archive, run: () => setStashOpen(true) });
+      add({ id: "remotes", title: "Manage remotes…", group: "Actions", icon: Cable, run: () => setRemotesOpen(true) });
+      if (status?.upstream) {
+        add({ id: "pull-merge", title: "Pull (merge)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "merge" }, { done: "Pulled", fail: "Pull failed" }) });
+        add({ id: "pull-rebase", title: "Pull (rebase)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "rebase" }, { done: "Pulled", fail: "Pull failed" }) });
+      }
+      if (cancellable) add({ id: "cancel", title: "Cancel the running operation", group: "Actions", icon: X, run: cancelRunning });
       add({ id: "refresh", title: "Refresh", group: "Actions", icon: History, shortcut: "F5", run: () => void refresh("all") });
       add({ id: "newbranch", title: "New branch…", group: "Actions", icon: GitBranchPlus, run: () => setNewBranchOpen(true) });
       add({ id: "sidebar", title: sidebarOpen ? "Hide sidebar" : "Show sidebar", group: "Actions", icon: PanelLeft, shortcut: "Ctrl+B", run: () => setSidebarOpen((o) => !o) });
@@ -728,7 +854,7 @@ function App() {
     return out;
     // The closures above read current state; the palette is rebuilt whenever any of it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, status, refs, profiles, recents, sidebarOpen, busy]);
+  }, [repo, status, refs, profiles, recents, sidebarOpen, busy, cancellable]);
 
   const menuItems = (actions: GraphAction[]): MenuItem[] =>
     actions.map((a) => ({ id: a.id, label: a.title, danger: a.danger }));
@@ -753,7 +879,33 @@ function App() {
         onOpenRecent={(p) => void openRecent(p)}
         onCloseRepo={() => void closeCurrent()}
         onFetch={() => void gitOp("Fetching…", { op: "fetch" }, { done: "Fetch complete", fail: "Fetch failed" })}
-        onPull={() => void gitOp("Pulling…", { op: "pull" }, { done: "Pulled", fail: "Pull failed" })}
+        onPull={() => void gitOp("Pulling…", { op: "pull", mode: pullMode }, { done: "Pulled", fail: "Pull failed" })}
+        pullMode={pullMode}
+        onPullMode={(m) => {
+          setPullMode(m);
+          toast.info(
+            { ff_only: "Pull refuses when history has diverged", merge: "Pull creates a merge commit", rebase: "Pull rebases your commits" }[m],
+          );
+        }}
+        onPushVariant={(v) => {
+          if (v === "tags") {
+            void gitOp("Pushing tags…", { op: "push", tags: true }, { done: "Tags pushed", fail: "Push failed" });
+          } else {
+            setConfirm([
+              {
+                id: "force-push",
+                title: "Force push with lease",
+                description: `Overwrites ${status?.upstream ?? "the remote branch"} with your ${status?.branch ?? "branch"}. The lease makes git refuse if somebody else pushed commits you have not fetched.`,
+                warning: "This rewrites the remote's history. Teammates who already pulled it will have to repair their copies.",
+                confirmLabel: "Force push",
+                danger: true,
+                run: { type: "git", op: { op: "push", force_with_lease: true } },
+              },
+            ]);
+          }
+        }}
+        onRemotes={() => setRemotesOpen(true)}
+        onStash={() => setStashOpen(true)}
         onPush={() =>
           void gitOp(
             publish ? "Publishing…" : "Pushing…",
@@ -776,6 +928,8 @@ function App() {
               <aside className="pane pane-side" style={{ width: sidebarW }}>
                 <Sidebar
                   refs={refs}
+                  stashes={stashes}
+                  onStashMenu={onStashMenu}
                   busy={!!busy}
                   onJump={jumpTo}
                   onCheckout={(r) => void checkout(r)}
@@ -890,6 +1044,8 @@ function App() {
                       fail: "Commit failed",
                     })
                   }
+                  onDiscard={askDiscard}
+                  onStash={() => setStashOpen(true)}
                   onContinue={() => void gitOp("Continuing…", { op: "continue" }, { done: "Continued", fail: "Could not continue" })}
                   onAbort={() => void gitOp("Aborting…", { op: "abort" }, { done: "Aborted", fail: "Could not abort" })}
                 />
@@ -918,6 +1074,7 @@ function App() {
         identity={identity}
         lastError={lastError?.title ?? null}
         onShowError={() => lastError && toast.error(lastError.title, lastError.detail)}
+        onCancel={cancellable ? cancelRunning : undefined}
       />
 
       {menu && (
@@ -945,6 +1102,28 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {stashOpen && status && (
+        <StashDialog
+          changed={status.entries.length}
+          untracked={status.entries.filter((e) => e.untracked).length}
+          onClose={() => setStashOpen(false)}
+          onStash={(message, includeUntracked) => {
+            setStashOpen(false);
+            void doAction(
+              "Stashing…",
+              { action: "stash_push", message: message || null, include_untracked: includeUntracked },
+              { done: "Changes stashed", fail: "Could not stash" },
+            );
+          }}
+        />
+      )}
+      {remotesOpen && (
+        <RemotesDialog
+          remotes={remotes}
+          onClose={() => setRemotesOpen(false)}
+          onAction={(action, done) => doAction("Updating remotes…", action, { done, fail: "Remote change failed" })}
+        />
+      )}
       {newBranchOpen && (
         <NewBranchDialog
           from={status?.branch ?? "the current commit"}

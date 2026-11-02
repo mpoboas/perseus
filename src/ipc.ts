@@ -116,10 +116,20 @@ export interface FileChange {
 
 export type SwitchTarget = { kind: "branch"; name: string } | { kind: "detached"; oid: string };
 
+/** What `pull` does when the branch has diverged: refuse (default), merge, or rebase. */
+export type PullMode = "ff_only" | "merge" | "rebase";
+
 export type GitOp =
   | { op: "fetch" }
-  | { op: "pull" }
-  | { op: "push"; set_upstream?: boolean; remote?: string }
+  | { op: "pull"; mode?: PullMode }
+  | {
+      op: "push";
+      set_upstream?: boolean;
+      remote?: string;
+      /** Overwrite the remote branch only if nobody pushed since our last fetch. */
+      force_with_lease?: boolean;
+      tags?: boolean;
+    }
   | { op: "merge"; rev: string }
   | { op: "cherry_pick"; oid: string }
   | { op: "rebase"; onto: string }
@@ -152,16 +162,70 @@ export const switchRef = (repoId: number, target: SwitchTarget) =>
 export const newBranch = (repoId: number, name: string, start: string | null, checkout: boolean) =>
   invoke<void>("new_branch", { repoId, name, start, checkout });
 
-/** Runs fetch/pull/push/merge/…; `onProgress` receives git's progress lines as they arrive. */
+/**
+ * Runs fetch/pull/push/merge/…; `onProgress` receives git's progress lines as they arrive.
+ * `cancelGitOp(opId)` stops it.
+ */
 export function runGitOp(
   repoId: number,
   op: GitOp,
   onProgress: (line: string) => void,
+  opId: number,
 ): Promise<string> {
   const channel = new Channel<string>();
   channel.onmessage = onProgress;
-  return invoke<string>("run_git_op", { repoId, op, onProgress: channel });
+  return invoke<string>("run_git_op", { repoId, opId, op, onProgress: channel });
 }
+
+let nextOpId = 1;
+export const newOpId = () => nextOpId++;
+
+export const cancelGitOp = (opId: number) => invoke<void>("cancel_git_op", { opId });
+
+// ---- Everyday actions: stash, tags, branches, reset, revert, discard, remotes ----
+
+export type ResetMode = "soft" | "mixed" | "hard";
+
+export type GitAction =
+  | { action: "stash_push"; message?: string | null; include_untracked?: boolean }
+  | { action: "stash_apply"; index: number }
+  | { action: "stash_pop"; index: number }
+  | { action: "stash_drop"; index: number }
+  | { action: "tag_create"; name: string; target?: string | null; message?: string | null }
+  | { action: "tag_delete"; name: string }
+  | { action: "tag_push"; name: string; remote?: string | null }
+  | { action: "tag_delete_remote"; name: string; remote?: string | null }
+  | { action: "branch_delete"; name: string; force?: boolean }
+  | { action: "branch_delete_remote"; remote: string; name: string }
+  | { action: "branch_rename"; old: string; new: string }
+  | { action: "set_upstream"; branch: string; upstream?: string | null }
+  | { action: "reset"; mode: ResetMode; target: string }
+  | { action: "revert"; oid: string; mainline?: number | null }
+  | { action: "discard"; paths: string[]; untracked?: boolean }
+  | { action: "remote_add"; name: string; url: string }
+  | { action: "remote_remove"; name: string }
+  | { action: "remote_rename"; old: string; new: string }
+  | { action: "remote_set_url"; name: string; url: string };
+
+export interface StashEntry {
+  index: number;
+  message: string;
+  /** Unix seconds. */
+  time: number;
+}
+
+export interface RemoteInfo {
+  name: string;
+  fetch_url: string;
+  push_url: string;
+}
+
+export const gitAction = (repoId: number, action: GitAction) =>
+  invoke<void>("git_action", { repoId, action });
+
+export const listStashes = (repoId: number) => invoke<StashEntry[]>("list_stashes", { repoId });
+
+export const listRemotes = (repoId: number) => invoke<RemoteInfo[]>("list_remotes", { repoId });
 
 export interface Patch {
   text: string;

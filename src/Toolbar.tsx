@@ -15,8 +15,10 @@ import {
   Sun,
   Users,
   X,
+  Archive,
+  Cable,
 } from "lucide-react";
-import type { ProfilesSnapshot, RecentRepo, RepoInfo, RepoStatus } from "./ipc";
+import type { ProfilesSnapshot, PullMode, RecentRepo, RepoInfo, RepoStatus } from "./ipc";
 import type { ThemePref } from "./lib/theme";
 import { Avatar, Button, IconButton, MenuButton, type MenuItem, Shortcut, Tooltip } from "./ui";
 
@@ -36,6 +38,13 @@ interface Props {
   onFetch: () => void;
   onPull: () => void;
   onPush: () => void;
+  /** The default for the Pull button: refuse, merge or rebase when history has diverged. */
+  pullMode: PullMode;
+  onPullMode: (m: PullMode) => void;
+  /** "force" pushes with a lease (confirmed first), "tags" pushes all tags. */
+  onPushVariant: (v: "force" | "tags") => void;
+  onRemotes: () => void;
+  onStash: () => void;
   onPalette: () => void;
   onCancelLoad: () => void;
   onProfiles: () => void;
@@ -65,6 +74,12 @@ export function Toolbar(p: Props) {
       .map((r): MenuItem => ({ id: `r:${r.path}`, label: r.name, hint: r.path.split(/[\\/]/).slice(-2, -1)[0], icon: FolderOpen })),
     { id: "sep", separator: true },
     { id: "open", label: "Open repository…", icon: FolderOpen, shortcut: "Ctrl+O" },
+    ...(repo
+      ? ([
+          { id: "remotes", label: "Manage remotes…", icon: Cable },
+          { id: "stash", label: "Stash changes…", icon: Archive },
+        ] as MenuItem[])
+      : []),
     ...(repo ? ([{ id: "close", label: "Close repository", icon: X }] as MenuItem[]) : []),
   ];
 
@@ -98,6 +113,8 @@ export function Toolbar(p: Props) {
           minWidth={260}
           onPick={(id) => {
             if (id === "open") p.onOpen();
+            else if (id === "remotes") p.onRemotes();
+            else if (id === "stash") p.onStash();
             else if (id === "close") p.onCloseRepo();
             else if (id.startsWith("r:")) p.onOpenRecent(id.slice(2));
           }}
@@ -136,16 +153,52 @@ export function Toolbar(p: Props) {
           <Button icon={RefreshCw} disabled={busy} onClick={p.onFetch}>
             Fetch
           </Button>
-          <Tooltip label={status?.upstream ? "Fast-forward only" : "No upstream branch to pull from"}>
-            <Button icon={ArrowDownToLine} disabled={busy || !status?.upstream} onClick={p.onPull}>
-              Pull
-              {!!status?.behind && <span className="count-pill">{status.behind}</span>}
+          <div className="split-btn">
+            <Tooltip
+              label={
+                status?.upstream
+                  ? { ff_only: "Pull (fast-forward only)", merge: "Pull (merge)", rebase: "Pull (rebase)" }[p.pullMode]
+                  : "No upstream branch to pull from"
+              }
+            >
+              <Button icon={ArrowDownToLine} disabled={busy || !status?.upstream} onClick={p.onPull}>
+                Pull
+                {!!status?.behind && <span className="count-pill">{status.behind}</span>}
+              </Button>
+            </Tooltip>
+            <MenuButton
+              align="end"
+              minWidth={250}
+              items={[
+                { id: "sec", section: "When history has diverged" },
+                { id: "ff_only", label: "Refuse (fast-forward only)", checked: p.pullMode === "ff_only" },
+                { id: "merge", label: "Create a merge commit", checked: p.pullMode === "merge" },
+                { id: "rebase", label: "Rebase my commits", checked: p.pullMode === "rebase" },
+              ]}
+              onPick={(id) => p.onPullMode(id as PullMode)}
+              render={({ open: _open, ...props }) => (
+                <IconButton icon={ChevronDown} label="Pull options" size="md" disabled={busy} {...props} />
+              )}
+            />
+          </div>
+          <div className="split-btn">
+            <Button icon={ArrowUpFromLine} disabled={busy || !status?.branch} onClick={p.onPush}>
+              {publish ? "Publish" : "Push"}
+              {!!status?.ahead && status.upstream && <span className="count-pill">{status.ahead}</span>}
             </Button>
-          </Tooltip>
-          <Button icon={ArrowUpFromLine} disabled={busy || !status?.branch} onClick={p.onPush}>
-            {publish ? "Publish" : "Push"}
-            {!!status?.ahead && status.upstream && <span className="count-pill">{status.ahead}</span>}
-          </Button>
+            <MenuButton
+              align="end"
+              minWidth={250}
+              items={[
+                { id: "force", label: "Force push (with lease)…", danger: true, disabled: !status?.upstream },
+                { id: "tags", label: "Push all tags" },
+              ]}
+              onPick={(id) => p.onPushVariant(id as "force" | "tags")}
+              render={({ open: _open, ...props }) => (
+                <IconButton icon={ChevronDown} label="Push options" size="md" disabled={busy || !status?.branch} {...props} />
+              )}
+            />
+          </div>
           {p.loading && (
             <Button variant="ghost" icon={X} onClick={p.onCancelLoad}>
               Stop loading

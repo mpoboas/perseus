@@ -13,9 +13,11 @@ interface Props {
   identity: { name: string; email: string } | null;
   lastError: string | null;
   onShowError: () => void;
+  /** Stops the running network operation, when there is one. */
+  onCancel?: () => void;
 }
 
-export function StatusBar({ repo, busy, progress, loading, loaded, commitCount, identity, lastError, onShowError }: Props) {
+export function StatusBar({ repo, busy, progress, loading, loaded, commitCount, identity, lastError, onShowError, onCancel }: Props) {
   return (
     <footer className="statusbar">
       <div className="sb-left">
@@ -24,6 +26,11 @@ export function StatusBar({ repo, busy, progress, loading, loaded, commitCount, 
             <Spinner size={12} />
             <strong>{busy}</strong>
             {progress && <span className="sb-progress">{progress}</span>}
+            {onCancel && (
+              <button className="sb-cancel" onClick={onCancel}>
+                Cancel
+              </button>
+            )}
           </span>
         ) : loading ? (
           <span className="sb-busy" role="status">

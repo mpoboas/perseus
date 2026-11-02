@@ -65,6 +65,50 @@ describe("Perseus", () => {
     await page.getByText(/5 commits/).waitFor();
   });
 
+  it("stashes working changes from the dialog and applies them again", async () => {
+    writeFileSync(join(repo, "b.txt"), "work in progress\n");
+    await page.locator('[role="tab"]', { hasText: "Changes" }).locator(".badge").waitFor({ timeout: 8000 });
+    await page.getByRole("button", { name: "Stash changes…" }).click();
+    await page.getByLabel("Message (optional)").fill("e2e stash");
+    await page.getByRole("button", { name: "Stash", exact: true }).click();
+    await page.getByText("Changes stashed").waitFor();
+    assert.equal(git(repo, "status", "--porcelain").trim(), "", "the working tree is clean again");
+    await page.getByRole("button", { name: /Stashes/ }).waitFor();
+
+    await page.locator(".side-row", { hasText: "e2e stash" }).click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Pop/ }).click();
+    await page.getByText("Stash pop done").waitFor();
+    assert.match(git(repo, "status", "--porcelain"), /b\.txt/);
+  });
+
+  it("asks before discarding, then restores the file", async () => {
+    // b.txt is a modified tracked file from the previous test's pop.
+    git(repo, "add", "b.txt");
+    git(repo, "commit", "-q", "-m", "Track b");
+    writeFileSync(join(repo, "b.txt"), "scribbles\n");
+    await page.getByLabel("Discard changes to b.txt").waitFor({ timeout: 8000 });
+    await page.getByLabel("Discard changes to b.txt").click({ force: true });
+    await page.getByRole("dialog").getByText("This cannot be undone.").waitFor();
+    await page.getByRole("dialog").getByRole("button", { name: "Discard" }).click();
+    await page.getByText("Discard done").waitFor();
+    assert.equal(git(repo, "status", "--porcelain").trim(), "");
+  });
+
+  it("creates a tag from the commit context menu", async () => {
+    // The "Discard done" toast appears a moment before the status refresh removes the working-tree
+    // row, so the first click can land on that row (which has no menu). Retry like a user would.
+    const { x, y } = await rowPoint(page, 0);
+    for (let attempts = 0; attempts < 3; attempts++) {
+      await page.mouse.click(x, y, { button: "right" });
+      if (await page.locator('[role="menu"]').waitFor({ timeout: 1500 }).then(() => true, () => false)) break;
+    }
+    await page.getByRole("menuitem", { name: /Create tag here/ }).click({ timeout: 5000 });
+    await page.getByLabel("Tag name").fill("e2e-tag");
+    await page.getByRole("dialog").getByRole("button", { name: "Create tag" }).click();
+    await page.getByText("Tag create done").waitFor();
+    assert.match(git(repo, "tag", "--list"), /e2e-tag/);
+  });
+
   it("opens a context menu on right-click", async () => {
     const { x, y } = await rowPoint(page, 2);
     await page.mouse.click(x, y, { button: "right" });

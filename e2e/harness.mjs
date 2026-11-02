@@ -92,6 +92,13 @@ export async function launch({ recents = [], port = 9444 } = {}) {
     async stop() {
       await browser.close().catch(() => undefined);
       child.kill();
+      // The WebView2 processes outlive the app for a moment and share one user-data folder:
+      // wait until the debug port is gone before the next launch can start.
+      for (let i = 0; i < 50; i++) {
+        const alive = await fetch(`http://127.0.0.1:${port}/json`).then(() => true, () => false);
+        if (!alive) break;
+        await new Promise((r) => setTimeout(r, 200));
+      }
       await new Promise((r) => setTimeout(r, 500));
       rmSync(root, { recursive: true, force: true });
     },

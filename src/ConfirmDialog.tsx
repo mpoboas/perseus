@@ -14,7 +14,7 @@ interface Props {
 
 export function ConfirmDialog({ actions, dirty, onConfirm, onCancel }: Props) {
   const [chosen, setChosen] = useState(actions[0].id);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(actions[0].nameInitial ?? "");
   const action = actions.find((a) => a.id === chosen) ?? actions[0];
   const ready = !action.needsName || name.trim().length > 0;
 
@@ -66,10 +66,10 @@ export function ConfirmDialog({ actions, dirty, onConfirm, onCancel }: Props) {
         )}
         {action.needsName && (
           <TextField
-            label="Branch name"
+            label={action.nameLabel ?? "Branch name"}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="feature/my-change"
+            placeholder={action.namePlaceholder ?? "feature/my-change"}
           />
         )}
       </div>

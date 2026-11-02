@@ -88,6 +88,14 @@ describe("menuActions", () => {
       "checkout",
       "merge",
       "rebase",
+      "rename-branch",
+      "delete-branch",
+      "force-delete-branch",
+      "new-tag",
+      "reset-soft",
+      "reset-mixed",
+      "reset-hard",
+      "revert",
       "new-branch",
       "copy",
     ]);
@@ -106,8 +114,14 @@ describe("menuActions", () => {
     expect(menuActions(tag, head).map((a) => a.id)).not.toContain("merge");
   });
 
-  it("offers nothing destructive on the checked-out branch itself", () => {
-    expect(menuActions(main, head).map((a) => a.id)).toEqual(["new-branch", "copy"]);
+  it("never offers to delete, reset or check out the checked-out branch itself", () => {
+    expect(menuActions(main, head).map((a) => a.id)).toEqual([
+      "rename-branch",
+      "new-tag",
+      "revert",
+      "new-branch",
+      "copy",
+    ]);
   });
 
   it("offers cherry-pick and rebase for other commits, but not for HEAD's own", () => {
@@ -115,10 +129,21 @@ describe("menuActions", () => {
       "checkout",
       "cherry-pick",
       "rebase",
+      "new-tag",
+      "reset-soft",
+      "reset-mixed",
+      "reset-hard",
+      "revert",
       "new-branch",
       "copy",
     ]);
-    expect(menuActions(headCommit, head).map((a) => a.id)).toEqual(["checkout", "new-branch", "copy"]);
+    expect(menuActions(headCommit, head).map((a) => a.id)).toEqual([
+      "checkout",
+      "new-tag",
+      "revert",
+      "new-branch",
+      "copy",
+    ]);
   });
 
   it("marks quick actions immediate and anything that changes history as confirmable", () => {
@@ -133,6 +158,79 @@ describe("menuActions", () => {
 
   it("skips merge and rebase when there is no HEAD commit at all (unborn branch)", () => {
     const unborn: Head = { branch: "main", oid: null };
-    expect(menuActions(feature, unborn).map((a) => a.id)).toEqual(["checkout", "new-branch", "copy"]);
+    expect(menuActions(feature, unborn).map((a) => a.id)).toEqual([
+      "checkout",
+      "rename-branch",
+      "delete-branch",
+      "force-delete-branch",
+      "new-tag",
+      "revert",
+      "new-branch",
+      "copy",
+    ]);
+  });
+});
+
+describe("branch, tag, reset and revert entries", () => {
+  const find = (e: Endpoint, id: string) => menuActions(e, head).find((a) => a.id === id)!;
+  const run = (e: Endpoint, id: string, name = "") => {
+    const r = find(e, id).run;
+    if (r.type !== "action") throw new Error("not a quick action");
+    return typeof r.action === "function" ? r.action(name) : r.action;
+  };
+
+  it("deleting is safe by default and force is a separate, warned step", () => {
+    expect(run(feature, "delete-branch")).toEqual({ action: "branch_delete", name: "feature/x" });
+    expect(find(feature, "delete-branch").danger).toBe(true);
+    const force = find(feature, "force-delete-branch");
+    expect(force.warning).toMatch(/unreachable/);
+    expect(run(feature, "force-delete-branch")).toEqual({ action: "branch_delete", name: "feature/x", force: true });
+  });
+
+  it("renaming asks for a name, starting from the current one", () => {
+    const rename = find(feature, "rename-branch");
+    expect(rename.needsName).toBe(true);
+    expect(rename.nameInitial).toBe("feature/x");
+    expect(run(feature, "rename-branch", "feature/y")).toEqual({
+      action: "branch_rename",
+      old: "feature/x",
+      new: "feature/y",
+    });
+  });
+
+  it("splits a remote branch into remote and branch for deletion, and warns", () => {
+    const del = find(remote, "delete-remote-branch");
+    expect(del.warning).toBeTruthy();
+    expect(run(remote, "delete-remote-branch")).toEqual({
+      action: "branch_delete_remote",
+      remote: "origin",
+      name: "topic",
+    });
+  });
+
+  it("offers tag push and delete for tags, but no reset or tag-here on a tag", () => {
+    const ids = menuActions(tag, head).map((a) => a.id);
+    expect(ids).toEqual(expect.arrayContaining(["push-tag", "delete-tag", "delete-remote-tag"]));
+    expect(ids).not.toContain("new-tag");
+    expect(run(tag, "delete-remote-tag")).toEqual({ action: "tag_delete_remote", name: "v1" });
+  });
+
+  it("creates a tag at the clicked commit", () => {
+    expect(run(otherCommit, "new-tag", "v2")).toEqual({ action: "tag_create", name: "v2", target: B });
+  });
+
+  it("only the hard reset is dangerous, and it explains what is lost", () => {
+    expect(find(otherCommit, "reset-soft").danger).toBeFalsy();
+    expect(find(otherCommit, "reset-mixed").danger).toBeFalsy();
+    const hard = find(otherCommit, "reset-hard");
+    expect(hard.danger).toBe(true);
+    expect(hard.warning).toMatch(/Uncommitted changes/);
+    expect(run(otherCommit, "reset-hard")).toEqual({ action: "reset", mode: "hard", target: B });
+  });
+
+  it("reverting a merge commit picks the first parent as mainline", () => {
+    const merge: Endpoint = { type: "commit", oid: B, summary: "Merge x", parents: 2 };
+    expect(run(merge, "revert")).toEqual({ action: "revert", oid: B, mainline: 1 });
+    expect(run(otherCommit, "revert")).toEqual({ action: "revert", oid: B, mainline: null });
   });
 });
