@@ -20,6 +20,7 @@ import {
   Code2,
   Download,
   Eye,
+  Pin,
   FolderPlus,
   Terminal,
 } from "lucide-react";
@@ -61,6 +62,8 @@ interface Props {
   onCancelLoad: () => void;
   onProfiles: () => void;
   onSwitchProfile: (id: string | null) => void;
+  /** Remember the active profile for this repository. */
+  onPinProfile: () => void;
   onTheme: (t: ThemePref) => void;
   onShortcuts: () => void;
 }
@@ -108,6 +111,7 @@ export function Toolbar(p: Props) {
       (x): MenuItem => ({ id: `p:${x.id}`, label: x.name, hint: x.user_email, checked: x.id === p.profiles?.active }),
     ) ?? []),
     { id: "sep", separator: true },
+    ...(repo && activeProfile ? ([{ id: "pin", label: `Always use ${activeProfile.name} for ${repo.name}`, icon: Pin }] as MenuItem[]) : []),
     { id: "manage", label: "Manage profiles…", icon: Users },
   ];
 
@@ -251,6 +255,7 @@ export function Toolbar(p: Props) {
           minWidth={260}
           onPick={(id) => {
             if (id === "manage") p.onProfiles();
+            else if (id === "pin") p.onPinProfile();
             else if (id.startsWith("p:")) p.onSwitchProfile(id.slice(2) || null);
           }}
           render={({ open, ...props }) => (

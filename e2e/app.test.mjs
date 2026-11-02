@@ -2,6 +2,7 @@
 // first, then `pnpm e2e`. Windows only (WebView2 exposes the DevTools protocol).
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
+import http from "node:http";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -347,5 +348,71 @@ describe("Perseus interactive rebase", () => {
 
     assert.equal(git(repo, "log", "--format=%s", "--reverse").trim(), "commit A\nB, but better\ncommit D");
     assert.equal(git(repo, "ls-files").trim().split("\n").sort().join(","), "A.txt,B.txt,D.txt");
+  });
+});
+
+describe("Perseus asking for a login", () => {
+  let app;
+  let page;
+  let server;
+  const seen = [];
+
+  before(async () => {
+    // A remote that demands HTTP Basic credentials, like a private repository does.
+    server = http.createServer((req, res) => {
+      const auth = req.headers.authorization;
+      if (!auth) {
+        res.writeHead(401, { "WWW-Authenticate": 'Basic realm="perseus-test"' }).end();
+      } else {
+        seen.push(Buffer.from(auth.replace(/^Basic /, ""), "base64").toString());
+        res.writeHead(404).end("not a real repository");
+      }
+    });
+    await new Promise((r) => server.listen(0, "127.0.0.1", r));
+    const port = server.address().port;
+
+    const repo = join(scratchDir("perseus-auth-"), "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    writeFileSync(join(repo, "a.txt"), "a\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "first");
+    git(repo, "remote", "add", "origin", `http://127.0.0.1:${port}/private.git`);
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9448 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+    await new Promise((r) => server?.close(r));
+  });
+
+  it("shows git's username and password questions and passes the answers to git", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText(/1 commit/).waitFor();
+    await page.getByRole("button", { name: "Fetch" }).click();
+
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText(/Username for/).waitFor({ timeout: 15000 });
+    await dialog.locator("input").fill("ada");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+
+    await dialog.getByText(/Password for/).waitFor({ timeout: 15000 });
+    assert.equal(await dialog.locator("input").getAttribute("type"), "password", "secrets are hidden");
+    await dialog.locator("input").fill("hunter2");
+    await dialog.getByRole("button", { name: "Continue" }).click();
+
+    await page.getByText("Fetch failed").waitFor({ timeout: 15000 });
+    assert.ok(seen.includes("ada:hunter2"), `the server should have received the login, saw ${JSON.stringify(seen)}`);
+  });
+
+  it("lets the user cancel a prompt, and git then stops instead of hanging", async () => {
+    seen.length = 0;
+    await page.getByRole("button", { name: "Fetch" }).click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText(/Username for/).waitFor({ timeout: 15000 });
+    await dialog.getByRole("button", { name: "Cancel" }).click();
+    await page.getByText("Fetch failed").first().waitFor({ timeout: 15000 });
+    assert.deepEqual(seen, []);
   });
 });

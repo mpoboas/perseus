@@ -153,8 +153,8 @@ export const stagePaths = (repoId: number, paths: string[]) =>
 export const unstagePaths = (repoId: number, paths: string[]) =>
   invoke<void>("unstage_paths", { repoId, paths });
 
-export const createCommit = (repoId: number, message: string, amend: boolean) =>
-  invoke<void>("create_commit", { repoId, message, amend });
+export const createCommit = (repoId: number, message: string, amend: boolean, noVerify = false) =>
+  invoke<void>("create_commit", { repoId, message, amend, noVerify });
 
 export const switchRef = (repoId: number, target: SwitchTarget) =>
   invoke<void>("switch_ref", { repoId, target });
@@ -283,6 +283,9 @@ export interface Profile {
   user_name: string;
   user_email: string;
   ssh_key: string | null;
+  /** `ssh` or `gpg`; commits are signed when a key is set too. */
+  signing_format: string | null;
+  signing_key: string | null;
   credentials: CredentialMeta[];
 }
 
@@ -299,6 +302,8 @@ export interface ProfileInput {
   user_name: string;
   user_email: string;
   ssh_key: string | null;
+  signing_format?: string | null;
+  signing_key?: string | null;
 }
 
 export const listProfiles = () => invoke<ProfilesSnapshot>("list_profiles");
@@ -647,3 +652,33 @@ export const checkoutPullRequest = (repoId: number, number: number) =>
   invoke<string>("checkout_pull_request", { repoId, number });
 
 export const openInBrowser = (repoId: number, url: string) => invoke<void>("open_in_browser", { repoId, url });
+
+// ---- Prompts from git and ssh, signing ----
+
+export interface Question {
+  id: number;
+  prompt: string;
+  kind: "secret" | "text" | "confirm" | "info";
+}
+
+/** Questions from git and ssh (passwords, passphrases, "trust this host?") arrive here. */
+export function watchAskpass(onQuestion: (q: Question) => void): void {
+  const channel = new Channel<Question>();
+  channel.onmessage = onQuestion;
+  void invoke<void>("watch_askpass", { onQuestion: channel });
+}
+
+/** `null` cancels the question. The answer goes straight to the waiting git or ssh process. */
+export const answerAskpass = (id: number, answer: string | null) => invoke<void>("answer_askpass", { id, answer });
+
+export interface Signature {
+  status: "good" | "bad" | "unknown" | "expired" | "none" | "error";
+  signer: string | null;
+  key: string | null;
+}
+
+export const commitSignature = (repoId: number, oid: string) =>
+  invoke<Signature>("commit_signature", { repoId, oid });
+
+export const generateSshKey = (label: string, comment: string) =>
+  invoke<{ path: string; public_key: string }>("generate_ssh_key", { label, comment });

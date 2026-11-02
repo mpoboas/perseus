@@ -44,6 +44,8 @@ import {
   type Issue,
   type MergeMethod,
   type PullRequest,
+  type Question,
+  type Signature,
   type Prediction,
   type Resolution,
   type TodoItem,
@@ -59,6 +61,7 @@ import {
   type RepoStatus,
   type StashEntry,
   cancelGitOp,
+  answerAskpass,
   applyPatchFile,
   cloneRepo,
   checkoutPullRequest,
@@ -78,6 +81,7 @@ import {
   predictPick,
   resolveConflict,
   commitDetail,
+  commitSignature,
   commitFiles,
   commitTemplate,
   createCommit,
@@ -101,10 +105,12 @@ import {
   switchRef,
   unstagePaths,
   unwatchRepo,
+  watchAskpass,
   watchRepo,
 } from "./ipc";
 import { readPref, usePref, writePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
+import { AskpassDialog } from "./AskpassDialog";
 import { CloneDialog } from "./CloneDialog";
 import { CreatePrDialog } from "./CreatePrDialog";
 import { ConflictDialog } from "./ConflictDialog";
@@ -114,7 +120,8 @@ import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
 import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
-import { ProfilesDialog } from "./ProfilesDialog";
+import { profileFor, type ProfileRule } from "./lib/profileRules";
+import { ProfilesDialog, RULES_KEY } from "./ProfilesDialog";
 import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
@@ -145,6 +152,9 @@ function App() {
   const [remotesOpen, setRemotesOpen] = useState(false);
   const [historyPath, setHistoryPath] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [signature, setSignature] = useState<Signature | null>(null);
+  const autoProfileFor = useRef<number | null>(null);
   const [hosting, setHosting] = useState<HostingInfo | null>(null);
   const [pulls, setPulls] = useState<PullRequest[]>([]);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -1140,6 +1150,44 @@ function App() {
     void reloadRecents();
   }, [reloadProfiles, reloadRecents]);
 
+  // Git and ssh ask their questions (passwords, passphrases, host trust) through the window.
+  useEffect(() => {
+    watchAskpass((q) => setQuestions((l) => [...l, q]));
+  }, []);
+
+  const answerQuestion = (answer: string | null) => {
+    const q = questions[0];
+    if (!q) return;
+    setQuestions((l) => l.slice(1));
+    void answerAskpass(q.id, answer);
+  };
+
+  // Whether the selected commit is signed.
+  useEffect(() => {
+    setSignature(null);
+    const info = repoRef.current;
+    if (!info || !detail) return;
+    let live = true;
+    commitSignature(info.id, detail.oid).then(
+      (s) => live && setSignature(s),
+      () => undefined,
+    );
+    return () => {
+      live = false;
+    };
+  }, [detail]);
+
+  // The profile follows the repository: an explicit pin, or a rule that matches a remote.
+  useEffect(() => {
+    if (!repo || !profiles || autoProfileFor.current === repo.id) return;
+    const pinned = readPref<string | null>(`repoProfile.${repo.path}`, null);
+    if (!pinned && remotes.length === 0) return; // remotes are still loading
+    autoProfileFor.current = repo.id;
+    const id = profileFor(pinned, readPref<ProfileRule[]>(RULES_KEY, []), remotes.map((r) => r.fetch_url));
+    if (id && id !== profiles.active && profiles.profiles.some((p) => p.id === id)) void switchProfile(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo, remotes, profiles]);
+
   // Reopen where the user left off. Only a path already in the recents list can be opened.
   useEffect(() => {
     if (restored.current || recents.length === 0) return;
@@ -1378,6 +1426,11 @@ function App() {
         onCancelLoad={() => streamId.current !== null && void cancelStream(streamId.current)}
         onProfiles={() => setProfilesOpen(true)}
         onSwitchProfile={(id) => void switchProfile(id)}
+        onPinProfile={() => {
+          if (!repo || !activeProfile) return;
+          writePref(`repoProfile.${repo.path}`, activeProfile.id);
+          toast.success(`${repo.name} will always use ${activeProfile.name}`);
+        }}
         onTheme={setTheme}
         onShortcuts={() => setShortcutsOpen(true)}
       />
@@ -1514,6 +1567,7 @@ function App() {
                   onJump={jumpTo}
                   onOpenFile={(oid, f) => setDiff({ kind: "commit", oid, path: f.path, orig: f.orig_path })}
                   onFileHistory={setHistoryPath}
+                  signature={signature}
                   onExportPatch={(oid) => void doExportPatch({ source: "commit", oid })}
                 />
               ) : (
@@ -1527,8 +1581,8 @@ function App() {
                   onUnstage={(paths) =>
                     void act("Unstaging…", "status", (id) => unstagePaths(id, paths), { fail: "Could not unstage" })
                   }
-                  onCommit={(message, amend) =>
-                    act(amend ? "Amending…" : "Committing…", "all", (id) => createCommit(id, message, amend), {
+                  onCommit={(message, amend, noVerify) =>
+                    act(amend ? "Amending…" : "Committing…", "all", (id) => createCommit(id, message, amend, noVerify), {
                       done: amend ? "Amended the last commit" : "Committed",
                       fail: "Commit failed",
                     })
@@ -1624,6 +1678,7 @@ function App() {
           onClose={() => setRebaseBase(null)}
         />
       )}
+      {questions[0] && <AskpassDialog key={questions[0].id} question={questions[0]} onAnswer={answerQuestion} />}
       {prBranch && repo && (
         <CreatePrDialog
           head={prBranch}

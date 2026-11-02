@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight, Copy, Download, FileText, Folder, GitCommitVertical, History, List, ListTree } from "lucide-react";
 import { FileRow } from "./FileRow";
-import type { CommitDetail, DiffTarget, FileChange, Person } from "./ipc";
+import type { CommitDetail, DiffTarget, FileChange, Person, Signature } from "./ipc";
 import { relativeTime, shortSha } from "./lib/format";
 import { type FileNode, buildFileTree } from "./lib/fileTree";
 import { usePref } from "./lib/prefs";
-import { Avatar, EmptyState, IconButton, Segmented, Skeleton, useToast } from "./ui";
+import { Avatar, Badge, EmptyState, IconButton, Segmented, Skeleton, useToast } from "./ui";
 
 interface Props {
   detail: CommitDetail | null;
@@ -17,11 +17,12 @@ interface Props {
   onOpenFile: (oid: string, file: FileChange) => void;
   onFileHistory: (path: string) => void;
   onExportPatch: (oid: string) => void;
+  signature: Signature | null;
 }
 
 const when = (p: Person) => new Date(p.time * 1000).toLocaleString();
 
-export function DetailPanel({ detail, files, loading, error, activeDiff, onJump, onOpenFile, onFileHistory, onExportPatch }: Props) {
+export function DetailPanel({ detail, files, loading, error, activeDiff, onJump, onOpenFile, onFileHistory, onExportPatch, signature }: Props) {
   const toast = useToast();
   const [view, setView] = usePref<"tree" | "flat">("files.view", "tree");
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -133,6 +134,16 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
           </p>
         )}
 
+        {signature && signature.status !== "none" && (
+          <div className="chips-row">
+            <span className="meta-label">Signature</span>
+            {signature.status === "good" && <Badge tone="success">Verified{signature.signer ? ` · ${signature.signer}` : ""}</Badge>}
+            {signature.status === "unknown" && <Badge tone="warn">Signed by a key you have not trusted</Badge>}
+            {signature.status === "expired" && <Badge tone="warn">Signature expired</Badge>}
+            {signature.status === "bad" && <Badge tone="danger">Bad signature</Badge>}
+            {signature.status === "error" && <Badge tone="warn">Signed — could not be checked</Badge>}
+          </div>
+        )}
         <div className="chips-row">
           <span className="meta-label">Commit</span>
           <button className="sha-chip" onClick={() => void copy(detail.oid, "commit id")} title="Copy full commit id">

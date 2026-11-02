@@ -14,7 +14,7 @@ interface Props {
   onOpenDiff: (t: DiffTarget) => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
-  onCommit: (message: string, amend: boolean) => Promise<boolean>;
+  onCommit: (message: string, amend: boolean, noVerify: boolean) => Promise<boolean>;
   onContinue: () => void;
   onAbort: () => void;
   /** Asks for confirmation, then throws the local changes of these paths away. */
@@ -75,6 +75,7 @@ export function ChangesPanel({
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
+  const [skipHooks, setSkipHooks] = useState(false);
   const [coAuthors, setCoAuthors] = useState<string[]>([]);
   const [coInput, setCoInput] = useState("");
   const [coOpen, setCoOpen] = useState(false);
@@ -176,7 +177,7 @@ export function ChangesPanel({
 
   const submit = async () => {
     if (!canCommit) return;
-    if (await onCommit(message, amend)) {
+    if (await onCommit(message, amend, skipHooks)) {
       setSummary("");
       setDescription("");
       setAmend(false);
@@ -350,6 +351,10 @@ export function ChangesPanel({
         />
         <label className="check-row">
           <input type="checkbox" checked={amend} onChange={(e) => toggleAmend(e.target.checked)} /> Amend the last commit
+        </label>
+        <label className="check-row" title="Runs git commit --no-verify: pre-commit and commit-msg hooks are skipped">
+          <input type="checkbox" checked={skipHooks} onChange={(e) => setSkipHooks(e.target.checked)} /> Skip commit hooks
+          {skipHooks && <span className="warn-text"> · checks like linters will not run</span>}
         </label>
         <div className="coauthors">
           <button type="button" className="link-btn" onClick={() => setCoOpen((o) => !o)}>
