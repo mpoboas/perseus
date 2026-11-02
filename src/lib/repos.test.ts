@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { RecentRepo } from "../ipc";
-import { kibytes, perseusLink, repoLabel, restoreTabs, splitRecents, swapTabSets, tabLabel, tabSetKey } from "./repos";
+import type { RecentRepo, RemoteRepo } from "../ipc";
+import { groupByOwner, kibytes, perseusLink, repoLabel, restoreTabs, splitRecents, swapTabSets, tabLabel, tabSetKey, validRepoName } from "./repos";
 
 const repo = (path: string, over: Partial<RecentRepo> = {}): RecentRepo => ({
   path,
@@ -99,5 +99,33 @@ describe("sizes", () => {
     expect(kibytes(1536)).toBe("1.5 MiB");
     expect(kibytes(250 * 1024)).toBe("250 MiB");
     expect(kibytes(3 * 1024 * 1024)).toBe("3.0 GiB");
+  });
+});
+
+describe("account repositories", () => {
+  const remote = (full_name: string): RemoteRepo => ({
+    full_name,
+    owner: full_name.split("/").slice(0, -1).join("/"),
+    name: full_name.split("/").pop() ?? "",
+    description: "",
+    private: false,
+    fork: false,
+    https_url: "",
+    ssh_url: "",
+    web_url: "",
+  });
+
+  it("groups repositories under their owner, keeping the host's order", () => {
+    const groups = groupByOwner([remote("acme/a"), remote("me/b"), remote("acme/c"), remote("team/sub/d")]);
+    expect(groups.map((g) => g.owner)).toEqual(["acme", "me", "team/sub"]);
+    expect(groups[0].repos.map((r) => r.name)).toEqual(["a", "c"]);
+    expect(groupByOwner([])).toEqual([]);
+  });
+
+  it("tells a name the hosts accept from one they refuse", () => {
+    for (const ok of ["perseus", "my-app", "a.b_c", "x1", " padded "]) expect(validRepoName(ok), ok).toBe(true);
+    for (const bad of ["", " ", "a b", "-x", ".hidden", "ends.", "a..b", "x.git", "a/b", "n".repeat(101), "café"]) {
+      expect(validRepoName(bad), bad).toBe(false);
+    }
   });
 });

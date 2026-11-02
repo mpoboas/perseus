@@ -407,3 +407,99 @@
 .maint-log.bad {
   border-color: var(--danger, #f2646f);
 }
+
+/* ---------- Clone and create: a list of sources beside the form ---------- */
+
+.rail-layout {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  min-height: 380px;
+}
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 10px 8px;
+  border-right: 1px solid var(--border);
+  background: var(--surface-1);
+}
+.rail-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-dim);
+  text-align: left;
+}
+.rail-item:hover,
+.rail-item:focus-visible {
+  background: var(--surface-3);
+  color: var(--text);
+  outline: none;
+}
+.rail-item.active {
+  background: var(--surface-3);
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.rail-icon {
+  flex: none;
+}
+.rail-main {
+  min-width: 0;
+}
+.rp-list {
+  max-height: 230px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+}
+.rp-group {
+  padding: 8px 10px 3px;
+  color: var(--text-faint);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.rp-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.rp-item:hover,
+.rp-item:focus-visible {
+  background: var(--surface-3);
+  outline: none;
+}
+.rp-item.selected {
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+}
+.rp-item svg {
+  flex: none;
+  color: var(--text-faint);
+}
+.rp-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rp-fork {
+  margin-left: auto;
+}
+.rp-empty {
+  padding: 10px;
+}

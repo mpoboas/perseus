@@ -291,6 +291,65 @@ pub struct Fork {
     pub web_url: String,
 }
 
+/// A repository on a host, as the account lists it.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RemoteRepo {
+    /// `owner/name`, or `group/subgroup/name` on GitLab.
+    pub full_name: String,
+    /// The user, organization or group it belongs to: the heading the lists group by.
+    pub owner: String,
+    pub name: String,
+    pub description: String,
+    /// Private (or, on GitLab, internal): only signed-in people can see it.
+    pub private: bool,
+    pub fork: bool,
+    pub https_url: String,
+    pub ssh_url: String,
+    pub web_url: String,
+}
+
+/// Somewhere a new repository can be created: the account itself, or an organization or group.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct Namespace {
+    pub path: String,
+    /// The signed-in user's own account.
+    pub personal: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct NewRepo {
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default = "yes")]
+    pub private: bool,
+    /// An organization or group; the user's own account when absent.
+    #[serde(default)]
+    pub namespace: Option<String>,
+}
+
+fn yes() -> bool {
+    true
+}
+
+/// A name for a new repository that both hosts accept.
+pub fn valid_repo_name(name: &str) -> Result<String> {
+    let name = fork_part("the name", Some(name), false)?
+        .ok_or_else(|| AppError::Internal("a repository needs a name".into()))?;
+    if name.ends_with(".git") {
+        return Err(AppError::Internal("the name cannot end in .git".into()));
+    }
+    Ok(name)
+}
+
+/// How many repositories one listing asks for, and how many pages it follows: a very large account
+/// gets its most recently active repositories rather than a very long wait.
+const PAGE: usize = 100;
+const MAX_PAGES: usize = 5;
+
+/// Longest description either host accepts is a little over this.
+const MAX_DESCRIPTION: usize = 350;
+
 /// A repository name, user, organization or group path as the hosts allow them. Anything else is
 /// refused before it reaches a request.
 fn fork_part(what: &str, value: Option<&str>, slash: bool) -> Result<Option<String>> {
@@ -430,6 +489,10 @@ impl Client<'_> {
             }
             401 => Err(AppError::Internal(format!(
                 "{} rejected the sign-in. Sign in again from Profiles.",
+                self.repo.host
+            ))),
+            403 if resp.body.contains("insufficient_scope") => Err(AppError::Internal(format!(
+                "Your sign-in to {} only allows git access. Allow the api scope in the OAuth application (see docs/oauth.md) and sign in again from Profiles.",
                 self.repo.host
             ))),
             403 | 404 if self.token.is_none() => Err(AppError::Internal(format!(
@@ -673,6 +736,212 @@ impl Client<'_> {
             ));
         }
         Ok(fork)
+    }
+
+    fn need_sign_in(&self, what: &str) -> Result<()> {
+        if self.token.is_some() {
+            return Ok(());
+        }
+        Err(AppError::Internal(format!(
+            "Sign in to {} from Profiles to {what}.",
+            self.repo.host
+        )))
+    }
+
+    /// One repository from the host's own JSON, whichever provider it is.
+    fn remote_repo(&self, v: &Value) -> RemoteRepo {
+        match self.repo.kind {
+            Kind::GitHub => RemoteRepo {
+                full_name: s(v, "/full_name"),
+                owner: s(v, "/owner/login"),
+                name: s(v, "/name"),
+                description: s(v, "/description"),
+                private: v.get("private").and_then(Value::as_bool).unwrap_or(false),
+                fork: v.get("fork").and_then(Value::as_bool).unwrap_or(false),
+                https_url: s(v, "/clone_url"),
+                ssh_url: s(v, "/ssh_url"),
+                web_url: s(v, "/html_url"),
+            },
+            Kind::GitLab => RemoteRepo {
+                full_name: s(v, "/path_with_namespace"),
+                owner: s(v, "/namespace/full_path"),
+                name: s(v, "/path"),
+                description: s(v, "/description"),
+                private: s(v, "/visibility") != "public",
+                fork: v.get("forked_from_project").is_some_and(|f| !f.is_null()),
+                https_url: s(v, "/http_url_to_repo"),
+                ssh_url: s(v, "/ssh_url_to_repo"),
+                web_url: s(v, "/web_url"),
+            },
+        }
+    }
+
+    /// The repositories the signed-in account can see (its own, its organizations' and ones it was
+    /// added to), most recently active first.
+    pub fn list_repositories(&self) -> Result<Vec<RemoteRepo>> {
+        self.need_sign_in("list your repositories")?;
+        let base = match self.repo.kind {
+            Kind::GitHub => format!(
+                "{}/user/repos?per_page={PAGE}&sort=pushed&direction=desc&affiliation=owner,collaborator,organization_member",
+                self.api_root()
+            ),
+            Kind::GitLab => format!(
+                "{}/projects?membership=true&per_page={PAGE}&order_by=last_activity_at",
+                self.api_root()
+            ),
+        };
+        let mut all = Vec::new();
+        for page in 1..=MAX_PAGES {
+            let v = self.get_json(&format!("{base}&page={page}"))?;
+            let items = v
+                .as_array()
+                .ok_or_else(|| AppError::Internal("unexpected answer".into()))?;
+            all.extend(
+                items
+                    .iter()
+                    .map(|i| self.remote_repo(i))
+                    .filter(|r| !r.full_name.is_empty() && !r.https_url.is_empty()),
+            );
+            if items.len() < PAGE {
+                break;
+            }
+        }
+        Ok(all)
+    }
+
+    /// The repository this client was made for, from the host (its addresses are the host's, not ours).
+    pub fn get_repository(&self) -> Result<RemoteRepo> {
+        let r = self.remote_repo(&self.get_json(&self.project_url())?);
+        if r.full_name.is_empty() || r.https_url.is_empty() {
+            return Err(AppError::Internal(
+                "the host's answer did not describe a repository".into(),
+            ));
+        }
+        Ok(r)
+    }
+
+    /// Where the account can create repositories: itself first, then organizations or groups it may
+    /// write to. A failure to list the organizations leaves just the account.
+    pub fn list_namespaces(&self) -> Result<Vec<Namespace>> {
+        self.need_sign_in("see where a repository can be created")?;
+        match self.repo.kind {
+            Kind::GitHub => {
+                let me = s(
+                    &self.get_json(&format!("{}/user", self.api_root()))?,
+                    "/login",
+                );
+                let mut out = vec![Namespace {
+                    path: me,
+                    personal: true,
+                }];
+                if let Ok(orgs) =
+                    self.get_json(&format!("{}/user/orgs?per_page={PAGE}", self.api_root()))
+                {
+                    for org in orgs.as_array().into_iter().flatten() {
+                        let login = s(org, "/login");
+                        if !login.is_empty() {
+                            out.push(Namespace {
+                                path: login,
+                                personal: false,
+                            });
+                        }
+                    }
+                }
+                Ok(out)
+            }
+            Kind::GitLab => Ok(self
+                .gitlab_namespaces()?
+                .into_iter()
+                .map(|(_, path, personal)| Namespace { path, personal })
+                .collect()),
+        }
+    }
+
+    /// GitLab namespaces the account can create projects in, as (id, path, personal).
+    fn gitlab_namespaces(&self) -> Result<Vec<(u64, String, bool)>> {
+        let v = self.get_json(&format!(
+            "{}/namespaces?per_page={PAGE}&min_access_level=30",
+            self.api_root()
+        ))?;
+        Ok(v.as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|n| {
+                Some((
+                    n.get("id")?.as_u64()?,
+                    s(n, "/full_path"),
+                    s(n, "/kind") == "user",
+                ))
+            })
+            .filter(|(_, path, _)| !path.is_empty())
+            .collect())
+    }
+
+    /// Creates an empty repository (nothing is added to it: the caller pushes the first commit).
+    pub fn create_repository(&self, new: &NewRepo) -> Result<RemoteRepo> {
+        self.need_sign_in("create a repository")?;
+        let name = valid_repo_name(&new.name)?;
+        if new.description.chars().count() > MAX_DESCRIPTION
+            || new.description.chars().any(char::is_control)
+        {
+            return Err(AppError::Internal(format!(
+                "the description can have at most {MAX_DESCRIPTION} characters and no line breaks"
+            )));
+        }
+        let namespace = fork_part(
+            "the owner",
+            new.namespace.as_deref(),
+            self.repo.kind == Kind::GitLab,
+        )?;
+        let (url, body) = match self.repo.kind {
+            Kind::GitHub => {
+                let me = s(
+                    &self.get_json(&format!("{}/user", self.api_root()))?,
+                    "/login",
+                );
+                let url = match namespace.as_deref() {
+                    Some(org) if !org.eq_ignore_ascii_case(&me) => {
+                        format!("{}/orgs/{org}/repos", self.api_root())
+                    }
+                    _ => format!("{}/user/repos", self.api_root()),
+                };
+                (
+                    url,
+                    serde_json::json!({"name": name, "description": new.description, "private": new.private, "auto_init": false}),
+                )
+            }
+            Kind::GitLab => {
+                let mut body = serde_json::json!({
+                    "name": name,
+                    "path": name,
+                    "description": new.description,
+                    "visibility": if new.private { "private" } else { "public" },
+                    "initialize_with_readme": false,
+                });
+                if let Some(path) = namespace {
+                    let id = self
+                        .gitlab_namespaces()?
+                        .into_iter()
+                        .find(|(_, p, _)| p.eq_ignore_ascii_case(&path))
+                        .map(|(id, _, _)| id)
+                        .ok_or_else(|| {
+                            AppError::Internal(format!("you cannot create projects in {path}"))
+                        })?;
+                    body["namespace_id"] = id.into();
+                }
+                (format!("{}/projects", self.api_root()), body)
+            }
+        };
+        let resp = self.send("POST", &url, Some(&body))?;
+        let v: Value = serde_json::from_str(&resp.body)
+            .map_err(|e| AppError::Internal(format!("unexpected answer: {e}")))?;
+        let created = self.remote_repo(&v);
+        if created.full_name.is_empty() || created.https_url.is_empty() {
+            return Err(AppError::Internal(
+                "the host's answer did not describe the new repository".into(),
+            ));
+        }
+        Ok(created)
     }
 
     pub fn list_issues(&self) -> Result<Vec<Issue>> {
@@ -1105,6 +1374,251 @@ mod tests {
             .unwrap_err()
             .to_string();
         assert!(err.contains("Forking is disabled"), "{err}");
+    }
+
+    const GH_REPO: &str = r#"{"full_name":"acme/widgets","owner":{"login":"acme"},"name":"widgets","description":"Widgets","private":true,"fork":false,"clone_url":"https://github.com/acme/widgets.git","ssh_url":"git@github.com:acme/widgets.git","html_url":"https://github.com/acme/widgets"}"#;
+
+    #[test]
+    fn the_accounts_repositories_are_listed_and_normalized_per_provider() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on(
+            "/user/repos",
+            200,
+            &format!(
+                "[{GH_REPO},{}]",
+                GH_REPO
+                    .replace("acme/widgets", "me/own")
+                    .replace(r#""login":"acme""#, r#""login":"me""#)
+                    .replace(r#""private":true"#, r#""private":false"#)
+            ),
+        );
+        let list = client(&gh, Kind::GitHub, "github.com", "", &cache)
+            .list_repositories()
+            .unwrap();
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].full_name, "acme/widgets");
+        assert_eq!(
+            (list[0].owner.as_str(), list[0].private, list[0].fork),
+            ("acme", true, false)
+        );
+        assert_eq!(list[0].https_url, "https://github.com/acme/widgets.git");
+        assert_eq!((list[1].owner.as_str(), list[1].private), ("me", false));
+        let url = &gh.requests()[0].1;
+        assert!(
+            url.contains("affiliation=owner,collaborator,organization_member")
+                && url.contains("page=1"),
+            "{url}"
+        );
+
+        let gl = Mock::default().on(
+            "/projects",
+            200,
+            r#"[{"path_with_namespace":"team/sub/app","namespace":{"full_path":"team/sub"},"path":"app","description":null,"visibility":"internal","forked_from_project":{"id":3},"http_url_to_repo":"https://gitlab.com/team/sub/app.git","ssh_url_to_repo":"git@gitlab.com:team/sub/app.git","web_url":"https://gitlab.com/team/sub/app"},
+                {"path_with_namespace":"me/x","namespace":{"full_path":"me"},"path":"x","visibility":"public","http_url_to_repo":"https://gitlab.com/me/x.git","ssh_url_to_repo":"","web_url":"w"}]"#,
+        );
+        let list = client(&gl, Kind::GitLab, "gitlab.com", "", &cache)
+            .list_repositories()
+            .unwrap();
+        assert_eq!(list[0].full_name, "team/sub/app");
+        assert_eq!(list[0].owner, "team/sub");
+        assert!(
+            list[0].private && list[0].fork,
+            "internal counts as private; forked_from_project marks a fork"
+        );
+        assert!(!list[1].private && !list[1].fork);
+        assert!(gl.requests()[0].1.contains("membership=true"));
+    }
+
+    #[test]
+    fn long_lists_follow_pages_up_to_a_limit_and_stop_at_a_short_page() {
+        let cache = Mutex::new(HashMap::new());
+        let full = |n: usize| {
+            let items: Vec<String> = (0..n)
+                .map(|i| GH_REPO.replace("acme/widgets", &format!("acme/r{i}")))
+                .collect();
+            format!("[{}]", items.join(","))
+        };
+        let gh = Mock::default()
+            .on("&page=1", 200, &full(PAGE))
+            .on("&page=2", 200, &full(7));
+        let list = client(&gh, Kind::GitHub, "github.com", "", &cache)
+            .list_repositories()
+            .unwrap();
+        assert_eq!(list.len(), PAGE + 7);
+        assert_eq!(
+            gh.requests().len(),
+            2,
+            "the short second page ends the listing"
+        );
+
+        let endless = Mock::default().on("page=", 200, &full(PAGE));
+        let list = client(&endless, Kind::GitHub, "github.com", "", &cache)
+            .list_repositories()
+            .unwrap();
+        assert_eq!(list.len(), PAGE * MAX_PAGES);
+        assert_eq!(endless.requests().len(), MAX_PAGES);
+    }
+
+    #[test]
+    fn listing_and_creating_need_a_sign_in_and_a_scope_that_allows_them() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on("/user", 200, "[]");
+        let mut anonymous = client(&gh, Kind::GitHub, "github.com", "", &cache);
+        anonymous.token = None;
+        assert!(anonymous.list_repositories().is_err());
+        assert!(anonymous.list_namespaces().is_err());
+        assert!(
+            anonymous
+                .create_repository(&NewRepo {
+                    name: "x".into(),
+                    description: String::new(),
+                    private: true,
+                    namespace: None
+                })
+                .is_err()
+        );
+        assert!(gh.requests().is_empty(), "nothing is sent without a token");
+
+        let gl = Mock::default().on("/projects", 403, r#"{"error":"insufficient_scope","error_description":"The request requires higher privileges"}"#);
+        let err = client(&gl, Kind::GitLab, "gitlab.com", "", &cache)
+            .list_repositories()
+            .unwrap_err()
+            .to_string();
+        assert!(
+            err.contains("api scope") && err.contains("sign in again"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn creation_places_a_repository_in_the_account_an_organization_or_a_group() {
+        let cache = Mutex::new(HashMap::new());
+        let created = GH_REPO.replace("acme/widgets", "me/fresh");
+        let gh = Mock::default()
+            .on("/user/repos", 201, &created)
+            .on("/orgs/acme/repos", 201, GH_REPO)
+            .on("/user", 200, r#"{"login":"me"}"#);
+        let c = client(&gh, Kind::GitHub, "github.com", "", &cache);
+        let new = |ns: Option<&str>| NewRepo {
+            name: "fresh".into(),
+            description: "A fresh one".into(),
+            private: true,
+            namespace: ns.map(str::to_string),
+        };
+        assert_eq!(
+            c.create_repository(&new(None)).unwrap().full_name,
+            "me/fresh"
+        );
+        c.create_repository(&new(Some("ME"))).unwrap(); // the account's own name, any case
+        c.create_repository(&new(Some("acme"))).unwrap();
+        let posts: Vec<_> = gh
+            .requests()
+            .into_iter()
+            .filter(|r| r.0 == "POST")
+            .collect();
+        assert_eq!(posts.len(), 3);
+        assert!(posts[0].1.ends_with("/user/repos") && posts[1].1.ends_with("/user/repos"));
+        assert!(posts[2].1.ends_with("/orgs/acme/repos"));
+        let sent: Value = serde_json::from_str(posts[0].3.as_deref().unwrap()).unwrap();
+        assert_eq!(sent["private"], true);
+        assert_eq!(
+            sent["auto_init"], false,
+            "nothing is added: the first commit is pushed from here"
+        );
+
+        let gl = Mock::default()
+            .on("/namespaces", 200, r#"[{"id":5,"full_path":"me","kind":"user"},{"id":7,"full_path":"team/sub","kind":"group"}]"#)
+            .on("/projects", 201, r#"{"path_with_namespace":"team/sub/fresh","namespace":{"full_path":"team/sub"},"path":"fresh","visibility":"public","http_url_to_repo":"https://gitlab.com/team/sub/fresh.git","ssh_url_to_repo":"","web_url":"w"}"#);
+        let c = client(&gl, Kind::GitLab, "gitlab.com", "", &cache);
+        let made = c
+            .create_repository(&NewRepo {
+                private: false,
+                ..new(Some("team/sub"))
+            })
+            .unwrap();
+        assert_eq!(made.full_name, "team/sub/fresh");
+        let post = gl.requests().into_iter().find(|r| r.0 == "POST").unwrap();
+        let sent: Value = serde_json::from_str(post.3.as_deref().unwrap()).unwrap();
+        assert_eq!(
+            (sent["namespace_id"].as_u64(), sent["visibility"].as_str()),
+            (Some(7), Some("public"))
+        );
+        assert!(
+            c.create_repository(&new(Some("someone/else"))).is_err(),
+            "a group the user cannot write to"
+        );
+    }
+
+    #[test]
+    fn creation_refuses_bad_names_and_descriptions_before_asking_the_host() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default().on("/", 200, "{}");
+        let c = client(&gh, Kind::GitHub, "github.com", "", &cache);
+        for bad in [
+            "",
+            " ",
+            "a b",
+            "-x",
+            "x.git",
+            "../x",
+            "a/b",
+            &"n".repeat(101),
+        ] {
+            let new = NewRepo {
+                name: bad.into(),
+                description: String::new(),
+                private: true,
+                namespace: None,
+            };
+            assert!(c.create_repository(&new).is_err(), "{bad:?}");
+        }
+        let long = NewRepo {
+            name: "ok".into(),
+            description: "d".repeat(MAX_DESCRIPTION + 1),
+            private: true,
+            namespace: None,
+        };
+        assert!(c.create_repository(&long).is_err());
+        let lines = NewRepo {
+            name: "ok".into(),
+            description: "a\nb".into(),
+            private: true,
+            namespace: None,
+        };
+        assert!(c.create_repository(&lines).is_err());
+        assert!(gh.requests().is_empty());
+    }
+
+    #[test]
+    fn namespaces_list_the_account_first_then_organizations_and_survive_a_refusal() {
+        let cache = Mutex::new(HashMap::new());
+        let gh = Mock::default()
+            .on("/user/orgs", 200, r#"[{"login":"acme"},{"login":"labs"}]"#)
+            .on("/user", 200, r#"{"login":"me"}"#);
+        let list = client(&gh, Kind::GitHub, "github.com", "", &cache)
+            .list_namespaces()
+            .unwrap();
+        assert_eq!(
+            list.iter().map(|n| n.path.as_str()).collect::<Vec<_>>(),
+            ["me", "acme", "labs"]
+        );
+        assert_eq!(list.iter().filter(|n| n.personal).count(), 1);
+
+        let refused = Mock::default()
+            .on(
+                "/user/orgs",
+                403,
+                r#"{"message":"Resource not accessible"}"#,
+            )
+            .on("/user", 200, r#"{"login":"me"}"#);
+        let list = client(&refused, Kind::GitHub, "github.com", "", &cache)
+            .list_namespaces()
+            .unwrap();
+        assert_eq!(
+            list.len(),
+            1,
+            "without read:org only the account is offered"
+        );
     }
 
     #[test]

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-namespaces"
+description = "Enables the list_namespaces command without any pre-configured scope."
+commands.allow = ["list_namespaces"]
+
+[[permission]]
+identifier = "deny-list-namespaces"
+description = "Denies the list_namespaces command without any pre-configured scope."
+commands.deny = ["list_namespaces"]

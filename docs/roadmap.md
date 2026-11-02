@@ -17,7 +17,7 @@ can be revisited.
 | Phase | State | Notes |
 |---|---|---|
 | 6 UI/UX | Done | See "Delivered" under Phase 6. Still open: the status bar does not show a paused merge/rebase |
-| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf numbers in `docs/performance.md` (500,000 commits ready in 5.5 s, 131 fps), Playwright E2E over WebView2 (`pnpm e2e`, 55 tests), CI builds an unsigned NSIS installer and runs the E2E. Open: merging `birth` into `main` and publishing |
+| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf numbers in `docs/performance.md` (500,000 commits ready in 5.5 s, 131 fps), Playwright E2E over WebView2 (`pnpm e2e`, 63 tests), CI builds an unsigned NSIS installer and runs the E2E. Open: merging `birth` into `main` and publishing |
 | 8 Everyday Git | Done | Stash, tags (incl. push and remote delete), branch delete/rename, reset, revert, discard, remotes, pull modes, force-with-lease, cancel, **undo/redo** of branch moves, tags, stashes and file edits (not pushes, not untracked files) |
 | 9 Staging and diffs | Done except small items | Hunk and line staging, file history, blame, patch export/apply, **syntax highlighting, word marks, side-by-side and picture diffs**. Not done: edit a file from the diff, expandable context / whole-file view, "load more" past the 4 MiB cap, Worker decoding, conventional-commit helper |
 | 10 Navigation | Done | Tabs (**names of your own, favorites, a set per profile**), search, clone/init, hide/solo, recents, **deep links** (`perseus-app://`), **scrolling past a few hundred thousand rows**. Not done: reorderable columns, graph filter by author |
@@ -77,8 +77,8 @@ matrix. Tiers follow the comparison's build order; the size is a rough estimate.
 - Pull requests, issues and CI state against real GitHub and GitLab accounts (unit tests only).
 - Everything from the latest round (multi-pick, submodule add, Gitflow, the merge button, the 320,000-row
   scroll) ran on fixture repositories, not on a real project of yours.
-- Forking against the real GitHub and GitLab (a mock host and real git cover the requests, the answers and the
-  remotes it sets up).
+- Forking, listing your repositories, creating and publishing against the real GitHub and GitLab (a fake host on
+  this machine drives the whole flow end to end, and mock hosts cover the requests and answers).
 - Registering `perseus-app://` (the Settings button writes to the user's registry, and the installer's
   registration needs an installer to be built and run): the link handling itself, including a second launch
   handing a link to the running window, was exercised.

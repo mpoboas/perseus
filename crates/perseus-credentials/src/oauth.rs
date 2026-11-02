@@ -43,6 +43,9 @@ pub struct Provider {
     /// Normalised `host[:port]`.
     pub host: String,
     pub client_id: String,
+    /// Ask GitLab only for git access. The application may have been registered without the `api`
+    /// scope, which GitLab refuses with `invalid_scope`; signing in then still has to work.
+    pub narrow: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -87,7 +90,16 @@ impl Provider {
             kind,
             host,
             client_id: client_id.to_string(),
+            narrow: false,
         })
+    }
+
+    /// The same application asking for less (see [`Provider::narrow`]).
+    pub fn narrowed(&self) -> Self {
+        Self {
+            narrow: true,
+            ..self.clone()
+        }
     }
 
     fn url(&self, path: &str) -> String {
@@ -113,12 +125,16 @@ impl Provider {
         }
     }
 
-    /// Enough for git over HTTPS and nothing else. GitHub also wants `workflow` before it lets a
-    /// push create or change a file under `.github/workflows`.
+    /// What Perseus asks for. GitHub: `repo` (nothing narrower reaches private repositories) covers
+    /// git and creating or forking repositories, `workflow` lets a push touch `.github/workflows`,
+    /// and `read:org` lists the organizations a new repository can go to. GitLab: `api`, because
+    /// listing, creating and forking projects are REST calls that `read_repository` does not allow
+    /// (it also carries git over HTTPS); the narrow form is git access only.
     pub fn scope(&self) -> &'static str {
-        match self.kind {
-            Kind::GitHub => "repo workflow",
-            Kind::GitLab => "read_repository write_repository",
+        match (self.kind, self.narrow) {
+            (Kind::GitHub, _) => "repo workflow read:org",
+            (Kind::GitLab, false) => "api",
+            (Kind::GitLab, true) => "read_repository write_repository",
         }
     }
 
@@ -524,7 +540,7 @@ mod tests {
         assert!(
             reqs[0]
                 .1
-                .contains(&("scope".into(), "repo workflow".into()))
+                .contains(&("scope".into(), "repo workflow read:org".into()))
         );
         assert_eq!(reqs[1].0, "https://github.com/login/oauth/access_token");
         assert!(
@@ -684,6 +700,22 @@ mod tests {
             OAuthError::Provider(m) => assert_eq!(m, "invalid_scope"),
             e => panic!("{e:?}"),
         }
+    }
+
+    #[test]
+    fn scopes_cover_the_account_features_and_gitlab_can_fall_back_to_git_only() {
+        assert_eq!(github().scope(), "repo workflow read:org");
+        assert_eq!(gitlab().scope(), "api");
+        assert_eq!(
+            gitlab().narrowed().scope(),
+            "read_repository write_repository"
+        );
+        assert_eq!(github().narrowed().scope(), "repo workflow read:org");
+        let narrowed = gitlab().narrowed();
+        assert_eq!(
+            (&narrowed.host, &narrowed.client_id),
+            (&gitlab().host, &gitlab().client_id)
+        );
     }
 
     #[test]

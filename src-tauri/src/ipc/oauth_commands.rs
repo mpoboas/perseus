@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use perseus_credentials::http::UreqHttp;
-use perseus_credentials::oauth::{Kind, Provider, now_unix, run_device_flow};
+use perseus_credentials::oauth::{Kind, OAuthError, Provider, now_unix, run_device_flow};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
@@ -174,23 +174,35 @@ pub async fn oauth_sign_in(
         )?;
         let provider = Provider::new(request.kind, host, &client_id).map_err(AppError::profile)?;
 
-        let tokens = run_device_flow(
-            &UreqHttp::new(),
-            &provider,
-            &mut |c| {
-                // The page address was validated to be on the provider's own host.
-                let opened = open::that_detached(&c.verification_uri).is_ok();
-                let _ = on_event.send(SignInEvent::Code {
-                    user_code: c.user_code.clone(),
-                    verification_uri: c.verification_uri.clone(),
-                    expires_in: c.expires_in,
-                    opened,
-                });
-                Ok(())
-            },
-            &cancel,
-            &|d| interruptible_sleep(d, &cancel),
-        )
+        let sign_in = |provider: &Provider| {
+            run_device_flow(
+                &UreqHttp::new(),
+                provider,
+                &mut |c| {
+                    // The page address was validated to be on the provider's own host.
+                    let opened = open::that_detached(&c.verification_uri).is_ok();
+                    let _ = on_event.send(SignInEvent::Code {
+                        user_code: c.user_code.clone(),
+                        verification_uri: c.verification_uri.clone(),
+                        expires_in: c.expires_in,
+                        opened,
+                    });
+                    Ok(())
+                },
+                &cancel,
+                &|d| interruptible_sleep(d, &cancel),
+            )
+        };
+        let tokens = match sign_in(&provider) {
+            // The GitLab application was registered without `api`: sign in for git access only
+            // (no code was shown yet, because the refusal comes with the code request).
+            Err(OAuthError::Provider(m))
+                if provider.kind == Kind::GitLab && m == "invalid_scope" =>
+            {
+                sign_in(&provider.narrowed())
+            }
+            other => other,
+        }
         .map_err(AppError::profile)?;
 
         store.set_oauth_credential(

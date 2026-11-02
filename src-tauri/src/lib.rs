@@ -16,6 +16,7 @@ use serde::Serialize;
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
 
+use ipc::account_commands::{self, Folders};
 use ipc::askpass_commands;
 use ipc::channels::{self, AppState};
 use ipc::extras_commands;
@@ -96,6 +97,7 @@ pub fn run() {
                 Arc::new(KeyringStore),
             ));
             app.manage(RecentStore::load(data_dir.join("recents.json")));
+            app.manage(Folders::new(data_dir.join("last-folder.txt")));
 
             // Links that open a repository: the ones that started this launch, and later ones.
             let handle = app.handle().clone();
@@ -201,6 +203,12 @@ pub fn run() {
             recent_commands::set_repo_alias,
             extras_commands::repo_stats,
             hosting_commands::fork_repository,
+            account_commands::choose_folder,
+            account_commands::host_accounts,
+            account_commands::list_remote_repositories,
+            account_commands::list_namespaces,
+            account_commands::clone_from_host,
+            account_commands::create_repository,
             link_commands::watch_links,
             link_commands::register_links,
             link_commands::links_registered,

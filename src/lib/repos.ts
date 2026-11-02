@@ -1,4 +1,4 @@
-import type { RecentRepo } from "../ipc";
+import type { RecentRepo, RemoteRepo } from "../ipc";
 
 /** What the user sees for a repository: their own name for it, else the folder's. */
 export const repoLabel = (r: { name: string; alias?: string | null }): string => r.alias || r.name;
@@ -70,4 +70,19 @@ export function kibytes(kib: number): string {
   if (mib < 1024) return `${mib < 10 ? mib.toFixed(1) : Math.round(mib)} MiB`;
   const gib = mib / 1024;
   return `${gib < 10 ? gib.toFixed(1) : Math.round(gib)} GiB`;
+}
+
+/** Repositories grouped under their owner, in the order each owner first appears (the host lists the most recently active first). */
+export function groupByOwner(repos: RemoteRepo[]): { owner: string; repos: RemoteRepo[] }[] {
+  const groups = new Map<string, RemoteRepo[]>();
+  for (const r of repos) groups.set(r.owner, [...(groups.get(r.owner) ?? []), r]);
+  return [...groups].map(([owner, list]) => ({ owner, repos: list }));
+}
+
+/** A name the hosts accept for a new repository (mirrors the backend's check, so the form can say so before asking). */
+export function validRepoName(name: string): boolean {
+  const n = name.trim();
+  return (
+    /^[A-Za-z0-9._-]{1,100}$/.test(n) && !/^[-.]/.test(n) && !/\.$/.test(n) && !n.includes("..") && !n.endsWith(".git")
+  );
 }

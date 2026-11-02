@@ -1,3 +1,4 @@
+pub mod account_commands;
 pub mod askpass_commands;
 pub mod channels;
 pub mod commands;

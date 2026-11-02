@@ -43,9 +43,10 @@ export function scratchDir(prefix) {
 
 /**
  * Starts the app and returns `{ page, root, appdata, consoleErrors, stop }`. `args` are command-line
- * arguments (a `perseus-app://` link), `profiles` the contents of profiles.json to start with.
+ * arguments (a `perseus-app://` link), `profiles` the contents of profiles.json to start with and `env`
+ * more environment variables for the app.
  */
-export async function launch({ recents = [], port = 9444, args = [], profiles = null } = {}) {
+export async function launch({ recents = [], port = 9444, args = [], profiles = null, env: extraEnv = {} } = {}) {
   const root = scratchDir("perseus-e2e-");
   const appdata = join(root, "appdata");
   mkdirSync(join(appdata, "dev.perseus.app"), { recursive: true });
@@ -63,6 +64,7 @@ export async function launch({ recents = [], port = 9444, args = [], profiles = 
       // Its own browser profile too: panel sizes and collapsed sections must not leak in from real use.
       WEBVIEW2_USER_DATA_FOLDER: join(root, "webview"),
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: `--remote-debugging-port=${port}`,
+      ...extraEnv,
     },
     stdio: "ignore",
   });

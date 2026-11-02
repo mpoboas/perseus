@@ -42,10 +42,10 @@ was tested, not that it matches GitKraken's polish.
 | Feature | GitKraken | Perseus |
 |---|---|---|
 | Open a local repository | Free | ✅ native folder picker |
-| Clone / init | Free | ✅ |
+| Clone / init | Free | ✅ clone by address or from the repositories of your signed-in GitHub or GitLab account (grouped by owner, searchable); create locally, or create on the host and publish the first commit in one step. Not offered: shallow and sparse clone, `.gitignore` and license templates, Bitbucket and Azure DevOps |
 | Multiple repos as tabs, per-profile tab sets, tab aliases | Free | ✅ tabs restored on start; each profile keeps its own set, swapped when you switch profile; names of your own for tabs and lists |
 | Favorites / recent repos | Free | ✅ recents and starred favorites (listed first, never dropped) on the welcome screen and in the toolbar picker |
-| Fork a GitHub repo from the app | Free | ✅ GitHub and GitLab: to your account, an organization or a group, optionally as `origin` with the original kept as `upstream`; tested against a mock host and real git, not yet against the real services |
+| Fork a GitHub repo from the app | Free | ✅ GitHub and GitLab: from the clone dialog ("Fork and clone": fork, clone your copy as `origin`, keep the original as `upstream`) or for the open repository (to your account, an organization or a group); tested end to end against a fake host on this machine and with a mock host and real git, not yet against the real services |
 | Repo maintenance (gc etc.) | Free | ✅ size and advice, optimize (`gc`), deep optimize, commit-graph, integrity check, forget stale remote branches; cancellable, never prunes inside git's grace period |
 | Activity log (every git command, timing, errors) | Free | ✅ in memory, URL passwords redacted |
 | Deep links (open a repo/commit from a URL) | Free | ✅ `perseus-app://open?path=…&commit=…`; unknown folders need a native confirmation; a second launch hands over to the running window |
@@ -204,7 +204,7 @@ was tested, not that it matches GitKraken's polish.
 | Never runs repo-configured diff/textconv programs | not documented | ➕ enforced and tested |
 | Crash reporting | Cloud-based (per their docs) | ➕ local `perseus.log` only, attached by the user if they choose |
 | Runtime | Electron | ➕ Tauri + native Rust core |
-| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (55 end-to-end tests); macOS/Linux compile and bundle in CI only |
+| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (63 end-to-end tests); macOS/Linux compile and bundle in CI only |
 
 ---
 
@@ -257,7 +257,7 @@ local-first, no-account design is a feature.
   so some rows (agent sessions, Kepler) are about a product direction Perseus does not need to
   follow.
 - Perseus statuses were taken from the code and the roadmap, plus the test suites (Rust,
-  Vitest, and 55 end-to-end tests against the release build). Pull requests, issues and CI
+  Vitest, and 63 end-to-end tests against the release build). Pull requests, issues and CI
   state for GitHub and GitLab are covered by unit tests only; only OAuth sign-in was verified
   against the real services. macOS and Linux were never run.
 - Performance figures are Perseus's own measurements on synthetic repositories

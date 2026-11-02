@@ -13,6 +13,7 @@ use crate::error::{AppError, Result};
 use crate::git::cli::GitOverrides;
 use crate::git::clone;
 use crate::git::repo::{RepoId, RepoInfo};
+use crate::ipc::account_commands::Folders;
 use crate::ipc::channels::AppState;
 use crate::ipc::commands::blocking;
 use crate::profiles::{ProfileStore, helper_path};
@@ -46,21 +47,21 @@ pub async fn init_repo(
     Ok(Some(info))
 }
 
-/// Asks where to put the clone, clones `url` there using the active profile's credentials,
-/// streams git's progress, and opens the result. `cancel_git_op(op_id)` stops it.
+/// Clones `url` into the folder chosen with `choose_folder`, using the active profile's
+/// credentials, streams git's progress, and opens the result. `cancel_git_op(op_id)` stops it.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn clone_repo(
-    app: AppHandle,
     state: State<'_, AppState>,
     profiles: State<'_, ProfileStore>,
     recents: State<'_, RecentStore>,
+    folders: State<'_, Folders>,
     url: String,
+    folder: u32,
     op_id: u32,
     on_progress: Channel<String>,
-) -> Result<Option<RepoInfo>> {
-    let Some(parent) = pick_folder(app).await? else {
-        return Ok(None);
-    };
+) -> Result<RepoInfo> {
+    let parent = folders.get(folder)?;
     let overrides = match profiles.active() {
         Some(profile) => profile.git_overrides(helper_path().as_deref())?,
         None => GitOverrides::default(),
@@ -86,7 +87,10 @@ pub async fn clone_repo(
     let target = result?;
     let info = state.repos.open(&target)?;
     recents.touch(&info.path.to_string_lossy(), &info.name)?;
-    Ok(Some(info))
+    if let Some(parent) = target.parent() {
+        folders.remember(parent);
+    }
+    Ok(info)
 }
 
 #[derive(Debug, Clone, Copy, Deserialize)]

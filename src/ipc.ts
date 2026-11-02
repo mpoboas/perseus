@@ -608,15 +608,109 @@ export const searchCommits = (repoId: number, query: SearchQuery) =>
 /** `defaultBranch` names the first branch of the new repository (git's `init.defaultBranch`). */
 export const initRepo = (defaultBranch?: string) => invoke<RepoInfo | null>("init_repo", { defaultBranch });
 
-/** Asks where to put the clone; `cancelGitOp(opId)` stops it. Null when the user cancels the folder dialog. */
+/** A folder chosen in the native dialog: `id` is what the commands below take, `path` is for showing. */
+export interface ChosenFolder {
+  id: number;
+  path: string;
+}
+
+/** Asks for a folder in a native dialog (`pick`), or offers the one used last without asking (null when there is none). */
+export const chooseFolder = (pick: boolean) => invoke<ChosenFolder | null>("choose_folder", { pick });
+
+/** Clones into the chosen folder; `cancelGitOp(opId)` stops it. */
 export function cloneRepo(
   url: string,
+  folder: number,
   opId: number,
   onProgress: (line: string) => void,
-): Promise<RepoInfo | null> {
+): Promise<RepoInfo> {
   const channel = new Channel<string>();
   channel.onmessage = onProgress;
-  return invoke<RepoInfo | null>("clone_repo", { url, opId, onProgress: channel });
+  return invoke<RepoInfo>("clone_repo", { url, folder, opId, onProgress: channel });
+}
+
+// ---- The signed-in account: browse, clone (or fork and clone), create and publish ----
+
+export interface HostAccount {
+  host: string;
+  kind: "git_hub" | "git_lab";
+  /** The active profile holds a login for this host. */
+  signed_in: boolean;
+}
+
+/** GitHub and GitLab hosts the clone and create dialogs offer. */
+export const hostAccounts = () => invoke<HostAccount[]>("host_accounts");
+
+export interface RemoteRepo {
+  /** `owner/name`, or a group path on GitLab. */
+  full_name: string;
+  /** The user, organization or group it belongs to. */
+  owner: string;
+  name: string;
+  description: string;
+  private: boolean;
+  fork: boolean;
+  https_url: string;
+  ssh_url: string;
+  web_url: string;
+}
+
+export const listRemoteRepositories = (host: string) => invoke<RemoteRepo[]>("list_remote_repositories", { host });
+
+/** Where a new repository can go: the account itself, then its organizations or groups. */
+export interface Namespace {
+  path: string;
+  personal: boolean;
+}
+
+export const listNamespaces = (host: string) => invoke<Namespace[]>("list_namespaces", { host });
+
+/** Forks `fullName` first when `fork` is given (empty fields mean "my account, same name") and clones the fork, keeping the original as `upstream`. */
+export function cloneFromHost(
+  host: string,
+  fullName: string,
+  fork: { name: string | null; namespace: string | null } | null,
+  folder: number,
+  opId: number,
+  onProgress: (line: string) => void,
+): Promise<RepoInfo> {
+  const channel = new Channel<string>();
+  channel.onmessage = onProgress;
+  return invoke<RepoInfo>("clone_from_host", { host, fullName, fork, folder, opId, onProgress: channel });
+}
+
+export interface CreateRequest {
+  name: string;
+  description: string;
+  /** Start with a README naming the project. */
+  readme: boolean;
+  defaultBranch: string | null;
+  folder: number;
+  /** Also create it on a host and push the first commit there. */
+  publish: { host: string; private: boolean; namespace: string | null } | null;
+}
+
+export interface CreateOutcome {
+  info: RepoInfo;
+  /** The repository's page on the host, once it was published. */
+  published: string | null;
+  /** Something that failed after the repository was made; the repository itself exists and is open. */
+  warning: string | null;
+}
+
+export function createRepository(
+  request: CreateRequest,
+  opId: number,
+  onProgress: (line: string) => void,
+): Promise<CreateOutcome> {
+  const channel = new Channel<string>();
+  channel.onmessage = onProgress;
+  const { defaultBranch, ...rest } = request;
+  return invoke<CreateOutcome>("create_repository", {
+    request: { ...rest, default_branch: defaultBranch },
+    opId,
+    onProgress: channel,
+  });
 }
 
 export type OpenIn = "folder" | "terminal" | "editor";

@@ -88,7 +88,11 @@ import {
   listPullRequests,
   mergePullRequest,
   openInBrowser,
-  initRepo,
+  cloneFromHost,
+  createRepository,
+  type ChosenFolder,
+  type CreateRequest,
+  type RemoteRepo,
   interactiveRebase,
   openIn,
   predictMerge,
@@ -149,6 +153,7 @@ import { ExtrasSections } from "./ExtrasSections";
 import { type PageId, SettingsPage } from "./settings/SettingsPage";
 import { KEYS, LARGE_FILE_DEFAULT, repoKey } from "./settings/keys";
 import { CloneDialog } from "./CloneDialog";
+import { CreateRepoDialog } from "./CreateRepoDialog";
 import { CreatePrDialog } from "./CreatePrDialog";
 import { ConflictDialog } from "./ConflictDialog";
 import { RebaseDialog } from "./RebaseDialog";
@@ -256,6 +261,7 @@ function App() {
   const [resolvePath, setResolvePath] = useState<string | null>(null);
   const [rebaseBase, setRebaseBase] = useState<{ oid: string; label: string } | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(false);
   const [filter, setFilter] = useState<GraphFilter>({ hidden: [], solo: [] });
   const [tabs, setTabs] = usePref<RepoTab[]>("session.tabs", []);
   const restored = useRef(false);
@@ -944,7 +950,8 @@ function App() {
     }
   };
 
-  const doClone = async (url: string) => {
+  /** Runs a clone (by address, or from the account) with the progress line and the Cancel button. */
+  const runClone = async (clone: (opId: number) => Promise<RepoInfo>) => {
     setCloneOpen(false);
     setBusy("Cloning…");
     setProgress("");
@@ -952,11 +959,9 @@ function App() {
     opIdRef.current = opId;
     setCancellable(true);
     try {
-      const info = await cloneRepo(url, opId, setProgress);
-      if (info) {
-        toast.success(`Cloned ${info.name}`);
-        await adopt(info);
-      }
+      const info = await clone(opId);
+      toast.success(`Cloned ${info.name}`);
+      await adopt(info);
     } catch (e) {
       report("Clone failed", e);
     } finally {
@@ -967,15 +972,33 @@ function App() {
     }
   };
 
-  const doInit = async () => {
+  const doCloneUrl = (url: string, folder: ChosenFolder) => runClone((opId) => cloneRepo(url, folder.id, opId, setProgress));
+
+  const doCloneHost = (host: string, repo: RemoteRepo, fork: boolean, folder: ChosenFolder) =>
+    runClone((opId) =>
+      cloneFromHost(host, repo.full_name, fork ? { name: null, namespace: null } : null, folder.id, opId, setProgress),
+    );
+
+  /** Creates a repository in the chosen folder, and on a host too when asked, with the first commit pushed. */
+  const doCreate = async (request: CreateRequest) => {
+    setCreateOpen(false);
+    setBusy(request.publish ? "Creating and publishing…" : "Creating…");
+    setProgress("");
+    const opId = newOpId();
+    opIdRef.current = opId;
+    setCancellable(true);
     try {
-      const info = await initRepo(readPref<string>(KEYS.defaultBranch, "main"));
-      if (info) {
-        toast.success(`Created a repository in ${info.name}`);
-        await adopt(info);
-      }
+      const out = await createRepository(request, opId, setProgress);
+      if (out.warning) toast.error(`Created ${out.info.name}, with a problem`, out.warning);
+      else toast.success(out.published ? `Published ${out.info.name}` : `Created ${out.info.name}`, out.published ?? undefined);
+      await adopt(out.info);
     } catch (e) {
       report("Could not create the repository", e);
+    } finally {
+      opIdRef.current = null;
+      setCancellable(false);
+      setBusy(null);
+      setProgress("");
     }
   };
 
@@ -1845,7 +1868,7 @@ function App() {
 
     add({ id: "open", title: "Open repository…", group: "Actions", icon: FolderOpen, shortcut: "Ctrl+O", run: () => void open() });
     add({ id: "clone", title: "Clone a repository…", group: "Actions", icon: Download, run: () => setCloneOpen(true) });
-    add({ id: "init", title: "Create a new repository…", group: "Actions", icon: FolderPlus, run: () => void doInit() });
+    add({ id: "init", title: "Create a new repository…", group: "Actions", icon: FolderPlus, run: () => setCreateOpen(true) });
     if (repo) {
       add({ id: "fetch", title: "Fetch", group: "Actions", icon: RefreshCw, run: () => void gitOp("Fetching…", fetchOp(), { done: "Fetch complete", fail: "Fetch failed" }) });
       if (status?.upstream)
@@ -2022,7 +2045,7 @@ function App() {
         }}
         onStash={() => setStashOpen(true)}
         onClone={() => setCloneOpen(true)}
-        onInit={() => void doInit()}
+        onInit={() => setCreateOpen(true)}
         filterCount={filterCount}
         onClearFilter={clearFilter}
         onPush={() =>
@@ -2293,7 +2316,7 @@ function App() {
           onRename={(p) => setRenaming(p)}
           onPalette={() => setPaletteOpen(true)}
           onClone={() => setCloneOpen(true)}
-          onInit={() => void doInit()}
+          onInit={() => setCreateOpen(true)}
         />
       )}
       </div>
@@ -2496,7 +2519,28 @@ function App() {
           }}
         />
       )}
-      {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} onClone={(url) => void doClone(url)} />}
+      {cloneOpen && (
+        <CloneDialog
+          onClose={() => setCloneOpen(false)}
+          onCloneUrl={(url, folder) => void doCloneUrl(url, folder)}
+          onCloneHost={(host, repo, fork, folder) => void doCloneHost(host, repo, fork, folder)}
+          onProfiles={() => {
+            setCloneOpen(false);
+            setProfilesOpen(true);
+          }}
+        />
+      )}
+      {createOpen && (
+        <CreateRepoDialog
+          defaultBranch={readPref<string>(KEYS.defaultBranch, "main")}
+          onClose={() => setCreateOpen(false)}
+          onCreate={(request) => void doCreate(request)}
+          onProfiles={() => {
+            setCreateOpen(false);
+            setProfilesOpen(true);
+          }}
+        />
+      )}
       {historyPath && repo && (
         <FileHistoryDialog
           repoId={repo.id}

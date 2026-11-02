@@ -13,15 +13,22 @@ so the only thing Perseus needs is each provider's public **client ID**.
 3. Open the app and tick **Enable Device Flow**.
 4. Copy the **Client ID**.
 
-Scopes requested: `repo` (GitHub offers nothing narrower for private repositories) and `workflow`, without which GitHub rejects any push that creates or changes a file under `.github/workflows`. Signing in again is needed for a token issued before this was added.
+Scopes requested: `repo` (GitHub offers nothing narrower for private repositories; it also covers
+creating and forking repositories), `workflow`, without which GitHub rejects any push that creates or changes a
+file under `.github/workflows`, and `read:org`, which lets Perseus list your organizations when you create a
+repository. Signing in again is needed for a token issued before one of these was added.
 GitHub OAuth app tokens do not expire. For organisation repositories an owner may need
 to approve the app.
 
 ## GitLab
 
 1. GitLab > User Settings > Applications > Add new application (or a group/instance app).
-2. Untick **Confidential**. Select the scopes `read_user`, `read_repository`,
+2. Untick **Confidential**. Select the scopes `api`, `read_user`, `read_repository` and
    `write_repository`. The redirect URI is unused by the device flow (`http://127.0.0.1`).
+   Perseus asks for `api`, which listing your projects, creating and forking them, and merge requests
+   need (git itself only needs the other two). If the application was registered without `api`, GitLab
+   refuses it and Perseus signs in for git access only; the account features then say so. Tick `api`
+   on the application and sign in again to get them.
 3. Tick **Device authorization grant** ("Enable to allow Device authorization grant flow").
    **This is easy to miss and is off by default.** Without it gitlab.com answers every
    sign-in request with a bare `access_denied`, whatever scopes are requested. It can be

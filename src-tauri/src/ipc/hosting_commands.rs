@@ -54,7 +54,7 @@ pub(crate) fn repo_ref(git: &crate::git::cli::Git) -> Result<Option<RepoRef>> {
     Ok(ordered.filter_map(|r| parse_remote(&r.fetch_url)).next())
 }
 
-fn token(profiles: &ProfileStore, host: &str) -> Option<String> {
+pub(crate) fn token(profiles: &ProfileStore, host: &str) -> Option<String> {
     profiles.fresh_token(host).ok().flatten()
 }
 

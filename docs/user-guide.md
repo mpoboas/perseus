@@ -13,6 +13,21 @@
 
 ## Your repositories
 
+- **Clone** (welcome screen, toolbar repository picker, or the palette) has a list of sources down the left,
+  like GitKraken's: *Clone with URL*, and one entry per host you can sign in to (GitHub.com, GitLab.com, and
+  other GitHub or GitLab hosts your profile has a login for). Pick a host to see the repositories of your
+  account, grouped by owner or organization (a lock marks private ones, most recently active first, up to
+  500), search them, choose one and clone it into the folder under *Where to clone to* (*Browse* changes it;
+  it starts as the folder you used last). Tick *Fork it to my account first* and the button becomes *Fork and
+  clone*: Perseus forks the repository on the host, clones your copy as `origin`, and keeps the original as
+  `upstream`. A repository that is already yours cannot be forked. This needs the profile to be signed in to
+  that host.
+- **Create** (welcome screen or palette → *Create a new repository…*) uses the same layout: *Local only* makes a
+  folder with a new repository in it (optionally with a README as the first commit); *GitHub.com* or *GitLab.com*
+  also creates it on the host, under your account or one of your organizations or groups, private or public, and
+  pushes the first commit, so it is on the host straight away. The local repository is made first: if the host
+  refuses (the name is taken, no permission), you keep the local one and are told why, and if the push fails you
+  can push again from the toolbar. Template files (`.gitignore`, a license) are not offered yet.
 - **Favorites**: the star next to a repository (welcome screen, the repository picker in the toolbar, or a
   tab's right-click menu) pins it under *Favorites*, listed first and by name. Favorites never fall off the
   list of recent repositories; the other recents keep the last 20.
