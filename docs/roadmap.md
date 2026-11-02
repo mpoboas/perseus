@@ -11,18 +11,23 @@ testing. Sizes are rough focused-work estimates for one developer: **S** 1-2 day
 
 | Milestone | After | What it means |
 |---|---|---|
-| **Alpha** | Phase 8 | A Git GUI you could use all day on Windows: unsigned installer, stash, tags, hunk staging, good diffs |
-| **Beta** | Phase 11 | Reasons to switch from GitKraken: conflict editor, interactive rebase, pull requests |
-| **1.0** | Phase 14 | Signed installers for three platforms, auto-update, security review, docs |
-| **After 1.0** | Phase 13's optional items | Terminal, AI helpers, Gitflow |
+| **Alpha** | Phase 9 | A Git GUI you could use all day on Windows: unsigned installer, stash, tags, hunk staging, good diffs |
+| **Beta** | Phase 12 | Reasons to switch from GitKraken: conflict editor, interactive rebase, pull requests |
+| **1.0** | Phase 15 | Signed installers for three platforms, auto-update, security review, docs |
+| **After 1.0** | Phase 14's optional items | Terminal, AI helpers, Gitflow |
 
 ```
- 6 Foundations ─┬─ 7 Everyday Git ── 8 Staging & diffs ──▶ ALPHA
-                │
-                └─ 9 Navigation & multi-repo ─ 10 Conflicts & history editing ─ 11 Hosting ──▶ BETA
-                                    12 Identity, signing, credential UX (can start after 7)
-                                    13 Workflow extras ──────────────▶ 14 Release engineering ──▶ 1.0
+ 6 UI & UX ── 7 Foundations ─┬─ 8 Everyday Git ── 9 Staging & diffs ──▶ ALPHA
+                              │
+                              └─ 10 Navigation & multi-repo ─ 11 Conflicts & history editing ─ 12 Hosting ──▶ BETA
+                                          13 Identity, signing, credential UX (can start after 8)
+                                          14 Workflow extras ────────────────▶ 15 Release engineering ──▶ 1.0
 ```
+
+Phase 6 comes first because it is where progress is *visible*, and every later feature then lands
+in a polished shell instead of being retrofitted. It pulls forward a few small items that
+later phases list (themes, a basic command palette, a recents list, sidebar folders and filter,
+column resizing, line numbers in diffs); those phases keep the remaining depth.
 
 ## Standing rules (apply to every phase)
 
@@ -42,7 +47,57 @@ Definition of done for any feature. These come from the conventions the project 
 
 ---
 
-## Phase 6: Foundations, measurement and an early build  `L`
+## Phase 6: UI and UX overhaul  `XL`   (in progress)
+
+**Goal.** Turn a working prototype into an application that looks and feels finished. No new Git
+capabilities: every existing capability gets a clear, fast, good-looking, discoverable interface.
+
+**Design system**
+- **Tokens** for color, type, spacing, radius, elevation and motion; a carefully tuned **dark** and
+  **light** theme plus "follow system", chosen in the toolbar and the palette, remembered between runs.
+- **Icon set** (one consistent family) and a small **component library**: buttons, icon buttons,
+  inputs, segmented controls, tabs, chips, avatars, tooltips, dialogs, menus, toasts, spinners,
+  skeletons, splitters, keyboard-key hints, empty states.
+- Visible focus rings, reduced-motion support, sensible contrast in both themes.
+
+**Application shell**
+- **Welcome screen** with recent repositories (new, validated recents store in the backend), a
+  primary "Open repository" action, and shortcut hints.
+- **Top bar**: repository and branch switcher, fetch / pull / push with ahead/behind and progress,
+  profile menu showing the active identity, theme toggle.
+- **Status bar** (repo path, operation progress, in-progress merge/rebase indicator).
+- **Resizable, collapsible panes** whose sizes persist.
+- **Toasts** replace the single status line: success, error (with copy-details), info.
+
+**History and graph**
+- Larger rows, **column header with resizable columns**, author **avatars** (initials, no network),
+  typed **ref chips** (branch / remote / tag / HEAD), hover and selection states, polished lanes
+  and nodes that follow the theme, loading skeletons and empty states.
+- **WIP row** at the top of the graph (working-tree summary) that opens the Changes panel.
+
+**Panels**
+- **Sidebar**: collapsible sections with counts, a filter box, branch **folders**, current-branch
+  emphasis, **ahead/behind** per branch (new backend data), context menus.
+- **Commit detail**: header with avatar, copyable id, parent chips, styled message, file list with
+  status icons and **+/- line counts** (new backend data), tree/flat toggle.
+- **Changes panel**: checkbox staging, per-file counts, collapsible groups, summary + description
+  commit box with guidance, clear disabled states.
+- **Diff viewer**: line-number gutters, file header with counts, refined colors and hunk headers.
+
+**Everywhere**
+- **Command palette** (Ctrl+K / Ctrl+P): open repo, fetch/pull/push, check out branches, switch
+  profile, toggle theme, go to a commit; a **shortcuts** cheat-sheet.
+- Restyled **Profiles**, sign-in and confirm dialogs.
+
+**Exit.** Every screen reviewed in both themes in the running app and in a **release build**;
+keyboard-only use of the main flows; no layout shift or flicker during common operations;
+Vitest coverage for the new pure logic; no regressions in the existing test suites.
+**Out of scope here.** Syntax highlighting and side-by-side diff (Phase 9), tabs for several
+repositories (Phase 10), the full preferences screen (Phase 14).
+
+---
+
+## Phase 7: Foundations, measurement and an early build  `L`
 
 **Goal.** Replace "I believe it's fast" with numbers, make UI testing automatic, remove the
 "reload everything after every action" shortcut, and prove we can ship a build.
@@ -67,7 +122,7 @@ Definition of done for any feature. These come from the conventions the project 
 the graph; an installer that opens a repo on a clean Windows VM.
 **Risks.** Playwright + WebView2 setup; installer + helper bundling paths.
 
-## Phase 7: Everyday Git completeness  `L`
+## Phase 8: Everyday Git completeness  `L`
 
 **Goal.** No common daily action sends the user to a terminal.
 
@@ -76,7 +131,7 @@ the graph; an installer that opens a repo on a clean Windows VM.
 - **Branches**: delete (local and remote) with "unmerged commits" warning, rename, set upstream.
 - **Reset** (soft/mixed/hard, hard behind a confirm that shows lost changes), **revert** a commit
   (incl. merge commits with mainline choice).
-- **Discard changes** for files (hunks arrive in Phase 8).
+- **Discard changes** for files (hunks arrive in Phase 9).
 - **Remotes**: list, add, rename, remove, change URL. **Push options**: force-with-lease (confirm),
   push tags, push to another remote. **Pull variants**: ff-only / merge / rebase, with a default setting.
 - **Cancel** for fetch/pull/push (kill the child, clean up), with a visible Cancel button.
@@ -85,17 +140,17 @@ the graph; an installer that opens a repo on a clean Windows VM.
 
 **Exit.** Each action has real-git tests and a UI path (menu and, where natural, drag); undo restores
 exact ref state in tests; cancel leaves no lock files.
-**Depends on.** Phase 6 incremental refresh. **Risks.** Undo semantics with a dirty working tree
+**Depends on.** Phase 7 incremental refresh. **Risks.** Undo semantics with a dirty working tree
 (use `reset --keep`, refuse when unsafe).
 
-## Phase 8: Staging, diffs and file history  `L`   → **Alpha**
+## Phase 9: Staging, diffs and file history  `L`   → **Alpha**
 
 **Goal.** Match the expected quality of the working-tree and diff experience.
 
 - **Hunk and line staging / unstaging / discarding**: parse the unified diff in Rust, let the
   user select hunks or lines in the diff view, build a patch and apply with
   `git apply --cached [--recount]` (and `-R` for discard).
-- **Syntax highlighting** (lazy-loaded, off the main thread; pick the engine in Phase 8 design:
+- **Syntax highlighting** (lazy-loaded, off the main thread; pick the engine in Phase 9 design:
   CodeMirror 6 vs a lighter highlighter), **line numbers**, **side-by-side** mode, **word-level**
   highlights, expandable context, whole-file view.
 - **Large and special files**: image diff, binary summary, the 4 MiB cap becomes "load more";
@@ -110,7 +165,7 @@ exact ref state in tests; cancel leaves no lock files.
 5 MB file stays responsive; E2E covers stage-a-line-then-commit.
 **Risks.** Patch construction edge cases (the biggest correctness risk in this phase; property-test it).
 
-## Phase 9: Navigation, search and multi-repository  `L`
+## Phase 10: Navigation, search and multi-repository  `L`
 
 **Goal.** Move around big histories and many repos comfortably.
 
@@ -121,13 +176,13 @@ exact ref state in tests; cancel leaves no lock files.
 - **Repo tabs** with per-tab state, alias, favorites and a recents list.
 - **Clone** (progress, uses the active profile's credentials) and **init**.
 - **Open in** terminal / file manager / editor; **deep links** (`perseus-app://open?path=…`, validated).
-- **Graph scale work** driven by Phase 6 numbers: commit-graph file generation numbers,
+- **Graph scale work** driven by Phase 7 numbers: commit-graph file generation numbers,
   windowed/lazy lane computation if 500k-row repos miss the budget.
 
 **Exit.** Search over 500k commits returns first hits quickly; tabs survive restart; clone works with
 a private repo through a profile.
 
-## Phase 10: Conflicts and history editing  `XL`
+## Phase 11: Conflicts and history editing  `XL`
 
 **Goal.** The features people pay GitKraken for.
 
@@ -147,7 +202,7 @@ a private repo through a profile.
 interactive rebase of 20 commits with reword + squash + drop yields the expected tree and messages.
 **Risks.** Rebase state machine edge cases (external rebases in progress, hooks); the largest item in the plan.
 
-## Phase 11: Hosting integrations  `XL`   → **Beta**
+## Phase 12: Hosting integrations  `XL`   → **Beta**
 
 **Goal.** Pull requests and issues without leaving the app. The OAuth tokens already exist.
 
@@ -163,10 +218,10 @@ interactive rebase of 20 commits with reword + squash + drop yields the expected
 - OAuth/token flows for Bitbucket and Azure DevOps where the provider allows them.
 
 **Exit.** Create a PR from a branch on GitHub and GitLab test accounts through the UI; rate-limit tests with a fake server.
-**Depends on.** Phase 9 sidebar work. **Risks.** API surface and per-provider quirks; keep the
+**Depends on.** Phase 10 sidebar work. **Risks.** API surface and per-provider quirks; keep the
 provider trait small and test with recorded fixtures.
 
-## Phase 12: Identity, signing and credential experience  `L`   (can start after Phase 7)
+## Phase 13: Identity, signing and credential experience  `L`   (can start after Phase 8)
 
 **Goal.** Finish the part of the product that is meant to be better than GitKraken's.
 
@@ -188,7 +243,7 @@ signed commits verify; profile follows the repo.
 **Risks.** Platform differences (pinentry, ssh-agent on Windows); keep prompts out of the
 webview's reach of secrets (answers go straight to the child process).
 
-## Phase 13: Workflow extras and power features  `L-XL`
+## Phase 14: Workflow extras and power features  `L-XL`
 
 **Goal.** Cover the long tail; sort by user demand.
 
@@ -205,7 +260,7 @@ webview's reach of secrets (answers go straight to the child process).
 
 **Exit.** Each item behind its own test; terminal and AI are feature-flagged until reviewed.
 
-## Phase 14: Release engineering and 1.0  `L`   → **1.0**
+## Phase 15: Release engineering and 1.0  `L`   → **1.0**
 
 **Goal.** Something strangers can install, trust and update.
 
@@ -231,23 +286,23 @@ webview's reach of secrets (answers go straight to the child process).
 
 | # | Decision | Needed by | Notes |
 |---|---|---|---|
-| 1 | **Project license** (MIT / Apache-2.0 / GPL / AGPL …) | Phase 6 | Currently undecided; affects contributors and the license gate in `deny.toml` |
-| 2 | **Name, app identifier and branding** | Phase 14 (ideally earlier) | Bundle id `dev.perseus.app` is a placeholder; check trademark/domain |
-| 3 | **Platforms at launch**: Windows only first, or all three | Phase 6 | Drives CI cost and verification work |
-| 4 | **AI features**: in scope? BYO-key only? local models? | Phase 13 | Privacy stance is a selling point; AI changes the story |
-| 5 | **Which hosts matter**: Bitbucket / Azure DevOps priority | Phase 11 | Bitbucket Cloud has no good OAuth path (API token only) |
-| 6 | **Code-signing budget** (Windows certificate / Trusted Signing, Apple Developer account) | Phase 14 | Unsigned builds trigger SmartScreen/Gatekeeper warnings |
-| 7 | **Telemetry stance**: none, or opt-in crash reports | Phase 14 | Default in this plan: none |
-| 8 | **Release/hosting model**: GitHub Releases + updater, or elsewhere | Phase 14 | |
-| 9 | **Terminal in the app**: yes / no | Phase 13 | Largest attack-surface addition in the plan |
-| 10 | **Repository publication**: where, when, and public vs private first | Phase 6 | The `birth` branch is local only today |
+| 1 | **Project license** (MIT / Apache-2.0 / GPL / AGPL …) | Phase 7 | Currently undecided; affects contributors and the license gate in `deny.toml` |
+| 2 | **Name, app identifier and branding** | Phase 15 (ideally earlier) | Bundle id `dev.perseus.app` is a placeholder; check trademark/domain |
+| 3 | **Platforms at launch**: Windows only first, or all three | Phase 7 | Drives CI cost and verification work |
+| 4 | **AI features**: in scope? BYO-key only? local models? | Phase 14 | Privacy stance is a selling point; AI changes the story |
+| 5 | **Which hosts matter**: Bitbucket / Azure DevOps priority | Phase 12 | Bitbucket Cloud has no good OAuth path (API token only) |
+| 6 | **Code-signing budget** (Windows certificate / Trusted Signing, Apple Developer account) | Phase 15 | Unsigned builds trigger SmartScreen/Gatekeeper warnings |
+| 7 | **Telemetry stance**: none, or opt-in crash reports | Phase 15 | Default in this plan: none |
+| 8 | **Release/hosting model**: GitHub Releases + updater, or elsewhere | Phase 15 | |
+| 9 | **Terminal in the app**: yes / no | Phase 14 | Largest attack-surface addition in the plan |
+| 10 | **Repository publication**: where, when, and public vs private first | Phase 7 | The `birth` branch is local only today |
 
 ## Known limitations being tracked
 
-- SSH keys must be unprotected or already in an agent; unknown hosts fail until connected once (Phase 12).
-- Credential helper must sit next to the app (Phase 6 early packaging, Phase 14).
-- The graph reloads fully after each operation (Phase 6).
-- 60 FPS scrolling on 50k rows and memory use are unmeasured (Phase 6).
-- Only Windows has been exercised; macOS and Linux build in CI but are untested (Phases 6 and 14).
-- A single global active profile (Phase 12).
-- Bitbucket and Azure DevOps have no sign-in flow (Phase 11).
+- SSH keys must be unprotected or already in an agent; unknown hosts fail until connected once (Phase 13).
+- Credential helper must sit next to the app (Phase 7 early packaging, Phase 15).
+- The graph reloads fully after each operation (Phase 7).
+- 60 FPS scrolling on 50k rows and memory use are unmeasured (Phase 7).
+- Only Windows has been exercised; macOS and Linux build in CI but are untested (Phases 7 and 15).
+- A single global active profile (Phase 13).
+- Bitbucket and Azure DevOps have no sign-in flow (Phase 12).
