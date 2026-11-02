@@ -7,27 +7,89 @@ building phases, derived from three sources: the original plan's unfinished item
 testing. Sizes are rough focused-work estimates for one developer: **S** 1-2 days,
 **M** 3-5 days, **L** 1-2 weeks, **XL** 2+ weeks.
 
-## Status (updated at the end of the overnight build)
+## Status (re-checked 2026-11-02 against [gitkraken-comparison.md](gitkraken-comparison.md))
 
-Phases 0-14 are built and tested; Phase 15 is built as far as it can be without the owner.
-Decisions taken by default while the owner was away are listed so they can be revisited.
+Phases 0-14 are built and tested, apart from the items under "Still missing" below; Phase 15 is
+built as far as it can be without the owner. The comparison counts 74 of its 112 rows as done,
+16 partial and 22 missing. Decisions taken by default while the owner was away are listed so they
+can be revisited.
 
 | Phase | State | Notes |
 |---|---|---|
-| 6 UI/UX | Done | See "Delivered" under Phase 6 |
-| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf notes in `docs/performance.md`, Playwright E2E over WebView2 (`pnpm e2e`), CI builds an unsigned NSIS installer and runs the E2E |
-| 8 Everyday Git | Done except undo | Stash, tags, branch delete/rename, reset, revert, discard, remotes, pull modes, force-with-lease, cancel |
-| 9 Staging and diffs | Done except highlighting | Hunk and line staging, file history, blame, patch export/apply. **Not done:** syntax highlighting, side-by-side diff |
-| 10 Navigation | Done except deep links | Tabs, search, clone/init, hide/solo, recents. **Not done:** deep links (`perseus://`), the scroll-height fix for graphs of several hundred thousand rows |
-| 11 Conflicts and history editing | Done except multi-pick | Conflict resolver, interactive rebase, conflict preview. **Not done:** cherry-picking several commits at once |
-| 12 Hosting | GitHub and GitLab | Pull/merge requests, issues, CI state. **Not done:** Bitbucket, Azure DevOps, and live testing against real accounts (covered by unit tests only; OAuth sign-in for GitHub and GitLab was verified live earlier) |
-| 13 Identity and signing | Done except GPG | Askpass prompts for git and ssh, SSH signing + verification badges, key generation, profile rules and pinning, skip hooks |
-| 14 Workflow extras | Partly | Submodules, worktrees, Git LFS (detect/track), large-file warning, preferences, activity log. **Deferred on purpose:** integrated terminal, AI helpers, workspaces, customizable shortcuts, Gitflow helpers, zoom, auto-fetch interval |
+| 6 UI/UX | Done | See "Delivered" under Phase 6. Still open: the status bar does not show a paused merge/rebase |
+| 7 Foundations | Done | `PERSEUS_DATA_DIR`, watcher, commit-graph auto-write, perf numbers in `docs/performance.md` (500,000 commits ready in 5.5 s, 131 fps), Playwright E2E over WebView2 (`pnpm e2e`, 47 tests), CI builds an unsigned NSIS installer and runs the E2E. Open: merging `birth` into `main` and publishing |
+| 8 Everyday Git | Done | Stash, tags (incl. push and remote delete), branch delete/rename, reset, revert, discard, remotes, pull modes, force-with-lease, cancel, **undo/redo** of branch moves, tags, stashes and file edits (not pushes, not untracked files) |
+| 9 Staging and diffs | Done except small items | Hunk and line staging, file history, blame, patch export/apply, **syntax highlighting, word marks, side-by-side and picture diffs**. Not done: edit a file from the diff, expandable context / whole-file view, "load more" past the 4 MiB cap, Worker decoding, conventional-commit helper |
+| 10 Navigation | Done except deep links | Tabs, search, clone/init, hide/solo, recents, **scrolling past a few hundred thousand rows**. Not done: deep links, tab aliases/favorites/per-profile tab sets, reorderable columns, graph filter by author |
+| 11 Conflicts and history editing | Done except the editor's depth | Conflict resolver, interactive rebase, conflict preview (toolbar button, which now also merges into main), **cherry-pick of several commits**. Not done: per-line picks with a live output pane, external merge tools, "squash selected commits" shortcut, revert ranges |
+| 12 Hosting | GitHub and GitLab | Pull/merge requests, issues, CI state. Not done: in-app review, PR filters/saved views, Bitbucket, Azure DevOps, Jira/Trello, and live testing against real accounts (unit tests only; OAuth sign-in for GitHub and GitLab was verified live) |
+| 13 Identity and signing | Done except GPG | Askpass prompts for git and ssh, SSH signing + verification badges, key generation, profile rules and pinning, skip hooks. Not done: GPG, uploading a generated public key to GitHub/GitLab |
+| 14 Workflow extras | Partly | Submodules (incl. add), worktrees, Git LFS (detect/track), large-file warning, preferences, activity log, **Gitflow** (no support branches or bugfix kind), **auto-fetch**, command palette. **Deferred on purpose:** integrated terminal, AI helpers. Not done: workspaces, customizable shortcuts, zoom, LFS locks, worktree graph indicator |
 | 15 Release engineering | Partly | README, user guide, threat model, local error log, per-OS bundle matrix in CI. **Owner-only (not done):** code-signing certificates, notarization, updater signing key and update hosting, first public release, macOS/Linux hands-on verification, formal accessibility audit, i18n |
 
-Defaults chosen without the owner (revisable): **MIT license**; **Windows first**; **no telemetry**;
-no integrated terminal and no AI helpers in scope; signing, notarization, updater keys and
-publication are left for the owner. Nothing was pushed or published: the `birth` branch is local.
+Defaults chosen without the owner (revisable): **MIT license** (now in `LICENSE`); **Windows first**;
+**no telemetry**; no integrated terminal and no AI helpers in scope; signing, notarization, updater
+keys and publication are left for the owner. Nothing was pushed or published: the `birth` branch is
+local.
+
+## Still missing
+
+Everything below is absent or partial today, merged from the phases above and the comparison's
+matrix. Tiers follow the comparison's build order; the size is a rough estimate.
+
+**Tier 2: the features people pay GitKraken for**
+
+| # | Item | Size | Where it comes from |
+|---|---|---|---|
+| 1 | In-app **pull request review** (comments, reviewers, check details), PR filters and saved views | L | Phase 12; comparison rows "Pull requests", "PR filter syntax" |
+| 2 | **Bitbucket** and **Azure DevOps** (sign-in with a token, pull requests, issues); Jira/Trello issues; Bitbucket Data Center | L | Phase 12; hosting and identity rows |
+| 3 | **Workspaces**: group repositories, fetch and see status of all | L | Phase 14; "Workspaces" row (tabs only today) |
+| 4 | **Per-line conflict picks** with a live output pane; open conflicts in an **external merge tool** | L | Phase 11; "Built-in merge tool" and "external tools" rows |
+| 5 | **GPG signing** (binary detection, pinentry) | M | Phase 13; "commit signing" row |
+
+**Tier 3: polish and reach**
+
+| # | Item | Size |
+|---|---|---|
+| 6 | Customizable shortcuts, UI zoom, more preferences (a second theme pair) | M |
+| 7 | Accessibility audit (keyboard-only use, contrast, a list alternative to the canvas graph) and localisation | L |
+| 8 | Deep links (`perseus-app://open?path=…`, validated), repo maintenance (gc), fork a GitHub repo | M |
+| 9 | Integrated terminal (largest attack-surface addition; needs owner decision #9) | L |
+| 10 | Optional AI helpers with a bring-your-own key (needs owner decision #4) | L |
+
+**Small gaps inside rows that are marked ✅ or 🟡**
+
+- Diffs: edit and save a file from the diff; expandable context and a whole-file view; "load more"
+  past the 4 MiB cap and decoding in a Worker (both from the original Phase 9 plan); highlighting for
+  languages beyond the built-in list.
+- Graph: reorderable and toggleable columns; filtering the graph itself by author; highlighting a
+  branch's commits on hover; real ghost branches (today a guess from the row above).
+- Repositories: tab aliases, favorites and per-profile tab sets.
+- Commits: a conventional-commit helper; a "squash selected commits" shortcut and revert of a range
+  (neither exists in the code).
+- Git features: Gitflow support branches and the bugfix kind; LFS locks; a worktree indicator in the
+  graph; undoing a push (deliberately not done).
+- Hosting: uploading a generated SSH public key to GitHub/GitLab (planned in Phase 13, not found in
+  the code); a GitHub Actions workflow browser; conflict warnings about other people's branches.
+- Shell: the status bar does not show a paused merge/rebase (the Changes tab banner does).
+- Not checked in this pass: conflict badges on the graph while an operation is paused.
+
+**Verification debt (built, but not proven where it matters)**
+
+- Pull requests, issues and CI state against real GitHub and GitLab accounts (unit tests only).
+- Everything from the latest round (multi-pick, submodule add, Gitflow, the merge button, the 320,000-row
+  scroll) ran on fixture repositories, not on a real project of yours.
+- macOS and Linux were never run; they only compile and bundle in CI.
+
+**Owner-only**
+
+- Merge `birth` into `main` and push. The toolbar's conflict button now does the local merge. Pushing
+  needs a fresh GitHub sign-in because the app asks for the `workflow` permission.
+- Code-signing certificates, notarization, updater key and hosting, the first public release
+  (`docs/releasing.md`), decisions #2-#10 in the table at the end.
+
+**Probably not worth chasing:** Launchpad, cloud workspaces, team view, Insights, Boards,
+Kepler/agent orchestration, Cloud Patches: they depend on a vendor account and cloud backend.
 
 ## Milestones
 
@@ -323,7 +385,7 @@ webview's reach of secrets (answers go straight to the child process).
 
 | # | Decision | Needed by | Notes |
 |---|---|---|---|
-| 1 | **Project license** (MIT / Apache-2.0 / GPL / AGPL …) | Phase 7 | Currently undecided; affects contributors and the license gate in `deny.toml` |
+| 1 | **Project license** (MIT / Apache-2.0 / GPL / AGPL …) | Phase 7 | MIT was chosen by default (`LICENSE`); confirm or change before publishing |
 | 2 | **Name, app identifier and branding** | Phase 15 (ideally earlier) | Bundle id `dev.perseus.app` is a placeholder; check trademark/domain |
 | 3 | **Platforms at launch**: Windows only first, or all three | Phase 7 | Drives CI cost and verification work |
 | 4 | **AI features**: in scope? BYO-key only? local models? | Phase 14 | Privacy stance is a selling point; AI changes the story |
@@ -336,10 +398,16 @@ webview's reach of secrets (answers go straight to the child process).
 
 ## Known limitations being tracked
 
-- SSH keys must be unprotected or already in an agent; unknown hosts fail until connected once (Phase 13).
-- Credential helper must sit next to the app (Phase 7 early packaging, Phase 15).
-- The graph reloads fully after each operation (Phase 7).
-- 60 FPS scrolling on 50k rows and memory use are unmeasured (Phase 7).
+Resolved since the first version of this list: passphrase-protected SSH keys and unknown hosts (the
+in-app askpass prompts), the credential helper next to the app (bundled as a sidecar), the unmeasured
+60 FPS goal (131-152 fps up to 500,000 commits), and the single global profile (per-repository
+assignment by URL pattern or pin).
+
+- The graph is re-streamed in full after every operation. It is built off-screen and swapped in, so it
+  does not flicker or lose the selection, but a 500,000-commit repository pays the 5.5 s walk each time
+  (Phase 7's "incremental refresh" was only done in this quieter form).
+- Past about 285,000 rows the stretched scroll bar cannot address every row by scrolling alone; the
+  keyboard, search and jump-to-commit still reach all of them (`docs/performance.md`).
+- Undo cannot bring back untracked files, nor a stash's untracked files that changed since.
 - Only Windows has been exercised; macOS and Linux build in CI but are untested (Phases 7 and 15).
-- A single global active profile (Phase 13).
 - Bitbucket and Azure DevOps have no sign-in flow (Phase 12).

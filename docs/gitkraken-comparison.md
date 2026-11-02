@@ -115,7 +115,7 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Built-in merge tool (side-by-side with live output, per-line picks) | Free | 🟡 resolver with ours / theirs / both / hand edit; not per-line picks with a live output pane |
 | Open conflicts in external tools (Beyond Compare, P4Merge…) | Free | ❌ |
-| Conflict Prevention (warn about likely conflicts early) | Pro | ✅ ➕ a toolbar button checks the branch against the main branch as you work, and a merge or rebase dialog says up front whether it would conflict, free. Not done: warnings about other people's branches |
+| Conflict Prevention (warn about likely conflicts early) | Pro | ✅ ➕ a toolbar button checks the branch against the main branch as you work (and merges into it when pressed), and a merge or rebase dialog says up front whether it would conflict, free. Not done: warnings about other people's branches |
 | AI conflict resolution | Paid | ❌ |
 
 ### Remotes and sync
@@ -201,7 +201,7 @@ was tested, not that it matches GitKraken's polish.
 | Never runs repo-configured diff/textconv programs | not documented | ➕ enforced and tested |
 | Crash reporting | Cloud-based (per their docs) | ➕ local `perseus.log` only, attached by the user if they choose |
 | Runtime | Electron | ➕ Tauri + native Rust core |
-| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (46 end-to-end tests); macOS/Linux compile and bundle in CI only |
+| Platforms | Windows, macOS, Linux | 🟡 Windows built and exercised (47 end-to-end tests); macOS/Linux compile and bundle in CI only |
 
 ---
 
@@ -254,7 +254,7 @@ local-first, no-account design is a feature.
   so some rows (agent sessions, Kepler) are about a product direction Perseus does not need to
   follow.
 - Perseus statuses were taken from the code and the roadmap, plus the test suites (Rust,
-  Vitest, and 46 end-to-end tests against the release build). Pull requests, issues and CI
+  Vitest, and 47 end-to-end tests against the release build). Pull requests, issues and CI
   state for GitHub and GitLab are covered by unit tests only; only OAuth sign-in was verified
   against the real services. macOS and Linux were never run.
 - Performance figures are Perseus's own measurements on synthetic repositories
