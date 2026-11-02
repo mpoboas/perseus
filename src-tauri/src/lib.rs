@@ -146,6 +146,7 @@ pub fn run() {
             extras_commands::activity_log,
             extras_commands::undo_snapshot,
             avatars::author_avatar,
+            avatars::remote_avatar,
             extras_commands::undo_restore,
             commands::commit_signature,
             signing_commands::generate_ssh_key,

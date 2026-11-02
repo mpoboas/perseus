@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-remote-avatar"
+description = "Enables the remote_avatar command without any pre-configured scope."
+commands.allow = ["remote_avatar"]
+
+[[permission]]
+identifier = "deny-remote-avatar"
+description = "Denies the remote_avatar command without any pre-configured scope."
+commands.deny = ["remote_avatar"]

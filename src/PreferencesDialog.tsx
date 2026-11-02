@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { type LogEntry, activityLog } from "./ipc";
-import { AVATAR_PREF } from "./lib/avatars";
+import { AVATAR_PREF, GRAVATAR_PREF } from "./lib/avatars";
 import { usePref } from "./lib/prefs";
 import { Button, Dialog } from "./ui";
 
@@ -18,6 +18,7 @@ interface Props {
 
 export function PreferencesDialog({ dateStyle, onDateStyle, onClose }: Props) {
   const [pictures, setPictures] = usePref<boolean>(AVATAR_PREF, true);
+  const [gravatar, setGravatar] = usePref<boolean>(GRAVATAR_PREF, false);
   const [megabytes, setMegabytes] = usePref<number>(LARGE_FILE_KEY, LARGE_FILE_DEFAULT);
   const [reads, setReads] = useState(false);
   const [log, setLog] = useState<LogEntry[]>([]);
@@ -61,8 +62,16 @@ export function PreferencesDialog({ dateStyle, onDateStyle, onClose }: Props) {
             <input type="checkbox" checked={pictures} onChange={(e) => setPictures(e.target.checked)} /> Show GitHub profile pictures for authors
           </label>
           <p className="muted small">
-            Only for people GitHub names in their commit address (<code>…@users.noreply.github.com</code>) and for your own signed-in
-            account. Nothing is sent to Gravatar or any other service. Turn this off to keep every request to your Git host.
+            Pictures come from GitHub: the account GitHub has linked to each commit (for repositories hosted on github.com), and your own
+            signed-in account. Turn this off to keep every request to your Git host.
+          </p>
+          <label className="check-row">
+            <input type="checkbox" checked={gravatar} disabled={!pictures} onChange={(e) => setGravatar(e.target.checked)} /> Also look people up on
+            Gravatar
+          </label>
+          <p className="muted small">
+            Gravatar covers people GitHub does not know. It sends a hash of each author's e-mail address to gravatar.com, which is why it is off by default.
+            Restart Perseus for a change here to apply to people already looked up.
           </p>
         </section>
 

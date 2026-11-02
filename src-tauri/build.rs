@@ -58,6 +58,7 @@ const COMMANDS: &[&str] = &[
     "activity_log",
     "undo_snapshot",
     "author_avatar",
+    "remote_avatar",
     "undo_restore",
     "commit_signature",
     "generate_ssh_key",

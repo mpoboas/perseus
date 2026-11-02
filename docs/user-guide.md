@@ -92,9 +92,11 @@ The gear in the toolbar (or *Preferences and activity log…* in the palette) ho
 dates (`07/10/2026 @ 14:37` or `26d ago`), the large-file threshold and the **activity log**: every git command Perseus ran, with timing and the first line of
 any error. Passwords embedded in URLs are replaced by `***`. The log lives in memory only.
 
-Profile pictures: GitHub pictures are shown for people whose commits use a GitHub private address
-(`…@users.noreply.github.com`) and for your own signed-in account. There is no Gravatar lookup; a preference
-turns pictures off.
+Profile pictures: for repositories on github.com, the picture of the GitHub account linked to each commit is
+shown (GitHub's own commit record answers this, so it works even when the author's address is private), plus
+your own signed-in account. Branches that exist on the remote show the remote owner's picture. Gravatar, which
+covers people GitHub does not know, is a separate opt-in because it sends a hash of each address to a third
+party. A preference turns all pictures off.
 
 Themes (light, dark, follow system) are in the toolbar and the palette.
 

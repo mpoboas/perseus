@@ -12,15 +12,15 @@ import {
 } from "./graphLayout";
 import type { RefInfo } from "./ipc";
 import { absoluteTime, avatarColor, initials, relativeTime } from "./lib/format";
-import { avatarImage, subscribeAvatars } from "./lib/avatars";
+import { avatarImage, ownerImage, subscribeAvatars } from "./lib/avatars";
 import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
 
 const LANE_W = 22;
 const PAD = 12;
 const MAX_GRAPH_LANES = 12;
-/** Merge commits are small hollow rings; every other commit is an avatar disc. */
-const NODE_R = 5;
-const AVATAR_R = 9;
+/** Merge commits are small solid dots; every other commit is an avatar disc. */
+const NODE_R = 5.5;
+const AVATAR_R = 10;
 const CHIP_H = 18;
 const AVATAR_D = 18;
 /** Gap kept between the ref column's text and its edge. */
@@ -389,13 +389,11 @@ export function GraphCanvas({
       ctx.fill();
       if (merge) {
         ctx.beginPath();
-        ctx.arc(nx, cy, NODE_R, 0, Math.PI * 2);
-        ctx.strokeStyle = lane(g.color);
-        ctx.lineWidth = 2.25;
-        ctx.stroke();
-        ctx.lineWidth = 2;
+        ctx.arc(nx, cy, NODE_R + 0.5, 0, Math.PI * 2);
+        ctx.fillStyle = lane(g.color);
+        ctx.fill();
       } else {
-        const picture = avatarImage(row.author_email);
+        const picture = avatarImage(row.author_email, row.oid);
         ctx.beginPath();
         ctx.arc(nx, cy, radius, 0, Math.PI * 2);
         ctx.fillStyle = avatarColor(row.author);
@@ -476,7 +474,7 @@ export function GraphCanvas({
 
       // Author: avatar + name
       ctx.textAlign = "left";
-      const authorPicture = avatarImage(row.author_email);
+      const authorPicture = avatarImage(row.author_email, row.oid);
       ctx.beginPath();
       ctx.arc(authorX + 12 + AVATAR_D / 2, cy, AVATAR_D / 2, 0, Math.PI * 2);
       ctx.fillStyle = avatarColor(row.author);
@@ -539,7 +537,19 @@ export function GraphCanvas({
             icon(ctx, PATH_LAPTOP, tx, cy - ICON / 2, ink);
             tx += ICON + 3;
           }
-          if (it.chip.remotes.length > 0) icon(ctx, PATH_CLOUD, tx, cy - ICON / 2, ink);
+          if (it.chip.remotes.length > 0) {
+            const owner = ownerImage();
+            if (owner) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(tx + ICON / 2, cy, ICON / 2, 0, Math.PI * 2);
+              ctx.clip();
+              ctx.drawImage(owner, tx, cy - ICON / 2, ICON, ICON);
+              ctx.restore();
+            } else {
+              icon(ctx, PATH_CLOUD, tx, cy - ICON / 2, ink);
+            }
+          }
           if (!layout.ghost) rowBadges.push({ ref: it.chip.ref, x, w: it.w });
         }
         ctx.globalAlpha = 1;
@@ -551,8 +561,8 @@ export function GraphCanvas({
       }
       if (rowBadges.length) badges.current.set(r, rowBadges);
 
-      ctx.font = `13px ${pal.font}`;
-      ctx.fillStyle = row.parents.length > 1 ? pal.dim : pal.text;
+      ctx.font = `${d === selDisplay ? "700 " : ""}13px ${pal.font}`;
+      ctx.fillStyle = d === selDisplay || row.parents.length <= 1 ? pal.text : pal.dim;
       ctx.textAlign = "left";
       clipped(messageLeft, messageRight - messageLeft, d, () => ctx.fillText(row.summary, messageLeft, cy));
     }
@@ -899,7 +909,7 @@ export function GraphCanvas({
               }}
             >
               <div className="gt-author">
-                <Avatar name={tipRowData.author} email={tipRowData.author_email} size={22} />
+                <Avatar name={tipRowData.author} email={tipRowData.author_email} sha={tipRowData.oid} size={22} />
                 <div>
                   <strong>{tipRowData.author}</strong>
                   <span>{new Date(tipRowData.time * 1000).toLocaleString()}</span>

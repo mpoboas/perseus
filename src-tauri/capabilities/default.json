@@ -60,6 +60,7 @@
     "allow-activity-log",
     "allow-undo-snapshot",
     "allow-author-avatar",
+    "allow-remote-avatar",
     "allow-undo-restore",
     "allow-commit-signature",
     "allow-generate-ssh-key",

@@ -745,7 +745,11 @@ export const largeStagedFiles = (repoId: number, megabytes: number) =>
 export const activityLog = () => invoke<LogEntry[]>("activity_log");
 
 /** A `data:` URL with the author's GitHub picture, or null when there is none (see `avatars.rs`). */
-export const authorAvatar = (email: string) => invoke<string | null>("author_avatar", { email });
+export const authorAvatar = (repoId: number, email: string, sha: string, gravatar: boolean) =>
+  invoke<string | null>("author_avatar", { repoId, email, sha, gravatar });
+
+/** The picture of the account that owns the repository's GitHub remote, if there is one. */
+export const remoteAvatar = (repoId: number) => invoke<string | null>("remote_avatar", { repoId });
 
 // ---- Undo and redo ----
 

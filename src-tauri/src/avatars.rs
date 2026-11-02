@@ -1,25 +1,32 @@
 //! Profile pictures for commit authors.
 //!
-//! Pictures come only from GitHub, and only for people Perseus can name without guessing:
+//! Where a picture can come from, in the order Perseus tries them:
 //!
-//! * a `…@users.noreply.github.com` address names the account (`ID+login@` or `login@`), and
-//! * the active profile's own address, when that profile is signed in to GitHub, uses the avatar
-//!   of the signed-in account.
+//! 1. a `…@users.noreply.github.com` address names the account (`ID+login@` or `login@`);
+//! 2. the active profile's own address, when that profile is signed in to GitHub, uses the
+//!    signed-in account's picture;
+//! 3. for a GitHub repository, GitHub's own commit record: the account GitHub has linked to the
+//!    commit, which works even when the author's address is private;
+//! 4. only when the user turned it on, Gravatar. That sends a hash of the address to a third party,
+//!    which is why it is off by default.
 //!
-//! There is no Gravatar lookup: hashing an e-mail address and sending it to a third party would
-//! reveal who a repository's contributors are. Every URL is assembled here from validated parts
-//! (digits, or a GitHub login), the downloaded bytes are capped and must be an image, and the
-//! webview only ever receives a `data:` URL, so the content-security policy does not need to allow
-//! any remote image source.
+//! Every URL is assembled here from validated parts (digits, a GitHub login, a commit id), the
+//! downloaded bytes are capped and must be an image, and the webview only ever receives a `data:`
+//! URL, so the content-security policy does not need to allow any remote image source.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
+use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::error::Result;
+use crate::git::repo::RepoId;
+use crate::hosting::{Kind, RepoRef};
+use crate::ipc::channels::AppState;
 use crate::ipc::commands::blocking;
+use crate::ipc::hosting_commands::repo_ref;
 use crate::profiles::ProfileStore;
 
 const MAX_BYTES: u64 = 256 * 1024;
@@ -149,13 +156,104 @@ fn own_picture(profiles: &ProfileStore, email: &str) -> Option<String> {
         .ok()?;
     let json: serde_json::Value = serde_json::from_str(&body).ok()?;
     let url = json.get("avatar_url")?.as_str()?;
-    // Only GitHub's own picture host, whatever the response says.
+    download(&checked_avatar_url(url)?)
+}
+
+/// How a lookup ended: with a picture, with "this person has none", or with a failure that may
+/// pass (rate limit, offline) and so must not be remembered.
+enum Lookup {
+    Found(String),
+    NoPicture,
+    Retry,
+}
+
+fn api_agent() -> ureq::Agent {
+    use ureq::tls::{RootCerts, TlsConfig};
+    ureq::Agent::config_builder()
+        .http_status_as_error(false)
+        .max_redirects(0)
+        .timeout_global(Some(Duration::from_secs(10)))
+        .tls_config(
+            TlsConfig::builder()
+                .root_certs(RootCerts::PlatformVerifier)
+                .build(),
+        )
+        .user_agent("Perseus")
+        .build()
+        .into()
+}
+
+/// `owner/repo` with nothing that could change the URL's meaning.
+fn plain_repo_path(path: &str) -> Option<(&str, &str)> {
+    let (owner, repo) = path.split_once('/')?;
+    let ok = |s: &str| {
+        !s.is_empty()
+            && s.len() <= 100
+            && s != "."
+            && s != ".."
+            && s.chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+    };
+    (ok(owner) && ok(repo)).then_some((owner, repo))
+}
+
+/// The picture of the GitHub account linked to a commit, from GitHub's commit record.
+fn commit_picture(token: Option<&str>, repo: &RepoRef, sha: &str) -> Lookup {
+    let Some((owner, name)) = plain_repo_path(&repo.path) else {
+        return Lookup::NoPicture;
+    };
+    if sha.len() != 40 || !sha.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Lookup::NoPicture;
+    }
+    let url = format!("https://api.github.com/repos/{owner}/{name}/commits/{sha}");
+    let mut req = api_agent()
+        .get(&url)
+        .header("Accept", "application/vnd.github+json");
+    if let Some(t) = token {
+        req = req.header("Authorization", format!("Bearer {t}"));
+    }
+    let Ok(mut resp) = req.call() else {
+        return Lookup::Retry;
+    };
+    match resp.status().as_u16() {
+        200 => {}
+        404 | 422 => return Lookup::NoPicture,
+        _ => return Lookup::Retry,
+    }
+    let Ok(body) = resp
+        .body_mut()
+        .with_config()
+        .limit(2 * 1024 * 1024)
+        .read_to_string()
+    else {
+        return Lookup::Retry;
+    };
+    let Ok(json) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return Lookup::Retry;
+    };
+    let Some(avatar) = json.pointer("/author/avatar_url").and_then(|v| v.as_str()) else {
+        return Lookup::NoPicture;
+    };
+    match checked_avatar_url(avatar).and_then(|u| download(&u)) {
+        Some(data) => Lookup::Found(data),
+        None => Lookup::NoPicture,
+    }
+}
+
+/// Only GitHub's own picture host, whatever a response says, plus a size.
+fn checked_avatar_url(url: &str) -> Option<String> {
     let rest = url.strip_prefix("https://avatars.githubusercontent.com/")?;
-    if rest.contains(['\\', '@', ' ']) {
+    if rest.contains(['\\', '@', ' ', '#']) {
         return None;
     }
     let sep = if url.contains('?') { '&' } else { '?' };
-    download(&format!("{url}{sep}s=64"))
+    Some(format!("{url}{sep}s=64"))
+}
+
+fn gravatar_url(email: &str) -> String {
+    let digest = Sha256::digest(email.trim().to_ascii_lowercase().as_bytes());
+    let hex: String = digest.iter().map(|b| format!("{b:02x}")).collect();
+    format!("https://www.gravatar.com/avatar/{hex}?s=64&d=404")
 }
 
 type Cache = Mutex<HashMap<String, Option<String>>>;
@@ -166,32 +264,90 @@ fn cache() -> &'static Cache {
 }
 
 /// A `data:` URL with the author's picture, or `None` when there is none to show. Answers are
-/// remembered for the life of the app.
+/// remembered for the life of the app (failures that may pass are not).
 #[tauri::command]
 pub async fn author_avatar(
+    state: State<'_, AppState>,
     profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
     email: String,
+    sha: String,
+    gravatar: bool,
 ) -> Result<Option<String>> {
-    let key = email.trim().to_ascii_lowercase();
-    if key.is_empty() || key.len() > 254 {
+    let email_key = email.trim().to_ascii_lowercase();
+    if email_key.is_empty() || email_key.len() > 254 {
         return Ok(None);
     }
+    let key = format!("{email_key}|{gravatar}");
     if let Some(hit) = cache().lock().ok().and_then(|c| c.get(&key).cloned()) {
         return Ok(hit);
     }
+    let git = state.repos.git(repo_id)?;
     let profiles = profiles.inner().clone();
-    let lookup = key.clone();
-    let found = blocking(move || {
-        Ok(match source_for(&lookup) {
-            Some(source) => download(&url_for(&source)),
-            None => own_picture(&profiles, &lookup),
-        })
+    let lookup_email = email_key.clone();
+    let (found, remember) = blocking(move || {
+        if let Some(source) = source_for(&lookup_email) {
+            return Ok(match download(&url_for(&source)) {
+                Some(d) => (Some(d), true),
+                None => (None, false),
+            });
+        }
+        if let Some(d) = own_picture(&profiles, &lookup_email) {
+            return Ok((Some(d), true));
+        }
+        let mut remember = true;
+        if let Some(repo) =
+            repo_ref(&git)?.filter(|r| r.kind == Kind::GitHub && r.host == "github.com")
+        {
+            let token = profiles.fresh_token("github.com").ok().flatten();
+            match commit_picture(token.as_deref(), &repo, &sha) {
+                Lookup::Found(d) => return Ok((Some(d), true)),
+                Lookup::NoPicture => {}
+                Lookup::Retry => remember = false,
+            }
+        }
+        if gravatar && let Some(d) = download(&gravatar_url(&lookup_email)) {
+            return Ok((Some(d), true));
+        }
+        Ok((None, remember))
     })
     .await?;
-    if let Ok(mut c) = cache().lock() {
+    if remember && let Ok(mut c) = cache().lock() {
         c.insert(key, found.clone());
     }
     Ok(found)
+}
+
+/// The picture of the account that owns the repository's GitHub remote (what GitKraken shows
+/// beside a branch that exists on the remote).
+#[tauri::command]
+pub async fn remote_avatar(state: State<'_, AppState>, repo_id: RepoId) -> Result<Option<String>> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || {
+        let Some(repo) =
+            repo_ref(&git)?.filter(|r| r.kind == Kind::GitHub && r.host == "github.com")
+        else {
+            return Ok(None);
+        };
+        let Some((owner, _)) = plain_repo_path(&repo.path) else {
+            return Ok(None);
+        };
+        if !valid_login(owner) {
+            return Ok(None);
+        }
+        let key = format!("owner:{}", owner.to_ascii_lowercase());
+        if let Some(hit) = cache().lock().ok().and_then(|c| c.get(&key).cloned()) {
+            return Ok(hit);
+        }
+        let found = download(&format!("https://github.com/{owner}.png?size=64"));
+        if found.is_some()
+            && let Ok(mut c) = cache().lock()
+        {
+            c.insert(key, found.clone());
+        }
+        Ok(found)
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -235,6 +391,44 @@ mod tests {
             url_for(&Source::GithubLogin("a-b".into())),
             "https://github.com/a-b.png?size=64"
         );
+    }
+
+    #[test]
+    fn picture_urls_must_stay_on_githubs_picture_host() {
+        assert!(
+            checked_avatar_url("https://avatars.githubusercontent.com/u/1?v=4")
+                .unwrap()
+                .ends_with("&s=64")
+        );
+        for bad in [
+            "https://evil.example/u/1",
+            "http://avatars.githubusercontent.com/u/1",
+            "https://avatars.githubusercontent.com@evil.example/u/1",
+            "https://avatars.githubusercontent.com/u/1 x",
+        ] {
+            assert_eq!(checked_avatar_url(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn repository_paths_cannot_change_the_api_url() {
+        assert_eq!(
+            plain_repo_path("octo/hello.world"),
+            Some(("octo", "hello.world"))
+        );
+        for bad in ["a", "a/b/c", "../x", "a/..", "a b/c", "a/b?x", ""] {
+            assert_eq!(plain_repo_path(bad), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn gravatar_hashes_the_trimmed_lowercase_address() {
+        assert_eq!(
+            gravatar_url(" Me@Example.com "),
+            gravatar_url("me@example.com")
+        );
+        assert!(gravatar_url("a@b.c").starts_with("https://www.gravatar.com/avatar/"));
+        assert!(gravatar_url("a@b.c").ends_with("?s=64&d=404"));
     }
 
     #[test]

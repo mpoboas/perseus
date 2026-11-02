@@ -123,7 +123,7 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
 
         <section className="detail-people" aria-label="People">
           <div className="person">
-            <Avatar name={detail.author.name} email={detail.author.email} size={34} />
+            <Avatar name={detail.author.name} email={detail.author.email} sha={detail.oid} size={34} />
             <div className="person-text">
               <strong>{detail.author.name}</strong>
               <span className="muted" title={detail.author.email}>
@@ -136,7 +136,7 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
           </div>
           {!sameAsAuthor && (
             <div className="person person-secondary">
-              <Avatar name={detail.committer.name} email={detail.committer.email} size={26} />
+              <Avatar name={detail.committer.name} email={detail.committer.email} sha={detail.oid} size={26} />
               <div className="person-text">
                 <strong>{detail.committer.name}</strong>
                 <span className="person-when" title={when(detail.committer)}>

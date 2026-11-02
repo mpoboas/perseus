@@ -141,6 +141,7 @@ import { ShortcutsDialog } from "./ShortcutsDialog";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { Toolbar } from "./Toolbar";
+import { setAvatarRepo } from "./lib/avatars";
 import { undoName } from "./lib/format";
 import { layoutMenu } from "./menuLayout";
 import { Badge, Menu, type MenuItem, Splitter, useToast } from "./ui";
@@ -257,6 +258,7 @@ function App() {
   const onChangedRef = useRef<(c: ChangeSet) => void>(() => undefined);
   const repoRef = useRef<RepoInfo | null>(null);
   repoRef.current = repo;
+  useEffect(() => setAvatarRepo(repo?.id ?? null), [repo?.id]);
   selectedRef.current = selected;
   busyRef.current = busy;
 

@@ -44,7 +44,7 @@ pub struct HostingInfo {
 }
 
 /// The provider of the repository's `origin` (or its first remote that Perseus recognises).
-fn repo_ref(git: &crate::git::cli::Git) -> Result<Option<RepoRef>> {
+pub(crate) fn repo_ref(git: &crate::git::cli::Git) -> Result<Option<RepoRef>> {
     let remotes = actions::list_remotes(git)?;
     let ordered = remotes
         .iter()
