@@ -211,6 +211,10 @@
   color: var(--accent-fg);
   font-weight: 600;
 }
+.tip-hint {
+  margin-top: 6px;
+  color: var(--text-dim);
+}
 .tip-conflicts ul {
   margin: 5px 0 0;
   padding-left: 16px;

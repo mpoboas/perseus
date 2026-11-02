@@ -982,9 +982,57 @@ function App() {
     );
   };
 
+  /** The pending "merge into main" from the toolbar: what is merged, and into which local branch. */
+  const mainMerge = useRef<{ branch: string; into: string } | null>(null);
+
+  /**
+   * The toolbar's conflict button: merges the current branch into the main branch. Merging acts on the
+   * checked-out branch, so this checks the main branch out first (creating it from the remote if needed).
+   */
+  const mergeIntoMain = (branch: string, targetRef: string) => {
+    if (busy) return;
+    const isLocal = refs.some((r) => r.kind === "branch" && r.name === targetRef);
+    const into = isLocal ? targetRef : targetRef.split("/").slice(1).join("/");
+    mainMerge.current = { branch, into };
+    setConfirm([
+      {
+        id: "merge-into-main",
+        title: `Merge ${branch} into ${into}`,
+        description:
+          `Checks out ${into}, then brings the commits of ${branch} into it. Git fast-forwards when it can and otherwise ` +
+          "creates a merge commit. If there are conflicts you can resolve them or abort from the Changes tab.",
+        confirmLabel: "Merge",
+        run: {
+          type: "ui",
+          run: () =>
+            void act(
+              "Merging…",
+              "all",
+              async (id) => {
+                await switchRef(id, { kind: "branch", name: into });
+                const opId = newOpId();
+                opIdRef.current = opId;
+                setCancellable(true);
+                try {
+                  await runGitOp(id, { op: "merge", rev: branch }, setProgress, opId);
+                } finally {
+                  opIdRef.current = null;
+                  setCancellable(false);
+                }
+              },
+              { done: `Merged ${branch} into ${into}`, fail: "Could not merge" },
+            ),
+        },
+      },
+    ]);
+  };
+
   /** What a merge, rebase or cherry-pick would conflict on, asked of git without changing anything. */
   const predictFor = async (action: GraphAction): Promise<Prediction | null> => {
     const info = repoRef.current;
+    if (info && action.id === "merge-into-main" && mainMerge.current) {
+      return predictMerge(info.id, mainMerge.current.into, mainMerge.current.branch);
+    }
     if (!info || action.run.type !== "git") return null;
     const op = action.run.op;
     if (op.op === "merge") return predictMerge(info.id, "HEAD", op.rev);
@@ -1838,6 +1886,7 @@ function App() {
         onShortcuts={() => setShortcutsOpen(true)}
         onPreferences={() => openSettings()}
         onNewBranch={() => setNewBranchOpen(true)}
+        onMergeIntoMain={mergeIntoMain}
         undoLabel={repo ? (lastOf(undoStack(repo.path).undo)?.label ?? null) : null}
         redoLabel={repo ? (lastOf(undoStack(repo.path).redo)?.label ?? null) : null}
         onUndo={() => void stepHistory("undo")}

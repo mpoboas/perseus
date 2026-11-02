@@ -49,8 +49,11 @@
   actions that used to live in that menu: remotes, search, file manager, terminal, editor, close.
 - Beside the branch is **conflict detection**: it asks git whether the current branch would merge cleanly
   into the main branch (`origin/main`, else `origin/master`, `main` or `master`) and updates whenever
-  either moves. Hover it for the answer, with the files that would clash; press it to check again. It
-  needs git 2.38 or newer and is off on the main branch itself.
+  either moves. Hover it for the answer, with the files that would clash. **Press it to merge** the current
+  branch into the main branch: after a confirmation that repeats the conflict check, Perseus checks the
+  main branch out (creating it from the remote if needed) and merges into it. On conflicts you resolve
+  or abort from the Changes tab, as for any merge; undo (`Ctrl+Z`) takes the merge back. It needs git
+  2.38 or newer and is off on the main branch itself.
 - In the centre: **Undo, Redo, Fetch, Pull, Push, Branch, Stash and Pop** (Pop applies the newest stash
   and removes it). In a narrower window the buttons lose their labels (hover for the name), then the
   command search shrinks to its icon.

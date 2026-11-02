@@ -401,6 +401,27 @@ describe("Perseus", () => {
     await new Promise((r) => setTimeout(r, 1500));
   });
 
+  it("merges the current branch into main when the conflict button is pressed", async () => {
+    git(repo, "switch", "-q", "main");
+    git(repo, "switch", "-q", "-c", "ship");
+    writeFileSync(join(repo, "shipped.txt"), "to be merged\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "Ship it");
+    const button = page.getByRole("button", { name: "Conflict detection" });
+    await button.hover();
+    await page.getByRole("tooltip").getByText("Click to merge").waitFor({ timeout: 10000 });
+    await button.click();
+    const dialog = page.getByRole("dialog");
+    await dialog.getByText("Merge ship into main").waitFor();
+    await dialog.getByText("No conflicts expected.").waitFor();
+    await dialog.getByRole("button", { name: "Merge", exact: true }).click();
+    await until(() => git(repo, "branch", "--show-current").trim() === "main", "main to be checked out");
+    await until(() => git(repo, "branch", "--contains", "ship", "--list", "main").trim() !== "", "ship to be merged into main");
+    assert.equal(git(repo, "branch", "--show-current").trim(), "main");
+    assert.equal(readFileSync(join(repo, "shipped.txt"), "utf8").replace(/\r\n/g, "\n"), "to be merged\n");
+    await settle();
+  });
+
   it("centres the action buttons between the two groups", async () => {
     const box = async (loc) => (await loc.first().boundingBox());
     // Undo is the first button of the group and Pop the last.

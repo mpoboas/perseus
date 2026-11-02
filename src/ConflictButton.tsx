@@ -31,7 +31,20 @@ const Ref = ({ name }: { name: string }) => <span className="tip-ref">{name}</sp
  * Would the current branch merge cleanly into the main branch? Asked of git without touching the working
  * tree (`merge-tree`), again whenever either branch moves, or when the button is pressed.
  */
-export function ConflictButton({ repoId, branch, refs }: { repoId: number; branch: string | null; refs: RefInfo[] }) {
+export function ConflictButton({
+  repoId,
+  branch,
+  refs,
+  onMerge,
+  disabled,
+}: {
+  repoId: number;
+  branch: string | null;
+  refs: RefInfo[];
+  /** Pressing the button merges the current branch into the main branch (`ref` is what was compared against). */
+  onMerge: (branch: string, ref: string) => void;
+  disabled?: boolean;
+}) {
   const plan = useMemo(() => conflictTarget(refs, branch), [refs, branch]);
   const [outcome, setOutcome] = useState<Outcome>({ kind: "none", reason: "" });
   const [again, setAgain] = useState(0);
@@ -90,13 +103,30 @@ export function ConflictButton({ repoId, branch, refs }: { repoId: number; branc
   })();
 
   const state = outcome.kind === "conflicts" ? "has-conflicts" : outcome.kind === "clean" ? "is-clean" : "";
+  const canMerge = plan.kind === "target" && !!branch;
+  const press = () => {
+    if (canMerge && branch) onMerge(branch, plan.ref);
+    else setAgain((n) => n + 1);
+  };
+  const hint = canMerge ? (
+    <div className="tip-hint">
+      Click to merge <Ref name={branch} /> into the main branch
+    </div>
+  ) : null;
   return (
-    <Tooltip label={tip}>
+    <Tooltip
+      label={
+        <>
+          {tip}
+          {hint}
+        </>
+      }
+    >
       <button
         className={`icon-btn conflict-btn ${state}`}
-        aria-label="Conflict detection"
-        disabled={outcome.kind === "none" || outcome.kind === "unsupported"}
-        onClick={() => setAgain((n) => n + 1)}
+        aria-label="Conflict detection and merge"
+        disabled={disabled || outcome.kind === "none" || outcome.kind === "unsupported"}
+        onClick={press}
       >
         <ConflictIcon />
         {outcome.kind === "conflicts" && <span className="conflict-count">{outcome.files.length}</span>}

@@ -62,6 +62,8 @@ interface Props {
   onPushVariant: (v: "force" | "tags") => void;
   onStash: () => void;
   onNewBranch: () => void;
+  /** The conflict button: merge the current branch into the main branch (`ref` is the branch it was checked against). */
+  onMergeIntoMain: (branch: string, ref: string) => void;
   /** What the next undo or redo would act on (null when there is nothing to do). */
   undoLabel: string | null;
   redoLabel: string | null;
@@ -271,7 +273,7 @@ export function Toolbar(p: Props) {
                 );
               }}
             </Picker>
-            <ConflictButton repoId={repo.id} branch={status.branch} refs={p.refs} />
+            <ConflictButton repoId={repo.id} branch={status.branch} refs={p.refs} onMerge={p.onMergeIntoMain} disabled={busy} />
           </>
         )}
       </div>
