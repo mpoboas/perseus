@@ -34,12 +34,13 @@ pub async fn init_repo(
     app: AppHandle,
     state: State<'_, AppState>,
     recents: State<'_, RecentStore>,
+    default_branch: Option<String>,
 ) -> Result<Option<RepoInfo>> {
     let Some(dir) = pick_folder(app).await? else {
         return Ok(None);
     };
     let to_init = dir.clone();
-    blocking(move || clone::init_in(&to_init)).await?;
+    blocking(move || clone::init_in(&to_init, default_branch.as_deref())).await?;
     let info = state.repos.open(&dir)?;
     recents.touch(&info.path.to_string_lossy(), &info.name)?;
     Ok(Some(info))

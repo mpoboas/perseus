@@ -15,6 +15,8 @@ interface Props {
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
   onCommit: (message: string, amend: boolean, noVerify: boolean) => Promise<boolean>;
+  /** Whether the "Skip commit hooks" box starts ticked (Settings → Commit). */
+  skipHooksDefault: boolean;
   onContinue: () => void;
   onAbort: () => void;
   /** Asks for confirmation, then throws the local changes of these paths away. */
@@ -75,13 +77,15 @@ export function ChangesPanel({
   onResolve,
   loadLastMessage,
   loadTemplate,
+  skipHooksDefault,
   largeFiles,
   onTrackLarge,
 }: Props) {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
-  const [skipHooks, setSkipHooks] = useState(false);
+  const [skipHooks, setSkipHooks] = useState(skipHooksDefault);
+  useEffect(() => setSkipHooks(skipHooksDefault), [skipHooksDefault]);
   const [coAuthors, setCoAuthors] = useState<string[]>([]);
   const [coInput, setCoInput] = useState("");
   const [coOpen, setCoOpen] = useState(false);

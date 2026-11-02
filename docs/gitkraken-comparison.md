@@ -123,7 +123,7 @@ was tested, not that it matches GitKraken's polish.
 | Push options (force-with-lease, tags, set upstream) | Free | 🟡 set-upstream and force-with-lease; no "push tags" option |
 | Manage remotes (add/remove/rename) | Free | ✅ |
 | Cancel a running network operation | Free | ✅ kills the whole process tree |
-| Auto-fetch in the background | Free | ❌ (status refreshes on window focus and on file changes) |
+| Auto-fetch in the background | Free | ✅ interval in Settings (off by default); status also refreshes on window focus and file changes |
 | Ahead/behind counts | Free | ✅ per branch in the sidebar and on the toolbar |
 
 ### Stash, tags, submodules, worktrees, LFS
@@ -181,7 +181,7 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Command palette (Ctrl+P: checkout, branch, search, stash, patch…) | Free | ✅ `Ctrl+K`: actions, branches, profiles |
 | Customizable keyboard shortcuts | Free | ❌ fixed; `?` lists them |
-| Themes, UI zoom, preferences screens | Free | 🟡 light / dark / follow system; one preference (large-file limit); no zoom |
+| Themes, UI zoom, preferences screens | Free | 🟡 light / dark / follow system and a full Settings page modelled on GitKraken's (General, Profiles, Integrations, UI Customization, Activity log, repo-specific); no zoom, one theme pair |
 | Integrated terminal | Public repos free | ❌ |
 | Right-click context menus | Free | ✅ graph, sidebar, files; commit and branch menus follow GitKraken's grouping, with a Reset flyout |
 | Hover/drag feedback and confirm dialogs | Free | ✅ |

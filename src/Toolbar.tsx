@@ -325,7 +325,7 @@ export function Toolbar(p: Props) {
           )}
         />
         <IconButton icon={CircleHelp} label="Keyboard shortcuts" shortcut="?" onClick={p.onShortcuts} />
-        <IconButton icon={Settings} label="Preferences" onClick={p.onPreferences} />
+        <IconButton icon={Settings} label="Settings" shortcut="Ctrl+," onClick={p.onPreferences} />
       </div>
     </header>
   );

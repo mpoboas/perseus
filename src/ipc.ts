@@ -122,7 +122,7 @@ export type SwitchTarget = { kind: "branch"; name: string } | { kind: "detached"
 export type PullMode = "ff_only" | "merge" | "rebase";
 
 export type GitOp =
-  | { op: "fetch" }
+  | { op: "fetch"; prune?: boolean }
   | { op: "pull"; mode?: PullMode }
   | {
       op: "push";
@@ -504,7 +504,8 @@ export const searchCommits = (repoId: number, query: SearchQuery) =>
   invoke<{ hits: SearchHit[]; truncated: boolean }>("search_commits", { repoId, query });
 
 /** Asks for a folder and runs `git init` there; null when the user cancels. */
-export const initRepo = () => invoke<RepoInfo | null>("init_repo");
+/** `defaultBranch` names the first branch of the new repository (git's `init.defaultBranch`). */
+export const initRepo = (defaultBranch?: string) => invoke<RepoInfo | null>("init_repo", { defaultBranch });
 
 /** Asks where to put the clone; `cancelGitOp(opId)` stops it. Null when the user cancels the folder dialog. */
 export function cloneRepo(

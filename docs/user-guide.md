@@ -86,19 +86,28 @@ open it in the browser or merge it; use the branch menu to create one.
 - **Git LFS**: the sidebar lists the patterns the repository tracks; if `git lfs` is installed you can
   track a new pattern.
 
-## Preferences and the activity log
+## Settings
 
-The gear in the toolbar (or *Preferences and activity log…* in the palette) holds how the graph shows
-dates (`07/10/2026 @ 14:37` or `26d ago`), the large-file threshold and the **activity log**: every git command Perseus ran, with timing and the first line of
-any error. Passwords embedded in URLs are replaced by `***`. The log lives in memory only.
+The gear in the toolbar (`Ctrl+,`, or *Settings…* in the palette) opens Settings as a page of its own, laid out
+like GitKraken's preferences: sections on the left, the chosen one on the right, everything saved the moment it
+changes. `Esc` or *Exit Settings* goes back to where you were.
+
+- **General**: auto-fetch interval (off by default), auto-prune, the default branch name for new repositories and
+  the large-file warning.
+- **Profiles** and **Integrations**: who you commit as and which hosts you are signed in to, with a shortcut to
+  manage them.
+- **UI Customization**: theme, toolbar labels, date format, which graph columns show, the ghost branch on hover,
+  the coloured row bands, and profile pictures.
+- **Activity log**: every git command Perseus ran, with timing and the first line of any error. Passwords inside
+  URLs are replaced by `***`. The log lives in memory only.
+- **Repo-specific** (for the open repository): the profile it always uses, push after each commit, skip hooks by
+  default, and the Git LFS patterns.
 
 Profile pictures: for repositories on github.com, the picture of the GitHub account linked to each commit is
 shown (GitHub's own commit record answers this, so it works even when the author's address is private), plus
 your own signed-in account. Branches that exist on the remote show the remote owner's picture. Gravatar, which
 covers people GitHub does not know, is a separate opt-in because it sends a hash of each address to a third
-party. A preference turns all pictures off.
-
-Themes (light, dark, follow system) are in the toolbar and the palette.
+party. A setting turns all pictures off.
 
 ## Keyboard shortcuts
 

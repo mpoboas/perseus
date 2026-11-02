@@ -67,12 +67,16 @@ pub fn clone_into(
     Ok(target)
 }
 
-/// `git init` in an existing folder, with `main` as the first branch.
-pub fn init_in(dir: &Path) -> Result<()> {
+/// `git init` in an existing folder, with `branch` (default `main`) as the first branch.
+pub fn init_in(dir: &Path, branch: Option<&str>) -> Result<()> {
     if !dir.is_dir() {
         return Err(AppError::Git("that is not a folder".into()));
     }
-    Git::new(dir).output(["init", "-q", "-b", "main"])?;
+    let branch = match branch.map(str::trim).filter(|b| !b.is_empty()) {
+        Some(b) => validate::ref_name(b)?,
+        None => "main",
+    };
+    Git::new(dir).output(["init", "-q", "-b", branch])?;
     Ok(())
 }
 
@@ -178,9 +182,9 @@ mod tests {
     #[test]
     fn init_creates_a_repository_on_main() {
         let d = tempfile::tempdir().unwrap();
-        init_in(d.path()).unwrap();
+        init_in(d.path(), None).unwrap();
         let head = std::fs::read_to_string(d.path().join(".git/HEAD")).unwrap();
         assert!(head.contains("refs/heads/main"));
-        assert!(init_in(&d.path().join("nope")).is_err());
+        assert!(init_in(&d.path().join("nope"), None).is_err());
     }
 }

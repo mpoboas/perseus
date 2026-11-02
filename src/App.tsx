@@ -125,7 +125,8 @@ import { readPref, usePref, writePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
 import { AskpassDialog } from "./AskpassDialog";
 import { ExtrasSections } from "./ExtrasSections";
-import { LARGE_FILE_DEFAULT, LARGE_FILE_KEY, PreferencesDialog } from "./PreferencesDialog";
+import { type PageId, SettingsPage } from "./settings/SettingsPage";
+import { KEYS, LARGE_FILE_DEFAULT, repoKey } from "./settings/keys";
 import { CloneDialog } from "./CloneDialog";
 import { CreatePrDialog } from "./CreatePrDialog";
 import { ConflictDialog } from "./ConflictDialog";
@@ -218,7 +219,12 @@ function App() {
   const [profilesOpen, setProfilesOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
-  const [prefsOpen, setPrefsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<PageId>("general");
+  const openSettings = (page: PageId = "general") => {
+    setSettingsPage(page);
+    setSettingsOpen(true);
+  };
   const [largeFiles, setLargeFiles] = useState<LargeFile[]>([]);
   const [newBranchOpen, setNewBranchOpen] = useState(false);
   const [menu, setMenu] = useState<{ x: number; y: number; actions: GraphAction[] } | null>(null);
@@ -232,7 +238,15 @@ function App() {
   const [authorW, setAuthorW] = usePref("layout.authorW", 170);
   const [dateW, setDateW] = usePref("layout.dateW", 150);
   const [refsW, setRefsW] = usePref("layout.refsW", 190);
-  const [dateStyle, setDateStyle] = usePref<"absolute" | "relative">("layout.dateStyle", "absolute");
+  const [dateStyle] = usePref<"absolute" | "relative">(KEYS.dateStyle, "absolute");
+  const [showRefs] = usePref<boolean>(KEYS.graphRefs, true);
+  const [showAuthor] = usePref<boolean>(KEYS.graphAuthor, true);
+  const [showDate] = usePref<boolean>(KEYS.graphDate, true);
+  const [ghostBranch] = usePref<boolean>(KEYS.graphGhost, true);
+  const [rowBands] = usePref<boolean>(KEYS.graphBands, true);
+  const [toolbarLabels] = usePref<boolean>(KEYS.toolbarLabels, true);
+  const [autoFetchMinutes] = usePref<number>(KEYS.autoFetch, 0);
+  const [autoPrune] = usePref<boolean>(KEYS.autoPrune, false);
 
   // Rows live outside React state: chunks of 500 would otherwise trigger a re-render each.
   const store = useRef(new CommitStore());
@@ -258,6 +272,8 @@ function App() {
   const onChangedRef = useRef<(c: ChangeSet) => void>(() => undefined);
   const repoRef = useRef<RepoInfo | null>(null);
   repoRef.current = repo;
+  const [skipHooksDefault] = usePref<boolean>(repoKey(repo?.path ?? "-", "skipHooks"), false);
+  const fetchOp = (): GitOp => ({ op: "fetch", prune: autoPrune });
   useEffect(() => setAvatarRepo(repo?.id ?? null), [repo?.id]);
   selectedRef.current = selected;
   busyRef.current = busy;
@@ -570,6 +586,26 @@ function App() {
     watchId.current = watchRepo(info.id, (c) => onChangedRef.current(c));
   };
 
+  // Background fetch on a timer (Settings → General). A failure (say, a login that is needed)
+  // pauses it until the next time the user fetches by hand, so no prompt can keep reappearing.
+  const autoFetchHealthy = useRef(true);
+  useEffect(() => {
+    if (!repo || autoFetchMinutes <= 0) return;
+    autoFetchHealthy.current = true;
+    const timer = window.setInterval(() => {
+      const info = repoRef.current;
+      if (!info || busyRef.current || document.hidden || !autoFetchHealthy.current) return;
+      runGitOp(info.id, { op: "fetch", prune: autoPrune }, () => undefined, newOpId()).then(
+        () => void refresh("all"),
+        () => {
+          autoFetchHealthy.current = false;
+        },
+      );
+    }, autoFetchMinutes * 60_000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [repo?.id, autoFetchMinutes, autoPrune]);
+
   // ---- Graph gestures: drag and drop, and the right-click menu ----
 
   /** HEAD's branch and commit. The commit is found lazily: detached HEAD only shows in the graph rows. */
@@ -819,7 +855,7 @@ function App() {
 
   const doInit = async () => {
     try {
-      const info = await initRepo();
+      const info = await initRepo(readPref<string>(KEYS.defaultBranch, "main"));
       if (info) {
         toast.success(`Created a repository in ${info.name}`);
         await adopt(info);
@@ -1314,7 +1350,7 @@ function App() {
   const stagedKey = status?.entries.filter((e) => e.index).map((e) => e.path).join("\0") ?? "";
   useEffect(() => {
     const info = repoRef.current;
-    const limit = readPref<number>(LARGE_FILE_KEY, LARGE_FILE_DEFAULT);
+    const limit = readPref<number>(KEYS.largeFile, LARGE_FILE_DEFAULT);
     if (!info || !stagedKey || limit <= 0) {
       setLargeFiles([]);
       return;
@@ -1327,7 +1363,7 @@ function App() {
     return () => {
       live = false;
     };
-  }, [stagedKey, prefsOpen]);
+  }, [stagedKey, settingsOpen]);
 
   // Git and ssh ask their questions (passwords, passphrases, host trust) through the window.
   useEffect(() => {
@@ -1428,7 +1464,7 @@ function App() {
 
   // ---- Keyboard ----
 
-  const overlayOpen = paletteOpen || shortcutsOpen || prefsOpen || profilesOpen || newBranchOpen || !!confirm || !!menu;
+  const overlayOpen = paletteOpen || shortcutsOpen || settingsOpen || profilesOpen || newBranchOpen || !!confirm || !!menu;
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e) => {
     const mod = e.ctrlKey || e.metaKey;
@@ -1450,6 +1486,10 @@ function App() {
     } else if (mod && key === "y" && repo && !typing) {
       e.preventDefault();
       void stepHistory("redo");
+    } else if (mod && e.key === ",") {
+      e.preventDefault();
+      if (settingsOpen) setSettingsOpen(false);
+      else openSettings();
     } else if (mod && key === "b" && repo) {
       e.preventDefault();
       setSidebarOpen((o) => !o);
@@ -1480,7 +1520,7 @@ function App() {
     add({ id: "clone", title: "Clone a repository…", group: "Actions", icon: Download, run: () => setCloneOpen(true) });
     add({ id: "init", title: "Create a new repository…", group: "Actions", icon: FolderPlus, run: () => void doInit() });
     if (repo) {
-      add({ id: "fetch", title: "Fetch", group: "Actions", icon: RefreshCw, run: () => void gitOp("Fetching…", { op: "fetch" }, { done: "Fetch complete", fail: "Fetch failed" }) });
+      add({ id: "fetch", title: "Fetch", group: "Actions", icon: RefreshCw, run: () => void gitOp("Fetching…", fetchOp(), { done: "Fetch complete", fail: "Fetch failed" }) });
       if (status?.upstream)
         add({ id: "pull", title: "Pull", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: pullMode }, { done: "Pulled", fail: "Pull failed" }) });
       if (status?.branch)
@@ -1516,7 +1556,8 @@ function App() {
     add({ id: "theme-system", title: "Theme: Follow system", group: "Actions", icon: Sun, run: () => setTheme("system") });
     add({ id: "profiles", title: "Manage profiles…", group: "Actions", icon: Users, run: () => setProfilesOpen(true) });
     add({ id: "shortcuts", title: "Keyboard shortcuts", group: "Actions", icon: Keyboard, shortcut: "?", run: () => setShortcutsOpen(true) });
-    add({ id: "prefs", title: "Preferences and activity log…", group: "Actions", icon: Settings, run: () => setPrefsOpen(true) });
+    add({ id: "settings", title: "Settings…", group: "Actions", icon: Settings, shortcut: "Ctrl+,", run: () => openSettings() });
+    add({ id: "activity", title: "Activity log", group: "Actions", icon: History, run: () => openSettings("activity") });
 
     for (const r of refs) {
       if (r.kind === "tag") {
@@ -1554,7 +1595,7 @@ function App() {
   const maxDiffH = Math.max(160, window.innerHeight - 280);
 
   return (
-    <div className="app">
+    <div className={toolbarLabels ? "app" : "app icons-only"}>
       {tabs.length > 0 && repo && (
         <RepoTabs
           tabs={tabs}
@@ -1565,6 +1606,21 @@ function App() {
         />
       )}
 
+      {settingsOpen && (
+        <SettingsPage
+          repo={repo}
+          profiles={profiles}
+          theme={theme}
+          onTheme={setTheme}
+          initialPage={settingsPage}
+          onExit={() => setSettingsOpen(false)}
+          onManageProfiles={() => setProfilesOpen(true)}
+          onSwitchProfile={(id) => void switchProfile(id)}
+        />
+      )}
+
+      {/* Stays mounted while settings are open, so the graph keeps its place. */}
+      <div className="main-view" style={{ display: settingsOpen ? "none" : "contents" }}>
       <Toolbar
         repo={repo}
         status={status}
@@ -1578,7 +1634,7 @@ function App() {
         onOpen={() => void open()}
         onOpenRecent={(p) => void openRecent(p)}
         onCloseRepo={() => void closeCurrent()}
-        onFetch={() => void gitOp("Fetching…", { op: "fetch" }, { done: "Fetch complete", fail: "Fetch failed" })}
+        onFetch={() => void gitOp("Fetching…", fetchOp(), { done: "Fetch complete", fail: "Fetch failed" })}
         onPull={() => void gitOp("Pulling…", { op: "pull", mode: pullMode }, { done: "Pulled", fail: "Pull failed" })}
         pullMode={pullMode}
         onPullMode={(m) => {
@@ -1630,7 +1686,7 @@ function App() {
         }}
         onTheme={setTheme}
         onShortcuts={() => setShortcutsOpen(true)}
-        onPreferences={() => setPrefsOpen(true)}
+        onPreferences={() => openSettings()}
         onNewBranch={() => setNewBranchOpen(true)}
         undoLabel={repo ? (lastOf(undoStack(repo.path).undo)?.label ?? null) : null}
         redoLabel={repo ? (lastOf(undoStack(repo.path).redo)?.label ?? null) : null}
@@ -1747,6 +1803,11 @@ function App() {
                 refKinds={refKinds}
                 refsW={refsW}
                 dateStyle={dateStyle}
+                showRefs={showRefs}
+                showAuthor={showAuthor}
+                showDate={showDate}
+                ghost={ghostBranch}
+                bands={rowBands}
                 onResizeRefs={setRefsW}
                 authorW={authorW}
                 dateW={dateW}
@@ -1832,12 +1893,18 @@ function App() {
                   onUnstage={(paths) =>
                     void act("Unstaging…", "status", (id) => unstagePaths(id, paths), { fail: "Could not unstage" })
                   }
-                  onCommit={(message, amend, noVerify) =>
-                    act(amend ? "Amending…" : "Committing…", "all", (id) => createCommit(id, message, amend, noVerify), {
+                  skipHooksDefault={skipHooksDefault}
+                  onCommit={async (message, amend, noVerify) => {
+                    const ok = await act(amend ? "Amending…" : "Committing…", "all", (id) => createCommit(id, message, amend, noVerify), {
                       done: amend ? "Amended the last commit" : "Committed",
                       fail: "Commit failed",
-                    })
-                  }
+                    });
+                    const info = repoRef.current;
+                    if (ok && !amend && info && status?.upstream && readPref<boolean>(repoKey(info.path, "pushAfterCommit"), false)) {
+                      void gitOp("Pushing…", { op: "push" }, { done: "Pushed", fail: "Push failed" });
+                    }
+                    return ok;
+                  }}
                   onDiscard={askDiscard}
                   onResolve={setResolvePath}
                   loadLastMessage={loadLastMessage}
@@ -1862,6 +1929,7 @@ function App() {
           onInit={() => void doInit()}
         />
       )}
+      </div>
 
       <StatusBar
         repo={repo}
@@ -1902,7 +1970,6 @@ function App() {
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
       {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
-      {prefsOpen && <PreferencesDialog dateStyle={dateStyle} onDateStyle={setDateStyle} onClose={() => setPrefsOpen(false)} />}
       {stashOpen && status && (
         <StashDialog
           changed={status.entries.length}

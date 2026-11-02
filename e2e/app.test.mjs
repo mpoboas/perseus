@@ -521,11 +521,11 @@ describe("Perseus with worktrees, submodules and big files", () => {
     await page.locator(".repo-tab", { hasText: "side-tree" }).waitFor({ timeout: 10000 });
   });
 
-  it("warns about a large staged file, using the threshold from Preferences", async () => {
+  it("warns about a large staged file, using the threshold from Settings", async () => {
     await page.locator(".repo-tab", { hasText: "repo" }).first().click();
-    await page.getByRole("button", { name: "Preferences" }).click();
+    await page.getByRole("button", { name: "Settings" }).click();
     await page.getByLabel("Large file threshold in megabytes").fill("1");
-    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("button", { name: "Exit Settings" }).click();
     writeFileSync(join(repo, "big.bin"), Buffer.alloc(2 * 1024 * 1024, 7));
     git(repo, "add", "big.bin");
     await page.locator('[role="tab"]', { hasText: "Changes" }).click();
@@ -533,13 +533,26 @@ describe("Perseus with worktrees, submodules and big files", () => {
   });
 
   it("shows the git commands Perseus ran in the activity log", async () => {
-    await page.getByRole("button", { name: "Preferences" }).click();
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "Activity log" }).click();
     const log = page.getByLabel("Git commands");
     await log.getByText(/git .*worktree/).first().waitFor().catch(() => undefined);
-    await page.getByLabel("Show read-only commands").check().catch(async () => {
-      await page.getByText("Show read-only commands").click();
-    });
+    await page.getByLabel("Use extended logging (include commands that only read)").check();
     await log.getByText(/git (status|log|for-each-ref)/).first().waitFor({ timeout: 10000 });
-    await page.getByRole("button", { name: "Done" }).click();
+    await page.getByRole("button", { name: "Exit Settings" }).click();
+  });
+
+  it("changes what the graph shows from Settings and restores it", async () => {
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "UI Customization" }).click();
+    await page.getByLabel("Show commit author").uncheck();
+    await page.getByRole("button", { name: "Exit Settings" }).click();
+    assert.equal(await page.locator(".gh-cell", { hasText: "Author" }).count(), 0, "the Author column is gone");
+
+    await page.getByRole("button", { name: "Settings" }).click();
+    await page.getByRole("button", { name: "UI Customization" }).click();
+    await page.getByLabel("Show commit author").check();
+    await page.getByRole("button", { name: "Exit Settings" }).click();
+    await page.locator(".gh-cell", { hasText: "Author" }).waitFor();
   });
 });

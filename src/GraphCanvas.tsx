@@ -156,6 +156,12 @@ interface Props {
   dateW: number;
   /** "absolute" shows 07/10/2026 @ 14:37, "relative" shows 26d ago. */
   dateStyle: "absolute" | "relative";
+  /** Which columns are shown, and the two hover/colour touches (Settings → UI Customization). */
+  showRefs: boolean;
+  showAuthor: boolean;
+  showDate: boolean;
+  ghost: boolean;
+  bands: boolean;
   onResizeRefs: (w: number) => void;
   onResizeAuthor: (w: number) => void;
   onResizeDate: (w: number) => void;
@@ -196,6 +202,11 @@ export function GraphCanvas({
   authorW,
   dateW,
   dateStyle,
+  showRefs,
+  showAuthor,
+  showDate,
+  ghost: showGhost,
+  bands: showBands,
   onResizeRefs,
   onResizeAuthor,
   onResizeDate,
@@ -212,8 +223,12 @@ export function GraphCanvas({
 
   const offset = wip ? 1 : 0;
   // Everything the draw loop needs, kept in a ref so `draw` stays stable between renders.
-  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, offset });
-  latest.current = { count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, offset };
+  // A hidden column has no width: the others close up around it.
+  const refsEff = showRefs ? refsW : 0;
+  const authEff = showAuthor ? authorW : 0;
+  const dateEff = showDate ? dateW : 0;
+  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset });
+  latest.current = { count, selected, wip, headRow, headBranch, refKinds, refsW: refsEff, authorW: authEff, dateW: dateEff, dateStyle, ghost: showGhost, bands: showBands, offset };
 
   /** Where each visible commit's ref chips were painted, for hit-testing. */
   const badges = useRef(new Map<number, Badge[]>());
@@ -262,7 +277,7 @@ export function GraphCanvas({
 
     // Pass 0: each commit gets a band in its branch colour that starts at its avatar and ends where
     // the message begins, with a small gap above and below so neighbouring rows stay separate.
-    for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
+    for (let d = Math.max(firstDisplay, off); latest.current.bands && d <= lastDisplay; d++) {
       const row = store.rows[d - off];
       if (!row) break;
       const x0 = laneX(row.graph.lane);
@@ -289,9 +304,9 @@ export function GraphCanvas({
     // Column dividers.
     const authorX = w - datW - authW;
     ctx.fillStyle = pal.border;
-    ctx.fillRect(Math.round(base) - 0.5, 0, 1, h);
-    ctx.fillRect(Math.round(authorX) - 0.5, 0, 1, h);
-    ctx.fillRect(Math.round(w - datW) - 0.5, 0, 1, h);
+    if (base > 0) ctx.fillRect(Math.round(base) - 0.5, 0, 1, h);
+    if (authW > 0) ctx.fillRect(Math.round(authorX) - 0.5, 0, 1, h);
+    if (datW > 0) ctx.fillRect(Math.round(w - datW) - 0.5, 0, 1, h);
 
     // Where each visible row's ref chips sit in the left column; drawn in pass 3, but the
     // connector from the last chip to the node is part of the graph and is drawn here.
@@ -299,13 +314,13 @@ export function GraphCanvas({
     const chipLayouts = new Map<number, ChipLayout>();
     for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
       const row = store.rows[d - off];
-      if (!row || row.refs.length === 0) continue;
+      if (base <= 0 || !row || row.refs.length === 0) continue;
       chipLayouts.set(d, layoutChips(ctx, chipsFor(row.refs, headName, kinds), base - REF_PAD * 2));
     }
 
     // Hovering a commit that carries no label shows (faded) the branch it belongs to.
     const hoverDisplay = hover.current;
-    if (hoverDisplay !== null && hoverDisplay >= off && !chipLayouts.has(hoverDisplay)) {
+    if (base > 0 && latest.current.ghost && hoverDisplay !== null && hoverDisplay >= off && !chipLayouts.has(hoverDisplay)) {
       const ghost = ghostChip(store, hoverDisplay - off, headName, kinds);
       if (ghost) chipLayouts.set(hoverDisplay, { ...layoutChips(ctx, [ghost], base - REF_PAD * 2), ghost: true });
     }
@@ -469,13 +484,16 @@ export function GraphCanvas({
       if (!row) break;
 
       // Date
-      ctx.font = `12px ${pal.font}`;
-      ctx.fillStyle = pal.faint;
-      ctx.textAlign = "right";
-      const stamp = absolute ? absoluteTime(row.time) : relativeTime(row.time, now);
-      clipped(w - datW, datW, d, () => ctx.fillText(stamp, w - 12, cy));
+      if (datW > 0) {
+        ctx.font = `12px ${pal.font}`;
+        ctx.fillStyle = pal.faint;
+        ctx.textAlign = "right";
+        const stamp = absolute ? absoluteTime(row.time) : relativeTime(row.time, now);
+        clipped(w - datW, datW, d, () => ctx.fillText(stamp, w - 12, cy));
+      }
 
       // Author: avatar + name
+      if (authW > 0) {
       ctx.textAlign = "left";
       const authorPicture = avatarImage(row.author_email, row.oid);
       ctx.beginPath();
@@ -498,6 +516,7 @@ export function GraphCanvas({
       ctx.fillStyle = pal.dim;
       const nameX = authorX + 12 + AVATAR_D + 7;
       clipped(nameX, w - datW - nameX - 6, d, () => ctx.fillText(row.author, nameX, cy));
+      }
 
       // Ref chips live in their own column on the left.
       const layout = chipLayouts.get(d);
@@ -612,7 +631,7 @@ export function GraphCanvas({
     setGraphW(PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W);
   }, [count, store]);
 
-  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, refsW, authorW, dateW, dateStyle, schedule]);
+  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, refsEff, authEff, dateEff, dateStyle, showGhost, showBands, schedule]);
 
   // Keep the selected row visible (keyboard navigation).
   useEffect(() => {
@@ -789,48 +808,54 @@ export function GraphCanvas({
   return (
     <div className="graph-wrap">
       <div className="graph-header" style={{ paddingRight: scrollbarW }}>
-        <div className="gh-cell gh-refs" style={{ width: refsW }}>
-          Branch / tag
-          <Splitter
-            orientation="vertical"
-            label="Resize branch and tag column"
-            value={refsW}
-            min={120}
-            max={420}
-            reset={190}
-            onChange={onResizeRefs}
-          />
-        </div>
+        {showRefs && (
+          <div className="gh-cell gh-refs" style={{ width: refsW }}>
+            Branch / tag
+            <Splitter
+              orientation="vertical"
+              label="Resize branch and tag column"
+              value={refsW}
+              min={120}
+              max={420}
+              reset={190}
+              onChange={onResizeRefs}
+            />
+          </div>
+        )}
         <div className="gh-cell" style={{ width: graphW }}>
           Graph
         </div>
         <div className="gh-cell gh-grow">Message</div>
-        <div className="gh-cell gh-resizable" style={{ width: authorW }}>
-          <Splitter
-            orientation="vertical"
-            label="Resize author column"
-            value={authorW}
-            min={90}
-            max={320}
-            reset={170}
-            invert
-            onChange={onResizeAuthor}
-          />
-          Author
-        </div>
-        <div className="gh-cell gh-resizable" style={{ width: dateW }}>
-          <Splitter
-            orientation="vertical"
-            label="Resize date column"
-            value={dateW}
-            min={64}
-            max={240}
-            reset={150}
-            invert
-            onChange={onResizeDate}
-          />
-          Date / time
-        </div>
+        {showAuthor && (
+          <div className="gh-cell gh-resizable" style={{ width: authorW }}>
+            <Splitter
+              orientation="vertical"
+              label="Resize author column"
+              value={authorW}
+              min={90}
+              max={320}
+              reset={170}
+              invert
+              onChange={onResizeAuthor}
+            />
+            Author
+          </div>
+        )}
+        {showDate && (
+          <div className="gh-cell gh-resizable" style={{ width: dateW }}>
+            <Splitter
+              orientation="vertical"
+              label="Resize date column"
+              value={dateW}
+              min={64}
+              max={240}
+              reset={150}
+              invert
+              onChange={onResizeDate}
+            />
+            Date / time
+          </div>
+        )}
       </div>
 
       <div className="graph-body">

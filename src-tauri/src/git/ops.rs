@@ -148,7 +148,11 @@ pub enum PullMode {
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum GitOp {
-    Fetch,
+    Fetch {
+        /// Also forget remote-tracking branches that no longer exist on the remote.
+        #[serde(default)]
+        prune: bool,
+    },
     /// Fast-forward only unless a mode is chosen: never a surprise merge commit by default.
     Pull {
         #[serde(default)]
@@ -205,8 +209,12 @@ pub fn run_cancellable(
     on_line: impl FnMut(&str),
 ) -> Result<String> {
     let out = match op {
-        GitOp::Fetch => {
-            git.stream_cancellable(["fetch", "--progress", "--all"], on_line, cancel)?
+        GitOp::Fetch { prune } => {
+            let mut args = vec!["fetch", "--progress", "--all"];
+            if *prune {
+                args.push("--prune");
+            }
+            git.stream_cancellable(args, on_line, cancel)?
         }
         GitOp::Pull { mode } => {
             let mut args = vec!["pull", "--progress"];
@@ -620,7 +628,7 @@ mod op_tests {
         commit_file(&two, "b.txt", "b\n", "second");
         two.output(["push", "-q", "origin", "main"]).unwrap();
 
-        run(&one, &GitOp::Fetch, quiet).unwrap();
+        run(&one, &GitOp::Fetch { prune: false }, quiet).unwrap();
         assert!(rev(&one, "origin/main") != rev(&one, "HEAD"));
         run(
             &one,
