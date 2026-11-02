@@ -32,7 +32,18 @@
 - In the graph a **laptop** on a branch label means the branch exists on this computer and a **cloud** means a
   remote has it too; hover a label for the full names. Hovering a commit with no label shows, faded, the
   branch it belongs to.
-- The toolbar has **Fetch, Pull, Push, Branch, Stash and Pop** (Pop applies the newest stash and removes it).
+- The toolbar has, on the left, the **repository** and **branch** pickers. Click the repository name to
+  search your recent repositories (**View all repositories** lists them with their folders; the three
+  icons open, clone or create one). Click the branch name to search the branches and switch with one
+  click; type to also find remote branches. Open the command palette (`Ctrl+K`) for the repository
+  actions that used to live in that menu: remotes, search, file manager, terminal, editor, close.
+- Beside the branch is **conflict detection**: it asks git whether the current branch would merge cleanly
+  into the main branch (`origin/main`, else `origin/master`, `main` or `master`) and updates whenever
+  either moves. Hover it for the answer, with the files that would clash; press it to check again. It
+  needs git 2.38 or newer and is off on the main branch itself.
+- In the centre: **Undo, Redo, Fetch, Pull, Push, Branch, Stash and Pop** (Pop applies the newest stash
+  and removes it). In a narrower window the buttons lose their labels (hover for the name), then the
+  command search shrinks to its icon.
 - Double-click a branch to check it out; right-click for more (merge, rebase, rename, delete,
   hide from graph, show alone, open in a new worktree, create a pull request).
 - **Drag** a branch or commit onto another to merge, rebase or cherry-pick. A dialog explains the

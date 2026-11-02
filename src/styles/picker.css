@@ -1,0 +1,225 @@
+/* Repository and branch pickers in the toolbar, and the conflict detection button beside them. */
+
+.pk-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  min-width: 0;
+  max-width: 250px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.pk-trigger:hover:not(:disabled),
+.pk-trigger.open {
+  background: var(--surface-3);
+}
+.pk-trigger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.pk-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.2;
+}
+.pk-caption {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  letter-spacing: 0.03em;
+}
+.pk-trigger[aria-label="Switch branch"] .pk-caption {
+  color: var(--accent);
+}
+.pk-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 650;
+}
+.pk-chevron {
+  flex: none;
+  color: var(--text-dim);
+}
+.pk-sep {
+  flex: none;
+  color: var(--text-faint);
+}
+
+.pk-pop {
+  position: fixed;
+  z-index: 900;
+  padding: 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-pop);
+  animation: pop-in var(--dur) var(--ease);
+}
+.pk-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  height: 38px;
+  padding: 0 11px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-faint);
+}
+.pk-search:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+  color: var(--text-dim);
+}
+.pk-search input,
+.pk-search input:focus,
+.pk-search input:focus-visible {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text);
+}
+.pk-body {
+  margin-top: 6px;
+  overflow-y: auto;
+}
+.pk-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px 4px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+.pk-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+}
+.pk-item:hover,
+.pk-item:focus-visible {
+  background: var(--surface-3);
+  outline: none;
+}
+.pk-item.current {
+  background: color-mix(in srgb, var(--success) 28%, transparent);
+}
+.pk-item.current:hover,
+.pk-item.current:focus-visible {
+  background: color-mix(in srgb, var(--success) 38%, transparent);
+}
+.pk-icon {
+  flex: none;
+  color: var(--text-dim);
+}
+.pk-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pk-hint {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-left: auto;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.pk-empty {
+  padding: 10px;
+  color: var(--text-faint);
+  font-size: 12.5px;
+}
+.pk-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  padding: 6px 0 0 10px;
+  border-top: 1px solid var(--border);
+}
+.pk-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+.pk-link:hover {
+  text-decoration: underline;
+}
+.pk-foot-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.conflict-btn {
+  position: relative;
+}
+.conflict-btn.is-clean {
+  color: var(--text-dim);
+}
+.conflict-btn.has-conflicts {
+  color: var(--warn);
+}
+.conflict-count {
+  position: absolute;
+  top: 3px;
+  right: 1px;
+  display: grid;
+  place-items: center;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: var(--warn);
+  color: #1a1300;
+  font-size: 10px;
+  font-weight: 700;
+}
+.tip-ref {
+  display: inline-block;
+  margin: 0 1px;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-weight: 600;
+}
+.tip-conflicts ul {
+  margin: 5px 0 0;
+  padding-left: 16px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11.5px;
+}
+.tip-conflicts .more {
+  list-style: none;
+  margin-left: -16px;
+  color: var(--text-dim);
+  font-family: inherit;
+}

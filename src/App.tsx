@@ -3,6 +3,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   FolderOpen,
+  Terminal,
+  Code2,
   GitBranch,
   GitBranchPlus,
   History,
@@ -1549,6 +1551,9 @@ function App() {
       add({ id: "refresh", title: "Refresh", group: "Actions", icon: History, shortcut: "F5", run: () => void refresh("all") });
       add({ id: "newbranch", title: "New branch…", group: "Actions", icon: GitBranchPlus, run: () => setNewBranchOpen(true) });
       add({ id: "sidebar", title: sidebarOpen ? "Hide sidebar" : "Show sidebar", group: "Actions", icon: PanelLeft, shortcut: "Ctrl+B", run: () => setSidebarOpen((o) => !o) });
+      add({ id: "open-folder", title: "Show in file manager", group: "Actions", icon: FolderOpen, run: () => void doOpenIn("folder") });
+      add({ id: "open-terminal", title: "Open in terminal", group: "Actions", icon: Terminal, run: () => void doOpenIn("terminal") });
+      add({ id: "open-editor", title: "Open in editor (VS Code)", group: "Actions", icon: Code2, run: () => void doOpenIn("editor") });
       add({ id: "close", title: "Close repository", group: "Actions", icon: X, run: () => void closeCurrent() });
     }
     add({ id: "theme-light", title: "Theme: Light", group: "Actions", icon: Sun, run: () => setTheme("light") });
@@ -1627,13 +1632,14 @@ function App() {
         busy={!!busy}
         loading={loading}
         recents={recents}
+        refs={refs}
         profiles={profiles}
         sidebarOpen={sidebarOpen}
         theme={theme}
         onToggleSidebar={() => setSidebarOpen((o) => !o)}
         onOpen={() => void open()}
         onOpenRecent={(p) => void openRecent(p)}
-        onCloseRepo={() => void closeCurrent()}
+        onCheckout={(r) => void checkout(r)}
         onFetch={() => void gitOp("Fetching…", fetchOp(), { done: "Fetch complete", fail: "Fetch failed" })}
         onPull={() => void gitOp("Pulling…", { op: "pull", mode: pullMode }, { done: "Pulled", fail: "Pull failed" })}
         pullMode={pullMode}
@@ -1660,12 +1666,9 @@ function App() {
             ]);
           }
         }}
-        onRemotes={() => setRemotesOpen(true)}
         onStash={() => setStashOpen(true)}
         onClone={() => setCloneOpen(true)}
         onInit={() => void doInit()}
-        onSearch={() => setSearchOpen(true)}
-        onOpenIn={(t) => void doOpenIn(t)}
         filterCount={filterCount}
         onClearFilter={clearFilter}
         onPush={() =>

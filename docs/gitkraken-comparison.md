@@ -112,7 +112,7 @@ was tested, not that it matches GitKraken's polish.
 |---|---|---|
 | Built-in merge tool (side-by-side with live output, per-line picks) | Free | 🟡 resolver with ours / theirs / both / hand edit; not per-line picks with a live output pane |
 | Open conflicts in external tools (Beyond Compare, P4Merge…) | Free | ❌ |
-| Conflict Prevention (warn about likely conflicts early) | Pro | ✅ ➕ a merge or rebase dialog says up front whether it would conflict, free |
+| Conflict Prevention (warn about likely conflicts early) | Pro | ✅ ➕ a toolbar button checks the branch against the main branch as you work, and a merge or rebase dialog says up front whether it would conflict, free. Not done: warnings about other people's branches |
 | AI conflict resolution | Paid | ❌ |
 
 ### Remotes and sync

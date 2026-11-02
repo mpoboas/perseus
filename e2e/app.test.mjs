@@ -277,6 +277,74 @@ describe("Perseus", () => {
     assert.equal(git(repo, "branch", "--show-current").trim(), before);
   });
 
+  it("lists the other repositories in the repository picker", async () => {
+    await page.getByRole("button", { name: "Switch repository" }).click();
+    await page.getByText("Recently opened").waitFor();
+    // The fixture is the only recent repository and it is the open one.
+    await page.getByText("No other repositories yet").waitFor();
+    await page.keyboard.press("Escape");
+    await page.getByText("Recently opened").waitFor({ state: "detached" });
+  });
+
+  it("switches branch from the branch picker, filtering as you type", async () => {
+    const before = git(repo, "branch", "--show-current").trim();
+    await page.getByRole("button", { name: "Switch branch" }).click();
+    // The branch being worked on is marked.
+    await page.locator(".pk-item.current", { hasText: before }).waitFor();
+    await page.getByRole("textbox", { name: "Search" }).fill("topi");
+    await page.locator(".pk-item", { hasText: "main" }).waitFor({ state: "detached" });
+    await page.locator(".pk-item", { hasText: "topic" }).click();
+    for (let n = 0; n < 50 && git(repo, "branch", "--show-current").trim() !== "topic"; n++) {
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    assert.equal(git(repo, "branch", "--show-current").trim(), "topic");
+    git(repo, "switch", "-q", before);
+    await new Promise((r) => setTimeout(r, 1500));
+  });
+
+  it("warns about conflicts with the main branch, and says when there are none", async () => {
+    // `clash` and main both rewrite a.txt; `clean` only adds a file.
+    git(repo, "switch", "-q", "-c", "clash");
+    writeFileSync(join(repo, "a.txt"), "the clash side\n");
+    git(repo, "commit", "-q", "-am", "Clash side");
+    git(repo, "switch", "-q", "main");
+    writeFileSync(join(repo, "a.txt"), "the main side\n");
+    git(repo, "commit", "-q", "-am", "Main side");
+    git(repo, "switch", "-q", "clash");
+
+    const button = page.getByRole("button", { name: "Conflict detection" });
+    await button.locator(".conflict-count").waitFor({ timeout: 10000 });
+    await button.hover();
+    await page.getByRole("tooltip").getByText("1 file would conflict").waitFor();
+    await page.getByRole("tooltip").getByText("a.txt").waitFor();
+
+    git(repo, "switch", "-q", "main");
+    git(repo, "switch", "-q", "-c", "clean");
+    writeFileSync(join(repo, "extra.txt"), "no overlap\n");
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "Clean side");
+    await button.locator(".conflict-count").waitFor({ state: "detached", timeout: 10000 });
+    await page.mouse.move(5, 300);
+    await button.hover();
+    await page.getByRole("tooltip").getByText("No conflicts detected against").waitFor();
+    await page.getByRole("tooltip").locator(".tip-ref", { hasText: "main" }).waitFor();
+
+    git(repo, "switch", "-q", "main");
+    await new Promise((r) => setTimeout(r, 1500));
+  });
+
+  it("centres the action buttons between the two groups", async () => {
+    const box = async (loc) => (await loc.first().boundingBox());
+    // Undo is the first button of the group and Pop the last.
+    const fetch = await box(page.getByRole("button", { name: "Undo", exact: true }));
+    const stashPop = await box(page.getByRole("button", { name: /^Pop/ }));
+    const left = await box(page.getByRole("button", { name: "Conflict detection" }));
+    const right = await box(page.getByRole("button", { name: "Open command palette" }));
+    const gapLeft = fetch.x - (left.x + left.width);
+    const gapRight = right.x - (stashPop.x + stashPop.width);
+    assert.ok(Math.abs(gapLeft - gapRight) < 40, `actions are centred (gaps ${Math.round(gapLeft)} and ${Math.round(gapRight)})`);
+  });
+
   it("logs nothing worse than the known isolation-iframe CSP entries", async () => {
     const unexpected = app.consoleErrors.filter((m) => !/Applying inline style violates/.test(m));
     assert.deepEqual(unexpected, []);

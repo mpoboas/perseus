@@ -62,13 +62,20 @@ mark {
   gap: 6px;
   min-width: 0;
 }
+/* The actions sit between two equal spacers, so they centre between the left and right groups. */
 .tb-actions {
+  flex: none;
   gap: 6px;
-  padding-left: 14px;
-  border-left: 1px solid var(--border);
 }
 .tb-spacer {
   flex: 1;
+}
+/* The pickers on the left shrink (names end in an ellipsis) before anything else gives way. */
+.tb-left {
+  flex: 0 1 auto;
+}
+.tb-left > .icon-btn {
+  flex: none;
 }
 
 .chip-btn,
@@ -154,6 +161,40 @@ mark {
 }
 .search-btn .shortcut {
   margin-left: auto;
+}
+
+/* A narrower window drops the button labels (tooltips still name them), then shrinks the command
+   search to its icon, then the profile name. Kept after the rules it overrides. */
+.toolbar {
+  container: toolbar / inline-size;
+}
+@container toolbar (max-width: 1760px) {
+  .tb-actions .btn {
+    gap: 0;
+  }
+  .tb-actions .btn > span {
+    font-size: 0;
+  }
+  .tb-actions .btn > span .count-pill {
+    font-size: 10.5px;
+  }
+}
+@container toolbar (max-width: 1500px) {
+  .search-btn {
+    min-width: 0;
+    width: 34px;
+    padding: 0;
+    justify-content: center;
+  }
+  .search-btn > span,
+  .search-btn .shortcut {
+    display: none;
+  }
+}
+@container toolbar (max-width: 1250px) {
+  .chip-btn[aria-label="Active profile"] .chip-text {
+    display: none;
+  }
 }
 
 /* ---------- Workspace ---------- */

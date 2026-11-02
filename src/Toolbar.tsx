@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -8,7 +9,10 @@ import {
   Undo2,
   GitBranchPlus,
   ChevronDown,
+  ChevronRight,
   CircleHelp,
+  Clock,
+  Cloud,
   FolderOpen,
   GitBranch,
   Monitor,
@@ -20,19 +24,18 @@ import {
   Users,
   X,
   Archive,
-  Cable,
-  Code2,
   Download,
   Eye,
   Pin,
   Settings,
   FolderPlus,
-  Terminal,
 } from "lucide-react";
-import type { ProfilesSnapshot, PullMode, RecentRepo, RepoInfo, RepoStatus } from "./ipc";
+import { ConflictButton } from "./ConflictButton";
+import type { ProfilesSnapshot, PullMode, RecentRepo, RefInfo, RepoInfo, RepoStatus } from "./ipc";
 import { undoName } from "./lib/format";
 import type { ThemePref } from "./lib/theme";
 import { Avatar, Button, IconButton, MenuButton, type MenuItem, Shortcut, Tooltip } from "./ui";
+import { Picker } from "./ui/Picker";
 
 interface Props {
   repo: RepoInfo | null;
@@ -40,13 +43,15 @@ interface Props {
   busy: boolean;
   loading: boolean;
   recents: RecentRepo[];
+  refs: RefInfo[];
   profiles: ProfilesSnapshot | null;
   sidebarOpen: boolean;
   theme: ThemePref;
   onToggleSidebar: () => void;
   onOpen: () => void;
   onOpenRecent: (path: string) => void;
-  onCloseRepo: () => void;
+  /** Switches to a branch (a remote one gets a tracking branch). */
+  onCheckout: (r: RefInfo) => void;
   onFetch: () => void;
   onPull: () => void;
   onPush: () => void;
@@ -55,7 +60,6 @@ interface Props {
   onPullMode: (m: PullMode) => void;
   /** "force" pushes with a lease (confirmed first), "tags" pushes all tags. */
   onPushVariant: (v: "force" | "tags") => void;
-  onRemotes: () => void;
   onStash: () => void;
   onNewBranch: () => void;
   /** What the next undo or redo would act on (null when there is nothing to do). */
@@ -68,8 +72,6 @@ interface Props {
   stashCount: number;
   onClone: () => void;
   onInit: () => void;
-  onSearch: () => void;
-  onOpenIn: (t: "folder" | "terminal" | "editor") => void;
   /** How many refs are hidden (or soloed) in the graph; 0 means no filter. */
   filterCount: number;
   onClearFilter: () => void;
@@ -95,30 +97,13 @@ export function Toolbar(p: Props) {
   const publish = !!status?.branch && !status.upstream;
   const activeProfile = p.profiles?.profiles.find((x) => x.id === p.profiles?.active) ?? null;
 
-  const repoItems: MenuItem[] = [
-    ...(p.recents.filter((r) => r.exists && r.path !== repo?.path).length > 0
-      ? ([{ id: "sec", section: "Recent" }] as MenuItem[])
-      : []),
-    ...p.recents
-      .filter((r) => r.exists && r.path !== repo?.path)
-      .slice(0, 8)
-      .map((r): MenuItem => ({ id: `r:${r.path}`, label: r.name, hint: r.path.split(/[\\/]/).slice(-2, -1)[0], icon: FolderOpen })),
-    { id: "sep", separator: true },
-    { id: "open", label: "Open repository…", icon: FolderOpen, shortcut: "Ctrl+O" },
-    { id: "clone", label: "Clone a repository…", icon: Download },
-    { id: "init", label: "Create a new repository…", icon: FolderPlus },
-    ...(repo
-      ? ([
-          { id: "search", label: "Search commits…", icon: Search, shortcut: "Ctrl+F" },
-          { id: "remotes", label: "Manage remotes…", icon: Cable },
-          { id: "folder", label: "Show in file manager", icon: FolderOpen },
-          { id: "terminal", label: "Open in terminal", icon: Terminal },
-          { id: "editor", label: "Open in editor (VS Code)", icon: Code2 },
-          { id: "stash", label: "Stash changes…", icon: Archive },
-        ] as MenuItem[])
-      : []),
-    ...(repo ? ([{ id: "close", label: "Close repository", icon: X }] as MenuItem[]) : []),
-  ];
+  const [showAllRepos, setShowAllRepos] = useState(false);
+  const recentRepos = p.recents.filter((r) => r.exists && r.path !== repo?.path);
+  const localBranches = p.refs.filter((r) => r.kind === "branch").sort((a, b) => a.name.localeCompare(b.name));
+  // A remote branch with no local twin can still be switched to: git makes the tracking branch.
+  const remoteOnly = p.refs.filter(
+    (r) => r.kind === "remote" && !r.name.endsWith("/HEAD") && !localBranches.some((l) => l.name === r.name.split("/").slice(1).join("/")),
+  );
 
   const profileItems: MenuItem[] = [
     { id: "sec", section: "Commit as" },
@@ -136,7 +121,7 @@ export function Toolbar(p: Props) {
 
   return (
     <header className="toolbar">
-      <div className="tb-group">
+      <div className="tb-group tb-left">
         {repo && (
           <IconButton
             icon={PanelLeft}
@@ -146,28 +131,79 @@ export function Toolbar(p: Props) {
             onClick={p.onToggleSidebar}
           />
         )}
-        <MenuButton
-          items={repoItems}
-          minWidth={260}
-          onPick={(id) => {
-            if (id === "open") p.onOpen();
-            else if (id === "remotes") p.onRemotes();
-            else if (id === "clone") p.onClone();
-            else if (id === "init") p.onInit();
-            else if (id === "search") p.onSearch();
-            else if (id === "folder" || id === "terminal" || id === "editor") p.onOpenIn(id);
-            else if (id === "stash") p.onStash();
-            else if (id === "close") p.onCloseRepo();
-            else if (id.startsWith("r:")) p.onOpenRecent(id.slice(2));
+        <Picker
+          caption="repository"
+          value={repo ? repo.name : "Open a repository"}
+          ariaLabel="Switch repository"
+          disabled={busy}
+          placeholder="Search"
+          width={290}
+        >
+          {({ query, close }) => {
+            const q = query.toLowerCase();
+            const all = recentRepos.filter((r) => !q || r.name.toLowerCase().includes(q) || r.path.toLowerCase().includes(q));
+            const shown = q || showAllRepos ? all : all.slice(0, 8);
+            return (
+              <>
+                <div className="pk-head">
+                  <Clock size={13} />
+                  Recently opened
+                </div>
+                {shown.map((r) => (
+                  <button
+                    key={r.path}
+                    className="pk-item"
+                    title={r.path}
+                    onClick={() => {
+                      close();
+                      p.onOpenRecent(r.path);
+                    }}
+                  >
+                    <span className="pk-name">{r.name}</span>
+                    {(q || showAllRepos) && <span className="pk-hint">{r.path.split(/[\\/]/).slice(-2, -1)[0]}</span>}
+                  </button>
+                ))}
+                {shown.length === 0 && <div className="pk-empty">{q ? "No repositories match" : "No other repositories yet"}</div>}
+                <div className="pk-foot">
+                  {!q ? (
+                    <button className="pk-link" onClick={() => setShowAllRepos((v) => !v)}>
+                      {showAllRepos ? "Show fewer" : "View all repositories"}
+                    </button>
+                  ) : (
+                    <span />
+                  )}
+                  <span className="pk-foot-actions">
+                    <IconButton
+                      icon={FolderOpen}
+                      label="Open a repository…"
+                      shortcut="Ctrl+O"
+                      onClick={() => {
+                        close();
+                        p.onOpen();
+                      }}
+                    />
+                    <IconButton
+                      icon={Download}
+                      label="Clone a repository…"
+                      onClick={() => {
+                        close();
+                        p.onClone();
+                      }}
+                    />
+                    <IconButton
+                      icon={FolderPlus}
+                      label="Create a new repository…"
+                      onClick={() => {
+                        close();
+                        p.onInit();
+                      }}
+                    />
+                  </span>
+                </div>
+              </>
+            );
           }}
-          render={({ open, ...props }) => (
-            <button className={open ? "chip-btn open" : "chip-btn"} disabled={busy} {...props}>
-              <FolderOpen size={14} />
-              <span className="chip-text">{repo ? repo.name : "Open a repository"}</span>
-              <ChevronDown size={13} />
-            </button>
-          )}
-        />
+        </Picker>
         {repo && p.filterCount > 0 && (
           <button className="chip filter-chip" onClick={p.onClearFilter} title="Show every branch again">
             <Eye size={13} />
@@ -176,26 +212,71 @@ export function Toolbar(p: Props) {
           </button>
         )}
         {repo && status && (
-          <Tooltip label={status.upstream ? `Tracking ${status.upstream}` : "No upstream branch"}>
-            <span className="chip branch-chip">
-              <GitBranch size={14} />
-              <span className="chip-text">{status.branch ?? "detached HEAD"}</span>
-              {status.upstream && status.ahead > 0 && (
-                <span className="ab ahead">
-                  <ArrowUp size={11} />
-                  {status.ahead}
-                </span>
-              )}
-              {status.upstream && status.behind > 0 && (
-                <span className="ab behind">
-                  <ArrowDown size={11} />
-                  {status.behind}
-                </span>
-              )}
-            </span>
-          </Tooltip>
+          <>
+            <ChevronRight size={15} className="pk-sep" aria-hidden="true" />
+            <Picker
+              caption="branch"
+              value={status.branch ?? "detached HEAD"}
+              ariaLabel="Switch branch"
+              tooltip={status.upstream ? `Tracking ${status.upstream}` : "No upstream branch"}
+              disabled={busy}
+              placeholder="Search"
+              width={270}
+              extra={
+                <>
+                  {status.upstream && status.ahead > 0 && (
+                    <span className="ab ahead">
+                      <ArrowUp size={11} />
+                      {status.ahead}
+                    </span>
+                  )}
+                  {status.upstream && status.behind > 0 && (
+                    <span className="ab behind">
+                      <ArrowDown size={11} />
+                      {status.behind}
+                    </span>
+                  )}
+                </>
+              }
+            >
+              {({ query, close }) => {
+                const q = query.toLowerCase();
+                const local = localBranches.filter((r) => r.name.toLowerCase().includes(q));
+                const remote = q ? remoteOnly.filter((r) => r.name.toLowerCase().includes(q)).slice(0, 40) : [];
+                const pick = (r: RefInfo) => {
+                  close();
+                  if (!r.is_head) p.onCheckout(r);
+                };
+                return (
+                  <>
+                    {local.map((r) => (
+                      <button
+                        key={r.name}
+                        className={r.is_head ? "pk-item current" : "pk-item"}
+                        onClick={() => pick(r)}
+                        title={r.upstream ? `Tracking ${r.upstream}` : undefined}
+                      >
+                        <GitBranch size={14} className="pk-icon" />
+                        <span className="pk-name">{r.name}</span>
+                      </button>
+                    ))}
+                    {remote.map((r) => (
+                      <button key={r.name} className="pk-item" onClick={() => pick(r)} title="Remote branch: creates a local tracking branch">
+                        <Cloud size={14} className="pk-icon" />
+                        <span className="pk-name">{r.name}</span>
+                      </button>
+                    ))}
+                    {local.length + remote.length === 0 && <div className="pk-empty">No branches match</div>}
+                  </>
+                );
+              }}
+            </Picker>
+            <ConflictButton repoId={repo.id} branch={status.branch} refs={p.refs} />
+          </>
         )}
       </div>
+
+      <div className="tb-spacer" />
 
       {repo && (
         <div className="tb-group tb-actions" role="group" aria-label="Remote actions">
@@ -210,9 +291,11 @@ export function Toolbar(p: Props) {
             </Button>
           </Tooltip>
           <div className="tb-sep" aria-hidden="true" />
-          <Button icon={RefreshCw} disabled={busy} onClick={p.onFetch}>
-            Fetch
-          </Button>
+          <Tooltip label="Fetch from the remotes">
+            <Button icon={RefreshCw} disabled={busy} onClick={p.onFetch}>
+              Fetch
+            </Button>
+          </Tooltip>
           <div className="split-btn">
             <Tooltip
               label={
@@ -242,10 +325,12 @@ export function Toolbar(p: Props) {
             />
           </div>
           <div className="split-btn">
-            <Button icon={ArrowUpFromLine} disabled={busy || !status?.branch} onClick={p.onPush}>
-              {publish ? "Publish" : "Push"}
-              {!!status?.ahead && status.upstream && <span className="count-pill">{status.ahead}</span>}
-            </Button>
+            <Tooltip label={publish ? "Publish this branch to the remote" : status?.upstream ? `Push to ${status.upstream}` : "Push"}>
+              <Button icon={ArrowUpFromLine} disabled={busy || !status?.branch} onClick={p.onPush}>
+                {publish ? "Publish" : "Push"}
+                {!!status?.ahead && status.upstream && <span className="count-pill">{status.ahead}</span>}
+              </Button>
+            </Tooltip>
             <MenuButton
               align="end"
               minWidth={250}
