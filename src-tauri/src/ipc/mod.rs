@@ -1,7 +1,9 @@
 pub mod channels;
 pub mod commands;
 pub mod oauth_commands;
+pub mod patch_commands;
 pub mod profile_commands;
 pub mod protocol;
 pub mod recent_commands;
+pub mod repo_commands;
 pub mod watch_commands;

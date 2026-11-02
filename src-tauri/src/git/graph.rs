@@ -59,11 +59,35 @@ pub struct WalkSummary {
 
 type RefsByCommit = HashMap<ObjectId, Vec<String>>;
 
+/// Which refs the graph starts from. `hidden` refs are left out; when `solo` is not empty only
+/// those refs are shown. History reachable from a shown ref is always complete.
+#[derive(Debug, Default, Clone, serde::Deserialize)]
+pub struct GraphFilter {
+    #[serde(default)]
+    pub hidden: Vec<String>,
+    #[serde(default)]
+    pub solo: Vec<String>,
+}
+
+impl GraphFilter {
+    pub fn shows(&self, name: &str) -> bool {
+        if self.hidden.iter().any(|h| h == name) {
+            return false;
+        }
+        self.solo.is_empty() || self.solo.iter().any(|s| s == name)
+    }
+}
+
 /// Collects every ref (plus HEAD) that peels to a commit, grouped by commit id.
-fn collect_tips(repo: &gix::Repository) -> Result<(Vec<ObjectId>, RefsByCommit)> {
+fn collect_tips(
+    repo: &gix::Repository,
+    filter: &GraphFilter,
+) -> Result<(Vec<ObjectId>, RefsByCommit)> {
     let mut by_id: HashMap<ObjectId, Vec<String>> = HashMap::new();
 
-    if let Ok(head) = repo.head_id() {
+    if filter.shows("HEAD")
+        && let Ok(head) = repo.head_id()
+    {
         by_id.entry(head.detach()).or_default().push("HEAD".into());
     }
 
@@ -71,6 +95,9 @@ fn collect_tips(repo: &gix::Repository) -> Result<(Vec<ObjectId>, RefsByCommit)>
     for reference in platform.all().map_err(AppError::git)? {
         let mut reference = reference.map_err(AppError::git)?;
         let name = reference.name().shorten().to_string();
+        if !filter.shows(&name) {
+            continue;
+        }
         // Skip refs that do not end at a commit (e.g. tags of trees/blobs) and broken refs.
         let Ok(id) = reference.peel_to_id() else {
             continue;
@@ -119,10 +146,21 @@ pub fn walk_commits(
     repo: &gix::Repository,
     chunk_size: usize,
     cancel: &AtomicBool,
+    emit: impl FnMut(Vec<CommitRow>) -> bool,
+) -> Result<WalkSummary> {
+    walk_commits_filtered(repo, chunk_size, cancel, &GraphFilter::default(), emit)
+}
+
+/// [`walk_commits`] starting only from the refs the filter lets through.
+pub fn walk_commits_filtered(
+    repo: &gix::Repository,
+    chunk_size: usize,
+    cancel: &AtomicBool,
+    filter: &GraphFilter,
     mut emit: impl FnMut(Vec<CommitRow>) -> bool,
 ) -> Result<WalkSummary> {
     let chunk_size = chunk_size.max(1);
-    let (tips, refs) = collect_tips(repo)?;
+    let (tips, refs) = collect_tips(repo, filter)?;
     if tips.is_empty() {
         return Ok(WalkSummary {
             total: 0,
@@ -602,6 +640,58 @@ a        lane 0 in [0] through [] out []",
             actual, expected,
             "lane layout changed:
 {actual}"
+        );
+    }
+
+    #[test]
+    fn hiding_and_soloing_refs_changes_where_the_walk_starts() {
+        let mut f = Fixture::new();
+        f.commit("a");
+        f.branch("topic");
+        f.commit("t1");
+        f.switch("main");
+        f.commit("m1");
+        let repo = gix::open(f.git.root()).unwrap();
+        let summaries = |filter: &GraphFilter| {
+            let mut rows = Vec::new();
+            walk_commits_filtered(&repo, 100, &AtomicBool::new(false), filter, |chunk| {
+                rows.extend(chunk);
+                true
+            })
+            .unwrap();
+            let mut names: Vec<String> = rows.iter().map(|r| r.summary.clone()).collect();
+            names.sort();
+            names
+        };
+        let name = |s: &str| s.to_string();
+
+        assert_eq!(
+            summaries(&GraphFilter::default()),
+            [name("a"), name("m1"), name("t1")]
+        );
+
+        // Hiding a branch removes the commits only it reaches; shared history stays.
+        let hide_topic = GraphFilter {
+            hidden: vec![name("topic")],
+            solo: vec![],
+        };
+        assert_eq!(summaries(&hide_topic), [name("a"), name("m1")]);
+
+        // Solo shows one branch (plus what it is built on) and nothing else.
+        let solo_topic = GraphFilter {
+            hidden: vec![],
+            solo: vec![name("topic")],
+        };
+        assert_eq!(summaries(&solo_topic), [name("a"), name("t1")]);
+
+        // HEAD is a tip of its own: solo-ing a branch hides it unless asked for.
+        let solo_with_head = GraphFilter {
+            hidden: vec![],
+            solo: vec![name("topic"), name("HEAD")],
+        };
+        assert_eq!(
+            summaries(&solo_with_head),
+            [name("a"), name("m1"), name("t1")]
         );
     }
 }

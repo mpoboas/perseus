@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-search-commits"
+description = "Enables the search_commits command without any pre-configured scope."
+commands.allow = ["search_commits"]
+
+[[permission]]
+identifier = "deny-search-commits"
+description = "Denies the search_commits command without any pre-configured scope."
+commands.deny = ["search_commits"]

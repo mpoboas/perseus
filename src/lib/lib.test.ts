@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDiff } from "./diffParse";
+import { hunkChecksum, parseDiff } from "./diffParse";
 import { buildFileTree } from "./fileTree";
 import { fuzzyMatch } from "./fuzzy";
 import { hueOf, initials, relativeTime, splitPath } from "./format";
@@ -146,5 +146,33 @@ describe("parseDiff", () => {
     const empty = parseDiff("");
     expect(empty.rows).toHaveLength(0);
     expect(empty.additions + empty.deletions).toBe(0);
+  });
+});
+
+describe("hunk addressing for staging", () => {
+  it("computes the same checksum as the Rust backend (FNV-1a over lines joined by newlines)", () => {
+    // 686081808 is FNV-1a of the three bytes a, newline, b, computed independently.
+    expect(hunkChecksum(["a", "b"])).toBe(686081808);
+    expect(hunkChecksum([])).toBe(0x811c9dc5);
+    // Multi-byte characters hash their UTF-8 bytes, as the backend does.
+    expect(hunkChecksum(["é"])).not.toBe(hunkChecksum(["e"]));
+  });
+
+  it("numbers hunks and the lines inside them, counting no-newline markers", () => {
+    const marker = `${String.fromCharCode(92)} No newline at end of file`;
+    const lines = ["diff --git a/f b/f", "--- a/f", "+++ b/f", "@@ -1,2 +1,2 @@", " keep", "-old", "+new", marker, "@@ -9 +9 @@", "-x", "+y", ""];
+    const d = parseDiff(lines.join(String.fromCharCode(10)));
+    expect(d.hunks.map((h) => h.header)).toEqual(["@@ -1,2 +1,2 @@", "@@ -9 +9 @@"]);
+    const body = d.rows.filter((r) => r.hunk !== undefined && r.kind !== "hunk");
+    expect(body.map((r) => [r.hunk, r.idx, r.kind])).toEqual([
+      [0, 0, "ctx"],
+      [0, 1, "del"],
+      [0, 2, "add"],
+      [0, 3, "meta"],
+      [1, 0, "del"],
+      [1, 1, "add"],
+    ]);
+    expect(d.hunks[0].checksum).toBe(hunkChecksum([" keep", "-old", "+new", marker]));
+    expect(d.hunks[1].checksum).toBe(hunkChecksum(["-x", "+y"]));
   });
 });

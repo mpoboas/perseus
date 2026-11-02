@@ -6,6 +6,8 @@ import {
   ChevronDown,
   ChevronRight,
   Cloud,
+  Eye,
+  EyeOff,
   Folder,
   GitBranch,
   Archive,
@@ -25,6 +27,9 @@ import { EmptyState, IconButton, Tooltip } from "./ui";
 interface Props {
   refs: RefInfo[];
   stashes: StashEntry[];
+  /** Refs left out of the graph, and refs the graph is limited to. */
+  hidden: ReadonlySet<string>;
+  solo: ReadonlySet<string>;
   onStashMenu: (entry: StashEntry, x: number, y: number) => void;
   busy: boolean;
   onJump: (target: string) => void;
@@ -61,7 +66,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{parts}</>;
 }
 
-export function Sidebar({ refs, stashes, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
+export function Sidebar({ refs, stashes, hidden, solo, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -144,6 +149,7 @@ export function Sidebar({ refs, stashes, onStashMenu, busy, onJump, onCheckout, 
                     {matches.map(({ r, m }) => (
                       <RefRow
                         key={r.name}
+                        state={hidden.has(r.name) ? "hidden" : solo.has(r.name) ? "solo" : undefined}
                         info={r}
                         label={<Highlight text={r.name} positions={m.positions} />}
                         depth={0}
@@ -156,6 +162,8 @@ export function Sidebar({ refs, stashes, onStashMenu, busy, onJump, onCheckout, 
                 ) : (
                   <Tree
                     nodes={buildRefTree(all)}
+                    hidden={hidden}
+                    solo={solo}
                     depth={0}
                     sectionId={id}
                     collapsed={collapsed}
@@ -214,6 +222,8 @@ export function Sidebar({ refs, stashes, onStashMenu, busy, onJump, onCheckout, 
 
 interface TreeProps {
   nodes: RefNode<RefInfo>[];
+  hidden: ReadonlySet<string>;
+  solo: ReadonlySet<string>;
   depth: number;
   sectionId: string;
   collapsed: Record<string, boolean>;
@@ -223,12 +233,13 @@ interface TreeProps {
   onMenu: Props["onMenu"];
 }
 
-function Tree({ nodes, depth, sectionId, collapsed, toggle, ...rest }: TreeProps) {
+function Tree({ nodes, hidden, solo, depth, sectionId, collapsed, toggle, ...rest }: TreeProps) {
   return (
     <ul>
       {nodes.map((n) => {
         if (n.type === "leaf") {
-          return <RefRow key={n.name} info={n.item} label={n.label} depth={depth} {...rest} />;
+          const state = hidden.has(n.name) ? "hidden" : solo.has(n.name) ? "solo" : undefined;
+          return <RefRow key={n.name} info={n.item} label={n.label} depth={depth} state={state} {...rest} />;
         }
         const id = `${sectionId}:${n.path}`;
         const open = !collapsed[id];
@@ -246,7 +257,7 @@ function Tree({ nodes, depth, sectionId, collapsed, toggle, ...rest }: TreeProps
               <span className="side-count">{n.count}</span>
             </button>
             {open && (
-              <Tree nodes={n.children} depth={depth + 1} sectionId={sectionId} collapsed={collapsed} toggle={toggle} {...rest} />
+              <Tree nodes={n.children} hidden={hidden} solo={solo} depth={depth + 1} sectionId={sectionId} collapsed={collapsed} toggle={toggle} {...rest} />
             )}
           </li>
         );
@@ -255,7 +266,9 @@ function Tree({ nodes, depth, sectionId, collapsed, toggle, ...rest }: TreeProps
   );
 }
 
+/** How the graph treats a ref: left out ("hidden") or the only one shown ("solo"). */
 interface RowProps {
+  state?: "hidden" | "solo";
   info: RefInfo;
   label: React.ReactNode;
   depth: number;
@@ -264,7 +277,7 @@ interface RowProps {
   onMenu: Props["onMenu"];
 }
 
-function RefRow({ info, label, depth, onJump, onCheckout, onMenu }: RowProps) {
+function RefRow({ state, info, label, depth, onJump, onCheckout, onMenu }: RowProps) {
   const Icon = info.kind === "tag" ? Tag : info.kind === "remote" ? Cloud : GitBranch;
   const hint =
     info.kind === "tag" ? info.name : `${info.name} — double-click to check out, right-click for more`;
@@ -272,7 +285,7 @@ function RefRow({ info, label, depth, onJump, onCheckout, onMenu }: RowProps) {
     <li>
       <Tooltip label={hint} side="top">
         <button
-          className={info.is_head ? "side-row head" : "side-row"}
+          className={`side-row${info.is_head ? " head" : ""}${state === "hidden" ? " hidden-ref" : ""}`}
           style={{ paddingLeft: 10 + depth * 14 + 18 }}
           onClick={() => onJump(info.target)}
           onDoubleClick={() => info.kind !== "tag" && onCheckout(info)}
@@ -283,6 +296,8 @@ function RefRow({ info, label, depth, onJump, onCheckout, onMenu }: RowProps) {
         >
           <Icon size={13} className="side-icon" />
           <span className="side-label">{label}</span>
+          {state === "hidden" && <EyeOff size={12} className="side-icon" aria-label="Hidden in the graph" />}
+          {state === "solo" && <Eye size={12} className="side-check" aria-label="Shown alone in the graph" />}
           {info.gone && (
             <span className="side-gone" title="The upstream branch no longer exists on the remote">
               <TriangleAlert size={12} /> gone

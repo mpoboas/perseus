@@ -24,7 +24,9 @@ export type ActionRun =
   | { type: "new_branch"; start: string }
   /** A quick action; a function receives the name the user typed in the dialog. */
   | { type: "action"; action: GitAction | ((name: string) => GitAction) }
-  | { type: "copy"; text: string };
+  | { type: "copy"; text: string }
+  /** Something that only changes what the app shows (hide a branch, …); runs immediately. */
+  | { type: "ui"; run: () => void };
 
 export interface GraphAction {
   id: string;

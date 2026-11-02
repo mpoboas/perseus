@@ -17,6 +17,11 @@ import {
   X,
   Archive,
   Cable,
+  Code2,
+  Download,
+  Eye,
+  FolderPlus,
+  Terminal,
 } from "lucide-react";
 import type { ProfilesSnapshot, PullMode, RecentRepo, RepoInfo, RepoStatus } from "./ipc";
 import type { ThemePref } from "./lib/theme";
@@ -45,6 +50,13 @@ interface Props {
   onPushVariant: (v: "force" | "tags") => void;
   onRemotes: () => void;
   onStash: () => void;
+  onClone: () => void;
+  onInit: () => void;
+  onSearch: () => void;
+  onOpenIn: (t: "folder" | "terminal" | "editor") => void;
+  /** How many refs are hidden (or soloed) in the graph; 0 means no filter. */
+  filterCount: number;
+  onClearFilter: () => void;
   onPalette: () => void;
   onCancelLoad: () => void;
   onProfiles: () => void;
@@ -74,9 +86,15 @@ export function Toolbar(p: Props) {
       .map((r): MenuItem => ({ id: `r:${r.path}`, label: r.name, hint: r.path.split(/[\\/]/).slice(-2, -1)[0], icon: FolderOpen })),
     { id: "sep", separator: true },
     { id: "open", label: "Open repository…", icon: FolderOpen, shortcut: "Ctrl+O" },
+    { id: "clone", label: "Clone a repository…", icon: Download },
+    { id: "init", label: "Create a new repository…", icon: FolderPlus },
     ...(repo
       ? ([
+          { id: "search", label: "Search commits…", icon: Search, shortcut: "Ctrl+F" },
           { id: "remotes", label: "Manage remotes…", icon: Cable },
+          { id: "folder", label: "Show in file manager", icon: FolderOpen },
+          { id: "terminal", label: "Open in terminal", icon: Terminal },
+          { id: "editor", label: "Open in editor (VS Code)", icon: Code2 },
           { id: "stash", label: "Stash changes…", icon: Archive },
         ] as MenuItem[])
       : []),
@@ -114,6 +132,10 @@ export function Toolbar(p: Props) {
           onPick={(id) => {
             if (id === "open") p.onOpen();
             else if (id === "remotes") p.onRemotes();
+            else if (id === "clone") p.onClone();
+            else if (id === "init") p.onInit();
+            else if (id === "search") p.onSearch();
+            else if (id === "folder" || id === "terminal" || id === "editor") p.onOpenIn(id);
             else if (id === "stash") p.onStash();
             else if (id === "close") p.onCloseRepo();
             else if (id.startsWith("r:")) p.onOpenRecent(id.slice(2));
@@ -126,6 +148,13 @@ export function Toolbar(p: Props) {
             </button>
           )}
         />
+        {repo && p.filterCount > 0 && (
+          <button className="chip filter-chip" onClick={p.onClearFilter} title="Show every branch again">
+            <Eye size={13} />
+            <span className="chip-text">Graph filtered ({p.filterCount})</span>
+            <X size={12} />
+          </button>
+        )}
         {repo && status && (
           <Tooltip label={status.upstream ? `Tracking ${status.upstream}` : "No upstream branch"}>
             <span className="chip branch-chip">

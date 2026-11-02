@@ -184,6 +184,17 @@ export const cancelGitOp = (opId: number) => invoke<void>("cancel_git_op", { opI
 
 // ---- Everyday actions: stash, tags, branches, reset, revert, discard, remotes ----
 
+/** Which part of a diff to take, as the user saw it (the backend refuses if the file has changed). */
+export interface HunkPick {
+  hunk: number;
+  header: string;
+  checksum: number;
+  /** Indices of the `+`/`-` lines inside the hunk; null takes the whole hunk. */
+  lines: number[] | null;
+}
+
+export type PatchMode = "stage" | "unstage" | "discard";
+
 export type ResetMode = "soft" | "mixed" | "hard";
 
 export type GitAction =
@@ -202,6 +213,7 @@ export type GitAction =
   | { action: "reset"; mode: ResetMode; target: string }
   | { action: "revert"; oid: string; mainline?: number | null }
   | { action: "discard"; paths: string[]; untracked?: boolean }
+  | { action: "patch"; path: string; mode: PatchMode; hunks: HunkPick[] }
   | { action: "remote_add"; name: string; url: string }
   | { action: "remote_remove"; name: string }
   | { action: "remote_rename"; old: string; new: string }
@@ -358,11 +370,12 @@ let nextStreamId = 1;
 export function streamCommits(
   repoId: number,
   onChunk: (rows: CommitRow[]) => void,
+  filter: GraphFilter | null = null,
 ): { streamId: number; done: Promise<WalkSummary> } {
   const streamId = nextStreamId++;
   const channel = new Channel<CommitChunk>();
   channel.onmessage = (chunk) => onChunk(chunk.rows);
-  const done = invoke<WalkSummary>("stream_commits", { repoId, streamId, onChunk: channel });
+  const done = invoke<WalkSummary>("stream_commits", { repoId, streamId, filter, onChunk: channel });
   return { streamId, done };
 }
 
@@ -404,3 +417,88 @@ export function watchRepo(repoId: number, onChange: (c: ChangeSet) => void): num
 }
 
 export const unwatchRepo = (watchId: number) => invoke<void>("unwatch_repo", { watchId });
+
+// ---- File history, blame, patches, commit templates ----
+
+export interface FileCommit {
+  oid: string;
+  summary: string;
+  author: string;
+  time: number;
+}
+
+export interface BlameLine {
+  line: number;
+  oid: string;
+  author: string;
+  time: number;
+  summary: string;
+  text: string;
+}
+
+export interface Blame {
+  lines: BlameLine[];
+  truncated: boolean;
+}
+
+export type PatchSource = { source: "commit"; oid: string } | { source: "worktree"; staged: boolean };
+
+export const fileHistory = (repoId: number, path: string) =>
+  invoke<FileCommit[]>("file_history", { repoId, path });
+
+export const fileBlame = (repoId: number, path: string, rev: string | null) =>
+  invoke<Blame>("file_blame", { repoId, path, rev });
+
+export const commitTemplate = (repoId: number) => invoke<string | null>("commit_template", { repoId });
+
+/** Opens a save dialog and writes the patch git generates; null when the user cancels. */
+export const exportPatch = (repoId: number, source: PatchSource) =>
+  invoke<{ name: string; bytes: number } | null>("export_patch", { repoId, source });
+
+/** Opens a file dialog and applies the chosen patch (nothing changes if it does not fit). */
+export const applyPatchFile = (repoId: number, toIndex: boolean) =>
+  invoke<string | null>("apply_patch_file", { repoId, toIndex });
+
+// ---- Graph filter, search, clone, open-in ----
+
+/** Which refs the graph starts from: `hidden` refs are left out; with `solo` set only those show. */
+export interface GraphFilter {
+  hidden: string[];
+  solo: string[];
+}
+
+export interface SearchQuery {
+  text?: string;
+  author?: string;
+  since?: string;
+  until?: string;
+  path?: string;
+}
+
+export interface SearchHit {
+  oid: string;
+  summary: string;
+  author: string;
+  time: number;
+}
+
+export const searchCommits = (repoId: number, query: SearchQuery) =>
+  invoke<{ hits: SearchHit[]; truncated: boolean }>("search_commits", { repoId, query });
+
+/** Asks for a folder and runs `git init` there; null when the user cancels. */
+export const initRepo = () => invoke<RepoInfo | null>("init_repo");
+
+/** Asks where to put the clone; `cancelGitOp(opId)` stops it. Null when the user cancels the folder dialog. */
+export function cloneRepo(
+  url: string,
+  opId: number,
+  onProgress: (line: string) => void,
+): Promise<RepoInfo | null> {
+  const channel = new Channel<string>();
+  channel.onmessage = onProgress;
+  return invoke<RepoInfo | null>("clone_repo", { url, opId, onProgress: channel });
+}
+
+export type OpenIn = "folder" | "terminal" | "editor";
+
+export const openIn = (repoId: number, target: OpenIn) => invoke<void>("open_in", { repoId, target });

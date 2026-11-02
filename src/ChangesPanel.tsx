@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Archive, CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert, Undo2 } from "lucide-react";
 import { FileRow } from "./FileRow";
 import type { DiffTarget, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
@@ -20,6 +20,10 @@ interface Props {
   /** Asks for confirmation, then throws the local changes of these paths away. */
   onDiscard: (paths: string[], untracked: boolean) => void;
   onStash: () => void;
+  /** The last commit's message, to pre-fill the box when amending. */
+  loadLastMessage: () => Promise<string | null>;
+  /** The repository's commit template, if it has one. */
+  loadTemplate: () => Promise<string | null>;
 }
 
 const OPERATION_LABEL = {
@@ -30,6 +34,8 @@ const OPERATION_LABEL = {
 } as const;
 
 const SUMMARY_SOFT_LIMIT = 72;
+/** `Name <email@host>`: what a Co-authored-by trailer needs. */
+const COAUTHOR = /^[^<>\r\n]+ <[^<>\s@]+@[^<>\s@]+>$/;
 
 const paths = (e: StatusEntry): string[] => (e.orig_path ? [e.path, e.orig_path] : [e.path]);
 
@@ -60,10 +66,48 @@ export function ChangesPanel({
   onAbort,
   onDiscard,
   onStash,
+  loadLastMessage,
+  loadTemplate,
 }: Props) {
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
+  const [coAuthors, setCoAuthors] = useState<string[]>([]);
+  const [coInput, setCoInput] = useState("");
+  const [coOpen, setCoOpen] = useState(false);
+  const templateTried = useRef(false);
+
+  // A repository's commit template pre-fills an empty box once.
+  useEffect(() => {
+    if (templateTried.current || !status) return;
+    templateTried.current = true;
+    void loadTemplate().then((t) => {
+      if (!t) return;
+      const [first, ...rest] = t.replace(/\r/g, "").split("\n");
+      setSummary((s) => s || first);
+      setDescription((d) => d || rest.join("\n").trim());
+    });
+  }, [status, loadTemplate]);
+
+  /** Amending starts from the previous message instead of an empty box. */
+  const toggleAmend = (on: boolean) => {
+    setAmend(on);
+    if (on && !summary.trim() && !description.trim()) {
+      void loadLastMessage().then((m) => {
+        if (!m) return;
+        const [first, ...rest] = m.replace(/\r/g, "").split("\n");
+        setSummary(first);
+        setDescription(rest.join("\n").trim());
+      });
+    }
+  };
+
+  const addCoAuthor = () => {
+    const v = coInput.trim();
+    if (!COAUTHOR.test(v)) return;
+    setCoAuthors((l) => (l.includes(v) ? l : [...l, v]));
+    setCoInput("");
+  };
   const [collapsed, setCollapsed] = usePref<Record<string, boolean>>("changes.collapsed", {});
 
   if (!status) return <EmptyState icon={GitCommitHorizontal} title="No repository" hint="Open a repository to see its changes." />;
@@ -122,7 +166,10 @@ export function ChangesPanel({
 
   const hasSummary = summary.trim().length > 0;
   const canCommit = !busy && hasSummary && (staged.length > 0 || amend) && conflicted.length === 0;
-  const message = description.trim() ? `${summary.trim()}\n\n${description.trim()}` : summary.trim();
+  // Trailers go in their own paragraph at the end, as git expects.
+  const trailers = coAuthors.map((c) => `Co-authored-by: ${c}`).join("\n");
+  const body = [description.trim(), trailers].filter(Boolean).join("\n\n");
+  const message = body ? `${summary.trim()}\n\n${body}` : summary.trim();
 
   const submit = async () => {
     if (!canCommit) return;
@@ -130,6 +177,7 @@ export function ChangesPanel({
       setSummary("");
       setDescription("");
       setAmend(false);
+      setCoAuthors([]);
     }
   };
 
@@ -298,8 +346,45 @@ export function ChangesPanel({
           onKeyDown={onKey}
         />
         <label className="check-row">
-          <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> Amend the last commit
+          <input type="checkbox" checked={amend} onChange={(e) => toggleAmend(e.target.checked)} /> Amend the last commit
         </label>
+        <div className="coauthors">
+          <button type="button" className="link-btn" onClick={() => setCoOpen((o) => !o)}>
+            {coOpen ? "Hide co-authors" : coAuthors.length ? `Co-authors (${coAuthors.length})` : "Add co-authors…"}
+          </button>
+          {coOpen && (
+            <>
+              <ul>
+                {coAuthors.map((c) => (
+                  <li key={c}>
+                    <span className="selectable">{c}</span>
+                    <button type="button" className="link-btn" onClick={() => setCoAuthors((l) => l.filter((x) => x !== c))}>
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <div className="coauthor-add">
+                <input
+                  className="input"
+                  aria-label="Co-author"
+                  placeholder="Name <email@example.com>"
+                  value={coInput}
+                  onChange={(e) => setCoInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      addCoAuthor();
+                    }
+                  }}
+                />
+                <Button type="button" size="sm" disabled={!COAUTHOR.test(coInput.trim())} onClick={addCoAuthor}>
+                  Add
+                </Button>
+              </div>
+            </>
+          )}
+        </div>
         <Button type="submit" variant="primary" disabled={!canCommit} className="commit-btn">
           {commitLabel}
           <Shortcut keys="Ctrl+Enter" />

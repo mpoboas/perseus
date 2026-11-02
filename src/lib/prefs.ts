@@ -18,6 +18,8 @@ function write(key: string, value: unknown) {
   }
 }
 
+export { read as readPref, write as writePref };
+
 /** Like `useState`, but remembered between launches. */
 export function usePref<T>(key: string, fallback: T): [T, (value: T | ((prev: T) => T)) => void] {
   const [value, setValue] = useState<T>(() => read(key, fallback));

@@ -94,6 +94,81 @@ describe("Perseus", () => {
     assert.equal(git(repo, "status", "--porcelain").trim(), "");
   });
 
+  it("stages a single hunk, then single lines, from the diff view", async () => {
+    const numbered = (edits = {}) =>
+      Array.from({ length: 30 }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
+    writeFileSync(join(repo, "long.txt"), numbered());
+    git(repo, "add", "long.txt");
+    git(repo, "commit", "-q", "-m", "Add long.txt");
+    writeFileSync(join(repo, "long.txt"), numbered({ 2: "CHANGED 2", 28: "CHANGED 28" }));
+
+    await page.locator('[role="tab"]', { hasText: "Changes" }).click();
+    await page.locator(".file-main", { hasText: "long.txt" }).first().click();
+    await page.getByRole("button", { name: "Stage hunk" }).last().click();
+    await page.getByText("Staged this hunk").waitFor();
+    const cached = git(repo, "diff", "--cached", "--unified=0");
+    assert.match(cached, /CHANGED 28/);
+    assert.doesNotMatch(cached, /CHANGED 2\n/);
+
+    // The remaining hunk: tick its added line only and stage just that.
+    await page.getByLabel("Select added line 2", { exact: true }).check();
+    await page.getByRole("button", { name: "Stage lines" }).click();
+    await page.getByText(/Staged 1 line/).waitFor();
+    assert.match(git(repo, "diff", "--cached", "--unified=0"), /CHANGED 2\n/);
+    // The index now holds the whole edit for this file; the working tree is unchanged.
+    assert.equal(git(repo, "diff", "--name-only").trim(), "long.txt", "the deletion of 'line 2' is still unstaged");
+    git(repo, "add", "long.txt");
+    git(repo, "commit", "-q", "-m", "Edit long.txt");
+  });
+
+  it("pre-fills the commit box when amending and appends co-author trailers", async () => {
+    await page.locator('[role="tab"]', { hasText: "Changes" }).click();
+    await page.getByLabel("Amend the last commit").check();
+    await page.getByLabel("Commit summary").waitFor();
+    await page.waitForFunction(() => document.querySelector('[aria-label="Commit summary"]').value === "Edit long.txt");
+
+    await page.getByRole("button", { name: "Add co-authors…" }).click();
+    await page.getByLabel("Co-author").fill("Grace Hopper <grace@example.com>");
+    await page.getByRole("button", { name: "Add", exact: true }).click();
+    await page.getByLabel("Commit summary").press("Control+Enter");
+    await page.getByText("Amended the last commit").waitFor();
+    assert.match(git(repo, "log", "-1", "--format=%B"), /Co-authored-by: Grace Hopper <grace@example\.com>/);
+  });
+
+  it("shows a file's history and blame", async () => {
+    const { x, y } = await rowPoint(page, 0);
+    await page.mouse.click(x, y);
+    await page.locator('[role="tab"]', { hasText: "Commit" }).click();
+    await page.getByLabel("History of long.txt").click({ force: true });
+    await page.getByRole("dialog").getByText("Edit long.txt").waitFor();
+    await page.getByRole("dialog").getByText("Add long.txt").waitFor();
+    await page.getByRole("radio", { name: "Blame" }).click();
+    await page.getByRole("dialog").getByText("line 15").waitFor();
+    await page.keyboard.press("Escape");
+  });
+
+  it("shows the open repository as a tab", async () => {
+    await page.locator('.repo-tab.active', { hasText: "fixture" }).waitFor();
+  });
+
+  it("searches commits by message and jumps to the result", async () => {
+    await page.keyboard.press("Control+f");
+    await page.getByLabel("Message contains").fill("merge TOPIC");
+    await page.getByRole("button", { name: "Search", exact: true }).click();
+    await page.getByRole("list", { name: "Search results" }).getByText("Merge topic").click();
+    await page.locator(".detail-title", { hasText: "Merge topic" }).waitFor();
+    assert.equal(await page.getByRole("dialog").count(), 0, "the dialog closes after jumping");
+  });
+
+  it("hides a branch from the graph through the sidebar menu and restores it", async () => {
+    await page.locator(".side-row", { hasText: "topic" }).first().click({ button: "right" });
+    await page.getByRole("menuitem", { name: /Hide topic from the graph/ }).click();
+    await page.getByText("Graph filtered (1)").waitFor();
+    await page.locator(".side-row.hidden-ref", { hasText: "topic" }).waitFor();
+    await page.getByText("Graph filtered (1)").click();
+    await page.getByText("Graph filtered (1)").waitFor({ state: "detached" });
+  });
+
   it("creates a tag from the commit context menu", async () => {
     // The "Discard done" toast appears a moment before the status refresh removes the working-tree
     // row, so the first click can land on that row (which has no menu). Retry like a user would.

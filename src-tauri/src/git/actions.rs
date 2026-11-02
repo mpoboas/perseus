@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, Result};
 use crate::git::cli::Git;
+use crate::git::patch::{self, HunkSelection, PatchMode};
 use crate::git::validate;
 
 #[derive(Debug, Clone, Copy, Deserialize, PartialEq, Eq)]
@@ -89,6 +90,12 @@ pub enum Action {
         paths: Vec<String>,
         #[serde(default)]
         untracked: bool,
+    },
+    /// Stage, unstage or discard chosen hunks or lines of one file.
+    Patch {
+        path: String,
+        mode: PatchMode,
+        hunks: Vec<HunkSelection>,
     },
     RemoteAdd {
         name: String,
@@ -254,6 +261,7 @@ pub fn run(git: &Git, action: &Action) -> Result<()> {
                 )?;
             }
         }
+        Action::Patch { path, mode, hunks } => patch::apply_selection(git, path, *mode, hunks)?,
         Action::RemoteAdd { name, url } => {
             git.output([
                 "remote",

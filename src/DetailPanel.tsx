@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Copy, FileText, Folder, GitCommitVertical, List, ListTree } from "lucide-react";
+import { ChevronDown, ChevronRight, Copy, Download, FileText, Folder, GitCommitVertical, History, List, ListTree } from "lucide-react";
 import { FileRow } from "./FileRow";
 import type { CommitDetail, DiffTarget, FileChange, Person } from "./ipc";
 import { relativeTime, shortSha } from "./lib/format";
 import { type FileNode, buildFileTree } from "./lib/fileTree";
 import { usePref } from "./lib/prefs";
-import { Avatar, EmptyState, Segmented, Skeleton, useToast } from "./ui";
+import { Avatar, EmptyState, IconButton, Segmented, Skeleton, useToast } from "./ui";
 
 interface Props {
   detail: CommitDetail | null;
@@ -15,11 +15,13 @@ interface Props {
   activeDiff: DiffTarget | null;
   onJump: (oid: string) => void;
   onOpenFile: (oid: string, file: FileChange) => void;
+  onFileHistory: (path: string) => void;
+  onExportPatch: (oid: string) => void;
 }
 
 const when = (p: Person) => new Date(p.time * 1000).toLocaleString();
 
-export function DetailPanel({ detail, files, loading, error, activeDiff, onJump, onOpenFile }: Props) {
+export function DetailPanel({ detail, files, loading, error, activeDiff, onJump, onOpenFile, onFileHistory, onExportPatch }: Props) {
   const toast = useToast();
   const [view, setView] = usePref<"tree" | "flat">("files.view", "tree");
   const [closed, setClosed] = useState<Set<string>>(new Set());
@@ -73,6 +75,15 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
             nameOnly
             depth={depth}
             onOpen={() => onOpenFile(detail.oid, n.item)}
+            trailing={
+              <IconButton
+                icon={History}
+                label={`History of ${n.item.path}`}
+                size="sm"
+                className="row-action"
+                onClick={() => onFileHistory(n.item.path)}
+              />
+            }
           />
         );
       }
@@ -128,6 +139,9 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
             <code>{shortSha(detail.oid)}</code>
             <Copy size={11} />
           </button>
+          <button className="sha-chip" onClick={() => onExportPatch(detail.oid)} title="Save this commit as a patch file">
+            <Download size={11} /> Patch
+          </button>
           {detail.parents.length > 0 && (
             <>
               <span className="meta-label">{detail.parents.length > 1 ? "Parents" : "Parent"}</span>
@@ -175,6 +189,15 @@ export function DetailPanel({ detail, files, loading, error, activeDiff, onJump,
                 stats={f.stats}
                 active={isActive(f)}
                 onOpen={() => onOpenFile(detail.oid, f)}
+                trailing={
+                  <IconButton
+                    icon={History}
+                    label={`History of ${f.path}`}
+                    size="sm"
+                    className="row-action"
+                    onClick={() => onFileHistory(f.path)}
+                  />
+                }
               />
             ))}
         {files.length === 0 && <li className="muted pad">No file changes (an empty commit).</li>}

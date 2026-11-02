@@ -1628,3 +1628,245 @@ mark {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+/* ---------- Phase 9: staging parts of a diff ---------- */
+
+.pick-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-right: 6px;
+}
+.diff-line .check-cell {
+  display: grid;
+  place-items: center;
+  padding-right: 0;
+}
+.line-check {
+  width: 13px;
+  height: 13px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.diff-line.picked {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.hunk-actions {
+  position: sticky;
+  right: 10px;
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+  padding-left: 12px;
+  background: var(--diff-hunk-bg);
+}
+.hunk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 16px;
+  padding: 0 7px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 11px var(--font-ui);
+}
+.hunk-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.hunk-btn.danger:hover:not(:disabled) {
+  background: var(--danger-soft);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+.hunk-btn:disabled {
+  opacity: 0.5;
+}
+
+/* ---------- Phase 9: history, blame, commit box ---------- */
+
+.history-body {
+  min-height: 360px;
+}
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.history-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 440px;
+  overflow: auto;
+}
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  text-align: left;
+}
+.history-row:hover {
+  background: var(--surface-2);
+}
+.history-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.blame {
+  height: 440px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-inset);
+  font: 12px/22px var(--font-mono);
+}
+.blame-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  white-space: pre;
+}
+.blame-line.block-start {
+  border-top: 1px solid var(--border);
+}
+.blame-who {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 300px;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 12px var(--font-ui);
+  text-align: left;
+  overflow: hidden;
+}
+.blame-who code {
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+}
+.blame-no {
+  flex: none;
+  width: 48px;
+  padding-right: 10px;
+  color: var(--text-faint);
+  text-align: right;
+}
+.blame-text {
+  flex: 1;
+  padding-right: 20px;
+}
+.coauthors {
+  font-size: 12px;
+}
+.coauthors ul {
+  margin: 4px 0;
+}
+.coauthors li {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-dim);
+}
+.coauthor-add {
+  display: flex;
+  gap: 6px;
+}
+
+/* ---------- Phase 10: tabs, search, filter ---------- */
+
+.repo-tabs {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 34px;
+  padding: 4px 10px 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+}
+.repo-tab {
+  display: flex;
+  align-items: center;
+  max-width: 220px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text-dim);
+}
+.repo-tab:hover {
+  background: var(--surface-2);
+}
+.repo-tab.active {
+  background: var(--surface-1);
+  border-color: var(--border);
+  color: var(--text);
+  margin-bottom: -1px;
+}
+.repo-tab-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 4px 0 10px;
+  border: 0;
+  background: transparent;
+  font-weight: 550;
+}
+.repo-tab-main span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repo-tab-close {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-right: 4px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-faint);
+}
+.repo-tab-close:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.search-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.search-grid > :last-child {
+  grid-column: 1 / -1;
+}
+.filter-chip {
+  cursor: pointer;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.side-row.hidden-ref {
+  opacity: 0.5;
+}
+.welcome-actions.secondary {
+  margin-top: 0;
+}

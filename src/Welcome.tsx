@@ -1,4 +1,4 @@
-import { FolderOpen, FolderX, GitBranch, Search, X } from "lucide-react";
+import { Download, FolderOpen, FolderPlus, FolderX, GitBranch, Search, X } from "lucide-react";
 import type { RecentRepo } from "./ipc";
 import { relativeTime } from "./lib/format";
 import { Button, IconButton, Shortcut } from "./ui";
@@ -10,6 +10,8 @@ interface Props {
   onOpenRecent: (path: string) => void;
   onRemoveRecent: (path: string) => void;
   onPalette: () => void;
+  onClone: () => void;
+  onInit: () => void;
 }
 
 /** The mark: a commit graph that bends around a node, in the accent color. */
@@ -36,7 +38,7 @@ export function Logo({ size = 56 }: { size?: number }) {
   );
 }
 
-export function Welcome({ recents, busy, onOpen, onOpenRecent, onRemoveRecent, onPalette }: Props) {
+export function Welcome({ recents, busy, onOpen, onOpenRecent, onRemoveRecent, onPalette, onClone, onInit }: Props) {
   return (
     <main className="welcome">
       <div className="welcome-inner">
@@ -52,6 +54,14 @@ export function Welcome({ recents, busy, onOpen, onOpenRecent, onRemoveRecent, o
             <Button icon={Search} onClick={onPalette}>
               Command palette
               <Shortcut keys="Ctrl+K" />
+            </Button>
+          </div>
+          <div className="welcome-actions secondary">
+            <Button variant="ghost" icon={Download} disabled={busy} onClick={onClone}>
+              Clone a repository
+            </Button>
+            <Button variant="ghost" icon={FolderPlus} disabled={busy} onClick={onInit}>
+              Create a new repository
             </Button>
           </div>
         </div>

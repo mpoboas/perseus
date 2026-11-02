@@ -13,7 +13,10 @@ use tauri::Manager;
 
 use ipc::channels::{self, AppState};
 use ipc::oauth_commands::{self, OAuthFlows};
-use ipc::{commands, profile_commands, protocol, recent_commands, watch_commands};
+use ipc::{
+    commands, patch_commands, profile_commands, protocol, recent_commands, repo_commands,
+    watch_commands,
+};
 use profiles::ProfileStore;
 use recents::RecentStore;
 
@@ -78,6 +81,15 @@ pub fn run() {
             commands::git_action,
             commands::list_stashes,
             commands::list_remotes,
+            commands::file_history,
+            commands::file_blame,
+            commands::commit_template,
+            commands::search_commits,
+            repo_commands::init_repo,
+            repo_commands::clone_repo,
+            repo_commands::open_in,
+            patch_commands::export_patch,
+            patch_commands::apply_patch_file,
             profile_commands::list_profiles,
             profile_commands::save_profile,
             profile_commands::delete_profile,

@@ -106,6 +106,7 @@ pub async fn stream_commits(
     state: State<'_, AppState>,
     repo_id: RepoId,
     stream_id: u32,
+    filter: Option<graph::GraphFilter>,
     on_chunk: Channel<CommitChunk>,
 ) -> Result<WalkSummary> {
     let repo = state.repos.get(repo_id)?;
@@ -118,7 +119,8 @@ pub async fn stream_commits(
         graph::ensure_commit_graph(&git);
         let repo = repo.to_thread_local();
         let mut seq = 0;
-        graph::walk_commits(&repo, DEFAULT_CHUNK_SIZE, &flag, |rows| {
+        let filter = filter.unwrap_or_default();
+        graph::walk_commits_filtered(&repo, DEFAULT_CHUNK_SIZE, &flag, &filter, |rows| {
             let ok = on_chunk.send(CommitChunk { seq, rows }).is_ok();
             seq += 1;
             ok

@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-export-patch"
+description = "Enables the export_patch command without any pre-configured scope."
+commands.allow = ["export_patch"]
+
+[[permission]]
+identifier = "deny-export-patch"
+description = "Denies the export_patch command without any pre-configured scope."
+commands.deny = ["export_patch"]

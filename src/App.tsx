@@ -8,7 +8,10 @@ import {
   History,
   Archive,
   Cable,
+  Download,
+  FolderPlus,
   Keyboard,
+  Search,
   Moon,
   PanelLeft,
   RefreshCw,
@@ -23,6 +26,7 @@ import { ChangesPanel } from "./ChangesPanel";
 import { CommandPalette, type PaletteItem } from "./CommandPalette";
 import { CommitStore } from "./commitStore";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FileHistoryDialog } from "./FileHistoryDialog";
 import { DetailPanel } from "./DetailPanel";
 import { DiffView } from "./DiffView";
 import { GraphCanvas, type WipSummary } from "./GraphCanvas";
@@ -34,6 +38,10 @@ import {
   type ChangeSet,
   type GitOp,
   type GitAction,
+  type GraphFilter,
+  type HunkPick,
+  type PatchSource,
+  type PatchMode,
   type ProfilesSnapshot,
   type PullMode,
   type RecentRepo,
@@ -43,11 +51,17 @@ import {
   type RepoStatus,
   type StashEntry,
   cancelGitOp,
+  applyPatchFile,
+  cloneRepo,
   cancelStream,
   closeRepo,
+  initRepo,
+  openIn,
   commitDetail,
   commitFiles,
+  commitTemplate,
   createCommit,
+  exportPatch,
   gitAction,
   listProfiles,
   listRecentRepos,
@@ -69,9 +83,12 @@ import {
   unwatchRepo,
   watchRepo,
 } from "./ipc";
-import { usePref } from "./lib/prefs";
+import { readPref, usePref, writePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
+import { CloneDialog } from "./CloneDialog";
 import { NewBranchDialog } from "./NewBranchDialog";
+import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
+import { SearchDialog } from "./SearchDialog";
 import { RemotesDialog } from "./RemotesDialog";
 import { StashDialog } from "./StashDialog";
 import { ProfilesDialog } from "./ProfilesDialog";
@@ -103,6 +120,12 @@ function App() {
   const [cancellable, setCancellable] = useState(false);
   const [stashOpen, setStashOpen] = useState(false);
   const [remotesOpen, setRemotesOpen] = useState(false);
+  const [historyPath, setHistoryPath] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [filter, setFilter] = useState<GraphFilter>({ hidden: [], solo: [] });
+  const [tabs, setTabs] = usePref<RepoTab[]>("session.tabs", []);
+  const restored = useRef(false);
   const [status, setStatus] = useState<RepoStatus | null>(null);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -146,6 +169,7 @@ function App() {
   const keepOid = useRef<string | null>(null);
   const watchId = useRef<number | null>(null);
   const opIdRef = useRef<number | null>(null);
+  const filterRef = useRef<GraphFilter>({ hidden: [], solo: [] });
   const busyRef = useRef<string | null>(null);
   const lastActEnd = useRef(0);
   const adoptedAt = useRef(0);
@@ -216,10 +240,14 @@ function App() {
         setLoading(true);
       }
       const started = performance.now();
-      const { streamId: id, done } = streamCommits(info.id, (chunk) => {
-        target.push(chunk);
-        if (!silent) scheduleCount();
-      });
+      const { streamId: id, done } = streamCommits(
+        info.id,
+        (chunk) => {
+          target.push(chunk);
+          if (!silent) scheduleCount();
+        },
+        filterRef.current,
+      );
       streamId.current = id;
       try {
         const summary = await done;
@@ -445,6 +473,9 @@ function App() {
         });
         break;
       }
+      case "ui":
+        run.run();
+        break;
       case "copy":
         navigator.clipboard.writeText(run.text).then(
           () => toast.success("Copied to the clipboard"),
@@ -472,7 +503,7 @@ function App() {
   const onMenu = (subject: Subject, x: number, y: number) => {
     const e = endpointFor(subject);
     if (!e || busy) return;
-    setMenu({ x, y, actions: menuActions(e, currentHead()) });
+    setMenu({ x, y, actions: [...menuActions(e, currentHead()), ...(e.type === "ref" ? filterActions(e.name) : [])] });
   };
 
   /** Throwing changes away cannot be undone, so it always asks first. */
@@ -491,6 +522,159 @@ function App() {
         run: { type: "action", action: { action: "discard", paths, untracked } },
       },
     ]);
+  };
+
+  /** Hides or isolates refs in the graph; remembered per repository. */
+  const changeFilter = (next: GraphFilter) => {
+    const info = repoRef.current;
+    if (!info) return;
+    filterRef.current = next;
+    setFilter(next);
+    writePref(`filter.${info.path}`, next);
+    void loadGraph(info, true);
+  };
+  const hideRef = (name: string) =>
+    changeFilter({ hidden: [...new Set([...filter.hidden, name])], solo: filter.solo.filter((s) => s !== name) });
+  const soloRef = (name: string) => changeFilter({ hidden: [], solo: [name] });
+  const clearFilter = () => changeFilter({ hidden: [], solo: [] });
+  const filterCount = filter.hidden.length + filter.solo.length;
+
+  /** Menu entries for hiding or isolating the ref the user clicked. */
+  const filterActions = (name: string): GraphAction[] => [
+    {
+      id: "hide-ref",
+      title: `Hide ${name} from the graph`,
+      description: "",
+      confirmLabel: "Hide",
+      immediate: true,
+      run: { type: "ui", run: () => hideRef(name) },
+    },
+    {
+      id: "solo-ref",
+      title: `Show only ${name}`,
+      description: "",
+      confirmLabel: "Show only",
+      immediate: true,
+      run: { type: "ui", run: () => soloRef(name) },
+    },
+    ...(filterCount > 0
+      ? [
+          {
+            id: "clear-filter",
+            title: "Show every branch again",
+            description: "",
+            confirmLabel: "Show all",
+            immediate: true,
+            run: { type: "ui" as const, run: clearFilter },
+          },
+        ]
+      : []),
+  ];
+
+  const doOpenIn = async (target: "folder" | "terminal" | "editor") => {
+    if (!repoRef.current) return;
+    try {
+      await openIn(repoRef.current.id, target);
+    } catch (e) {
+      report("Could not open it", e);
+    }
+  };
+
+  const doClone = async (url: string) => {
+    setCloneOpen(false);
+    setBusy("Cloning…");
+    setProgress("");
+    const opId = newOpId();
+    opIdRef.current = opId;
+    setCancellable(true);
+    try {
+      const info = await cloneRepo(url, opId, setProgress);
+      if (info) {
+        toast.success(`Cloned ${info.name}`);
+        await adopt(info);
+      }
+    } catch (e) {
+      report("Clone failed", e);
+    } finally {
+      opIdRef.current = null;
+      setCancellable(false);
+      setBusy(null);
+      setProgress("");
+    }
+  };
+
+  const doInit = async () => {
+    try {
+      const info = await initRepo();
+      if (info) {
+        toast.success(`Created a repository in ${info.name}`);
+        await adopt(info);
+      }
+    } catch (e) {
+      report("Could not create the repository", e);
+    }
+  };
+
+  const doExportPatch = async (source: PatchSource) => {
+    const info = repoRef.current;
+    if (!info) return;
+    try {
+      const saved = await exportPatch(info.id, source);
+      if (saved) toast.success(`Saved ${saved.name}`, `${saved.bytes.toLocaleString()} bytes`);
+    } catch (e) {
+      report("Could not export the patch", e);
+    }
+  };
+
+  const doApplyPatch = async (toIndex: boolean) => {
+    const info = repoRef.current;
+    if (!info) return;
+    setBusy("Applying patch…");
+    try {
+      const name = await applyPatchFile(info.id, toIndex);
+      if (name) toast.success(`Applied ${name}`);
+    } catch (e) {
+      report("The patch could not be applied", e);
+    } finally {
+      setBusy(null);
+    }
+    await refresh("all");
+  };
+
+  /** The message of the commit HEAD points at, for amending. Reads refs fresh: the cached list may lag a moment behind a commit made elsewhere. */
+  const loadLastMessage = async () => {
+    const info = repoRef.current;
+    if (!info) return null;
+    const now = await listRefs(info.id);
+    const oid = now.find((r) => r.kind === "branch" && r.is_head)?.target ?? currentHead().oid;
+    if (!oid) return null;
+    return (await commitDetail(info.id, oid)).message.trim();
+  };
+
+  const loadTemplate = async () => (repoRef.current ? await commitTemplate(repoRef.current.id) : null);
+
+  /** Stage, unstage or discard parts of a file's diff. Discarding asks first. */
+  const applyPatch = (path: string, mode: PatchMode, hunks: HunkPick[], what: string) => {
+    const action: GitAction = { action: "patch", path, mode, hunks };
+    if (mode === "discard") {
+      setConfirm([
+        {
+          id: "discard-parts",
+          title: `Discard ${what} in ${path}`,
+          description: `Removes ${what} from the file on disk, restoring the staged (or committed) version of those lines.`,
+          warning: "This cannot be undone.",
+          confirmLabel: "Discard",
+          danger: true,
+          run: { type: "action", action },
+        },
+      ]);
+      return;
+    }
+    const verb = mode === "stage" ? "Staged" : "Unstaged";
+    void doAction(mode === "stage" ? "Staging…" : "Unstaging…", action, {
+      done: `${verb} ${what}`,
+      fail: mode === "stage" ? "Could not stage" : "Could not unstage",
+    });
   };
 
   const onStashMenu = (entry: StashEntry, x: number, y: number) => {
@@ -533,7 +717,7 @@ function App() {
     if (busy) return;
     const parents = store.current.rows[store.current.index.get(ref.target) ?? -1]?.parents.length;
     const e: Endpoint = { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head, parents };
-    setMenu({ x, y, actions: menuActions(e, currentHead()) });
+    setMenu({ x, y, actions: [...menuActions(e, currentHead()), ...filterActions(ref.name)] });
   };
 
   // ---- Opening and closing repositories ----
@@ -542,6 +726,11 @@ function App() {
     const previous = repoRef.current;
     if (previous && previous.id !== picked.id) await closeRepo(previous.id);
     repoRef.current = picked;
+    const saved = readPref<GraphFilter>(`filter.${picked.path}`, { hidden: [], solo: [] });
+    filterRef.current = saved;
+    setFilter(saved);
+    setTabs((t) => (t.some((x) => x.path === picked.path) ? t : [...t, { path: picked.path, name: picked.name }]));
+    writePref("session.last", picked.path);
     adoptedAt.current = Date.now();
     wasInOperation.current = false;
     setRepo(picked);
@@ -582,6 +771,19 @@ function App() {
       await removeRecentRepo(path);
     } finally {
       void reloadRecents();
+    }
+  };
+
+  const closeTab = async (tab: RepoTab) => {
+    const remaining = tabs.filter((t) => t.path !== tab.path);
+    setTabs(remaining);
+    if (repoRef.current?.path === tab.path) {
+      const next = remaining[remaining.length - 1];
+      if (next) await openRecent(next.path);
+      else {
+        writePref("session.last", null);
+        await closeCurrent();
+      }
     }
   };
 
@@ -707,6 +909,15 @@ function App() {
     void reloadRecents();
   }, [reloadProfiles, reloadRecents]);
 
+  // Reopen where the user left off. Only a path already in the recents list can be opened.
+  useEffect(() => {
+    if (restored.current || recents.length === 0) return;
+    restored.current = true;
+    const last = readPref<string | null>("session.last", null);
+    if (last && recents.some((r) => r.path === last && r.exists)) void openRecent(last);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recents]);
+
   const activeProfile = profiles?.profiles.find((p) => p.id === profiles.active) ?? null;
   const identity = activeProfile ? { name: activeProfile.user_name, email: activeProfile.user_email } : null;
 
@@ -770,6 +981,9 @@ function App() {
     } else if (mod && key === "o") {
       e.preventDefault();
       if (!busy) void open();
+    } else if (mod && key === "f" && repo) {
+      e.preventDefault();
+      setSearchOpen(true);
     } else if (mod && key === "b" && repo) {
       e.preventDefault();
       setSidebarOpen((o) => !o);
@@ -797,6 +1011,8 @@ function App() {
     const publish = !!status?.branch && !status.upstream;
 
     add({ id: "open", title: "Open repository…", group: "Actions", icon: FolderOpen, shortcut: "Ctrl+O", run: () => void open() });
+    add({ id: "clone", title: "Clone a repository…", group: "Actions", icon: Download, run: () => setCloneOpen(true) });
+    add({ id: "init", title: "Create a new repository…", group: "Actions", icon: FolderPlus, run: () => void doInit() });
     if (repo) {
       add({ id: "fetch", title: "Fetch", group: "Actions", icon: RefreshCw, run: () => void gitOp("Fetching…", { op: "fetch" }, { done: "Fetch complete", fail: "Fetch failed" }) });
       if (status?.upstream)
@@ -809,7 +1025,12 @@ function App() {
           icon: ArrowUpFromLine,
           run: () => void gitOp(publish ? "Publishing…" : "Pushing…", { op: "push", set_upstream: publish }, { done: publish ? "Published" : "Pushed", fail: "Push failed" }),
         });
+      add({ id: "search", title: "Search commits…", group: "Actions", icon: Search, shortcut: "Ctrl+F", run: () => setSearchOpen(true) });
       add({ id: "stash", title: "Stash changes…", group: "Actions", icon: Archive, run: () => setStashOpen(true) });
+      add({ id: "patch-export", title: "Export unstaged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: false }) });
+      add({ id: "patch-export-staged", title: "Export staged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: true }) });
+      add({ id: "patch-apply", title: "Apply a patch file…", group: "Actions", icon: Archive, run: () => void doApplyPatch(false) });
+      add({ id: "patch-apply-index", title: "Apply a patch file and stage it…", group: "Actions", icon: Archive, run: () => void doApplyPatch(true) });
       add({ id: "remotes", title: "Manage remotes…", group: "Actions", icon: Cable, run: () => setRemotesOpen(true) });
       if (status?.upstream) {
         add({ id: "pull-merge", title: "Pull (merge)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "merge" }, { done: "Pulled", fail: "Pull failed" }) });
@@ -906,6 +1127,12 @@ function App() {
         }}
         onRemotes={() => setRemotesOpen(true)}
         onStash={() => setStashOpen(true)}
+        onClone={() => setCloneOpen(true)}
+        onInit={() => void doInit()}
+        onSearch={() => setSearchOpen(true)}
+        onOpenIn={(t) => void doOpenIn(t)}
+        filterCount={filterCount}
+        onClearFilter={clearFilter}
         onPush={() =>
           void gitOp(
             publish ? "Publishing…" : "Pushing…",
@@ -921,6 +1148,16 @@ function App() {
         onShortcuts={() => setShortcutsOpen(true)}
       />
 
+      {tabs.length > 0 && repo && (
+        <RepoTabs
+          tabs={tabs}
+          activePath={repo.path}
+          onSelect={(t) => t.path !== repo.path && void openRecent(t.path)}
+          onClose={(t) => void closeTab(t)}
+          onNew={() => void open()}
+        />
+      )}
+
       {repo ? (
         <div className="workspace">
           {sidebarOpen && (
@@ -929,6 +1166,8 @@ function App() {
                 <Sidebar
                   refs={refs}
                   stashes={stashes}
+                  hidden={new Set(filter.hidden)}
+                  solo={new Set(filter.solo)}
                   onStashMenu={onStashMenu}
                   busy={!!busy}
                   onJump={jumpTo}
@@ -990,7 +1229,14 @@ function App() {
                   onChange={setDiffH}
                 />
                 <div className="diff-area" style={{ height: Math.min(diffH, maxDiffH) }}>
-                  <DiffView repoId={repo.id} target={diff} version={diffVersion} onClose={() => setDiff(null)} />
+                  <DiffView
+                    repoId={repo.id}
+                    target={diff}
+                    version={diffVersion}
+                    onClose={() => setDiff(null)}
+                    onPatch={applyPatch}
+                    busy={!!busy}
+                  />
                 </div>
               </>
             )}
@@ -1026,6 +1272,8 @@ function App() {
                   activeDiff={diff}
                   onJump={jumpTo}
                   onOpenFile={(oid, f) => setDiff({ kind: "commit", oid, path: f.path, orig: f.orig_path })}
+                  onFileHistory={setHistoryPath}
+                  onExportPatch={(oid) => void doExportPatch({ source: "commit", oid })}
                 />
               ) : (
                 <ChangesPanel
@@ -1045,6 +1293,8 @@ function App() {
                     })
                   }
                   onDiscard={askDiscard}
+                  loadLastMessage={loadLastMessage}
+                  loadTemplate={loadTemplate}
                   onStash={() => setStashOpen(true)}
                   onContinue={() => void gitOp("Continuing…", { op: "continue" }, { done: "Continued", fail: "Could not continue" })}
                   onAbort={() => void gitOp("Aborting…", { op: "abort" }, { done: "Aborted", fail: "Could not abort" })}
@@ -1061,6 +1311,8 @@ function App() {
           onOpenRecent={(p) => void openRecent(p)}
           onRemoveRecent={(p) => void removeRecent(p)}
           onPalette={() => setPaletteOpen(true)}
+          onClone={() => setCloneOpen(true)}
+          onInit={() => void doInit()}
         />
       )}
 
@@ -1114,6 +1366,28 @@ function App() {
               { action: "stash_push", message: message || null, include_untracked: includeUntracked },
               { done: "Changes stashed", fail: "Could not stash" },
             );
+          }}
+        />
+      )}
+      {searchOpen && repo && (
+        <SearchDialog
+          repoId={repo.id}
+          onClose={() => setSearchOpen(false)}
+          onJump={(oid) => {
+            setSearchOpen(false);
+            jumpTo(oid);
+          }}
+        />
+      )}
+      {cloneOpen && <CloneDialog onClose={() => setCloneOpen(false)} onClone={(url) => void doClone(url)} />}
+      {historyPath && repo && (
+        <FileHistoryDialog
+          repoId={repo.id}
+          path={historyPath}
+          onClose={() => setHistoryPath(null)}
+          onJump={(oid) => {
+            setHistoryPath(null);
+            jumpTo(oid);
           }}
         />
       )}

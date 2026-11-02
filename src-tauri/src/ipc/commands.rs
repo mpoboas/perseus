@@ -9,9 +9,11 @@ use crate::git::actions::{self, Action, RemoteInfo, StashEntry};
 use crate::git::cli::Git;
 use crate::git::detail::{self, CommitDetail};
 use crate::git::diff::{self, FileChange};
+use crate::git::history::{self, Blame, FileCommit};
 use crate::git::ops::{self, GitOp, SwitchTarget};
 use crate::git::refs::{self, RefInfo};
 use crate::git::repo::RepoId;
+use crate::git::search::{self, Hits, SearchQuery};
 use crate::git::status::{self, RepoStatus};
 use crate::ipc::channels::AppState;
 use crate::profiles::{ProfileStore, helper_path};
@@ -204,4 +206,44 @@ pub async fn list_stashes(state: State<'_, AppState>, repo_id: RepoId) -> Result
 pub async fn list_remotes(state: State<'_, AppState>, repo_id: RepoId) -> Result<Vec<RemoteInfo>> {
     let git = state.repos.git(repo_id)?;
     blocking(move || actions::list_remotes(&git)).await
+}
+
+#[tauri::command]
+pub async fn file_history(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+    path: String,
+) -> Result<Vec<FileCommit>> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || history::file_history(&git, &path)).await
+}
+
+#[tauri::command]
+pub async fn file_blame(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+    path: String,
+    rev: Option<String>,
+) -> Result<Blame> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || history::blame(&git, &path, rev.as_deref())).await
+}
+
+#[tauri::command]
+pub async fn commit_template(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+) -> Result<Option<String>> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || history::commit_template(&git)).await
+}
+
+#[tauri::command]
+pub async fn search_commits(
+    state: State<'_, AppState>,
+    repo_id: RepoId,
+    query: SearchQuery,
+) -> Result<Hits> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || search::search(&git, &query)).await
 }
