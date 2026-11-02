@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { Check, Copy, ExternalLink, LogIn } from "lucide-react";
 import {
   type OAuthKind,
   type OAuthPreset,
@@ -8,6 +9,7 @@ import {
   oauthPresets,
   oauthSignIn,
 } from "./ipc";
+import { Button, Spinner } from "./ui";
 
 interface Props {
   profile: Profile;
@@ -79,7 +81,7 @@ export function SignIn({ profile, onSignedIn, onError }: Props) {
 
   if (flow) {
     return (
-      <div className="signin waiting">
+      <div className="signin waiting" aria-live="polite">
         {flow.code ? (
           <>
             <p>
@@ -88,17 +90,28 @@ export function SignIn({ profile, onSignedIn, onError }: Props) {
                 : "Open this page in your browser and enter the code:"}
             </p>
             <div className="device-code">
-              <code>{flow.code.user_code}</code>
-              <button className="mini" onClick={() => void copy(flow.code!.user_code)}>
+              <code className="selectable">{flow.code.user_code}</code>
+              <Button
+                size="sm"
+                icon={copied ? Check : Copy}
+                onClick={() => void copy(flow.code!.user_code)}
+              >
                 {copied ? "Copied" : "Copy"}
-              </button>
+              </Button>
             </div>
-            <p className="muted">{flow.code.verification_uri}</p>
+            <p className="muted small">
+              <ExternalLink size={12} /> {flow.code.verification_uri}
+            </p>
+            <p className="muted small">
+              <Spinner size={12} /> Waiting for you to approve…
+            </p>
           </>
         ) : (
-          <p className="muted">Contacting {host}…</p>
+          <p className="muted">
+            <Spinner size={12} /> Contacting {host}…
+          </p>
         )}
-        <button onClick={() => void oauthCancel(flow.id)}>Cancel</button>
+        <Button onClick={() => void oauthCancel(flow.id)}>Cancel</Button>
       </div>
     );
   }
@@ -106,32 +119,43 @@ export function SignIn({ profile, onSignedIn, onError }: Props) {
   return (
     <div className="signin">
       <div className="signin-row">
-        <select value={kind} onChange={(e) => changeKind(e.target.value as OAuthKind)} aria-label="Provider">
+        <select
+          className="select"
+          value={kind}
+          onChange={(e) => changeKind(e.target.value as OAuthKind)}
+          aria-label="Provider"
+        >
           <option value="github">GitHub</option>
           <option value="gitlab">GitLab</option>
         </select>
         <input
+          className="input"
           value={host}
           onChange={(e) => setHost(e.target.value)}
           placeholder={kind === "github" ? "github.com" : "gitlab.com"}
           aria-label="Host"
         />
-        <button onClick={() => void start()} disabled={!host.trim() || (!builtIn && !clientId.trim())}>
+        <Button
+          variant="primary"
+          icon={LogIn}
+          onClick={() => void start()}
+          disabled={!host.trim() || (!builtIn && !clientId.trim())}
+        >
           Sign in
-        </button>
+        </Button>
       </div>
       {!builtIn && (
         <input
-          className="signin-client"
+          className="input"
           value={clientId}
           onChange={(e) => setClientId(e.target.value)}
           placeholder="OAuth app client ID (from your app's settings on this host)"
           aria-label="Client ID"
         />
       )}
-      <p className="muted">
-        You approve on {kind === "github" ? "GitHub" : "GitLab"}'s own page by entering a short
-        code. Perseus never sees your password.
+      <p className="muted small">
+        You approve on {kind === "github" ? "GitHub" : "GitLab"}&apos;s own page by entering a short code. Perseus
+        never sees your password.
       </p>
     </div>
   );

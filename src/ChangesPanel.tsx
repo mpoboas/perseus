@@ -1,12 +1,16 @@
 import { useState } from "react";
-import type { DiffTarget, RepoStatus, StatusEntry, WorkSide } from "./ipc";
+import { CheckCircle2, ChevronDown, ChevronRight, GitCommitHorizontal, GitMerge, ShieldAlert } from "lucide-react";
+import { FileRow } from "./FileRow";
+import type { DiffTarget, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
+import { usePref } from "./lib/prefs";
+import { Avatar, Badge, Button, EmptyState, Shortcut } from "./ui";
 
 interface Props {
   status: RepoStatus | null;
   busy: boolean;
   activeDiff: DiffTarget | null;
-  /** "Name <email>" of the active profile, or null to use git's own configuration. */
-  identity: string | null;
+  /** The active profile's identity, or null to use git's own configuration. */
+  identity: { name: string; email: string } | null;
   onOpenDiff: (t: DiffTarget) => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
@@ -22,30 +26,20 @@ const OPERATION_LABEL = {
   revert: "Revert",
 } as const;
 
-function paths(e: StatusEntry): string[] {
-  return e.orig_path ? [e.path, e.orig_path] : [e.path];
-}
+const SUMMARY_SOFT_LIMIT = 72;
 
-interface RowProps {
-  entry: StatusEntry;
-  code: string;
-  active: boolean;
-  action: { label: string; title: string; run: () => void };
-  onOpen: () => void;
-}
+const paths = (e: StatusEntry): string[] => (e.orig_path ? [e.path, e.orig_path] : [e.path]);
 
-function Row({ entry, code, active, action, onOpen }: RowProps) {
-  return (
-    <li className={active ? "change active" : "change"}>
-      <span className={`st st-${code}`}>{code}</span>
-      <button className="path" onClick={onOpen} title={entry.path}>
-        {entry.orig_path ? `${entry.orig_path} → ${entry.path}` : entry.path}
-      </button>
-      <button className="mini" title={action.title} onClick={action.run}>
-        {action.label}
-      </button>
-    </li>
-  );
+interface Group {
+  id: string;
+  title: string;
+  side: WorkSide;
+  entries: StatusEntry[];
+  code: (e: StatusEntry) => string;
+  stats: (e: StatusEntry) => LineStats | null;
+  /** Checked boxes mean "this is in the next commit". */
+  checked: boolean;
+  bulk?: { label: string; run: () => void };
 }
 
 export function ChangesPanel({
@@ -60,120 +54,181 @@ export function ChangesPanel({
   onContinue,
   onAbort,
 }: Props) {
-  const [message, setMessage] = useState("");
+  const [summary, setSummary] = useState("");
+  const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
+  const [collapsed, setCollapsed] = usePref<Record<string, boolean>>("changes.collapsed", {});
 
-  if (!status) return <aside className="detail empty">Open a repository</aside>;
+  if (!status) return <EmptyState icon={GitCommitHorizontal} title="No repository" hint="Open a repository to see its changes." />;
 
   const conflicted = status.entries.filter((e) => e.conflicted);
   const staged = status.entries.filter((e) => !e.conflicted && e.index);
   const unstaged = status.entries.filter((e) => !e.conflicted && !e.untracked && e.worktree);
   const untracked = status.entries.filter((e) => e.untracked);
+
+  const groups: Group[] = [
+    {
+      id: "conflicts",
+      title: "Conflicts",
+      side: "unstaged",
+      entries: conflicted,
+      code: () => "U",
+      stats: () => null,
+      checked: false,
+    },
+    {
+      id: "staged",
+      title: "Staged",
+      side: "staged",
+      entries: staged,
+      code: (e) => e.index ?? "?",
+      stats: (e) => e.index_stats,
+      checked: true,
+      bulk: { label: "Unstage all", run: () => onUnstage(staged.flatMap(paths)) },
+    },
+    {
+      id: "unstaged",
+      title: "Changes",
+      side: "unstaged",
+      entries: unstaged,
+      code: (e) => e.worktree ?? "?",
+      stats: (e) => e.worktree_stats,
+      checked: false,
+      bulk: { label: "Stage all", run: () => onStage(unstaged.map((e) => e.path)) },
+    },
+    {
+      id: "untracked",
+      title: "Untracked",
+      side: "untracked",
+      entries: untracked,
+      code: () => "?",
+      stats: () => null,
+      checked: false,
+      bulk: { label: "Stage all", run: () => onStage(untracked.map((e) => e.path)) },
+    },
+  ];
+
   const isActive = (side: WorkSide, e: StatusEntry) =>
     activeDiff?.kind === "work" && activeDiff.side === side && activeDiff.path === e.path;
 
-  const canCommit =
-    !busy && message.trim().length > 0 && (staged.length > 0 || amend) && conflicted.length === 0;
+  const hasSummary = summary.trim().length > 0;
+  const canCommit = !busy && hasSummary && (staged.length > 0 || amend) && conflicted.length === 0;
+  const message = description.trim() ? `${summary.trim()}\n\n${description.trim()}` : summary.trim();
 
   const submit = async () => {
     if (!canCommit) return;
     if (await onCommit(message, amend)) {
-      setMessage("");
+      setSummary("");
+      setDescription("");
       setAmend(false);
     }
   };
 
-  const section = (
-    title: string,
-    entries: StatusEntry[],
-    side: WorkSide,
-    code: (e: StatusEntry) => string,
-    action: { label: string; title: string; run: (e: StatusEntry) => void },
-    bulk?: { label: string; run: () => void },
-  ) =>
-    entries.length > 0 && (
-      <section>
-        <h3>
-          {title} <span className="count">{entries.length}</span>
-          {bulk && (
-            <button className="mini bulk" disabled={busy} onClick={bulk.run}>
-              {bulk.label}
-            </button>
-          )}
-        </h3>
-        <ul>
-          {entries.map((e) => (
-            <Row
-              key={`${side}:${e.path}`}
-              entry={e}
-              code={code(e)}
-              active={isActive(side, e)}
-              action={{ ...action, run: () => action.run(e) }}
-              onOpen={() =>
-                onOpenDiff({ kind: "work", side, path: e.path, orig: side === "staged" ? e.orig_path : null })
-              }
-            />
-          ))}
-        </ul>
-      </section>
-    );
+  const onKey = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      void submit();
+    }
+  };
+
+  const commitLabel = amend
+    ? "Amend last commit"
+    : staged.length > 0
+      ? `Commit ${staged.length} file${staged.length === 1 ? "" : "s"}${status.branch ? ` to ${status.branch}` : ""}`
+      : "Commit";
 
   return (
-    <aside className="detail changes">
-      {status.operation && (
-        <div className="banner">
-          <strong>{OPERATION_LABEL[status.operation]} in progress</strong>
-          {conflicted.length > 0 ? (
-            <span> — resolve {conflicted.length} conflicted file(s), stage them, then continue</span>
-          ) : (
-            <span> — ready to continue</span>
-          )}
-          <div className="banner-actions">
-            <button disabled={busy || conflicted.length > 0} onClick={onContinue}>
-              Continue
-            </button>
-            <button disabled={busy} onClick={onAbort}>
-              Abort
-            </button>
+    <div className="changes">
+      <div className="changes-scroll">
+        {status.operation && (
+          <div className="op-banner" role="status">
+            <GitMerge size={16} />
+            <div>
+              <strong>{OPERATION_LABEL[status.operation]} in progress</strong>
+              <p>
+                {conflicted.length > 0
+                  ? `Resolve ${conflicted.length} conflicted file${conflicted.length === 1 ? "" : "s"}, stage them, then continue.`
+                  : "All conflicts are resolved. Ready to continue."}
+              </p>
+              <div className="op-actions">
+                <Button size="sm" variant="primary" disabled={busy || conflicted.length > 0} onClick={onContinue}>
+                  Continue
+                </Button>
+                <Button size="sm" variant="danger" disabled={busy} onClick={onAbort}>
+                  Abort
+                </Button>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {status.entries.length === 0 && !status.operation && (
-        <p className="muted">Working tree clean</p>
-      )}
+        {status.entries.length === 0 && !status.operation && (
+          <EmptyState icon={CheckCircle2} title="Working tree clean" hint="Nothing to commit. Edit a file and it will show up here." />
+        )}
 
-      {section(
-        "Conflicts",
-        conflicted,
-        "unstaged",
-        () => "U",
-        { label: "✓", title: "Mark resolved (stage)", run: (e) => onStage([e.path]) },
-      )}
-      {section(
-        "Staged",
-        staged,
-        "staged",
-        (e) => e.index ?? "?",
-        { label: "−", title: "Unstage", run: (e) => onUnstage(paths(e)) },
-        { label: "Unstage all", run: () => onUnstage(staged.flatMap(paths)) },
-      )}
-      {section(
-        "Changes",
-        unstaged,
-        "unstaged",
-        (e) => e.worktree ?? "?",
-        { label: "+", title: "Stage", run: (e) => onStage([e.path]) },
-        { label: "Stage all", run: () => onStage(unstaged.map((e) => e.path)) },
-      )}
-      {section(
-        "Untracked",
-        untracked,
-        "untracked",
-        () => "?",
-        { label: "+", title: "Stage", run: (e) => onStage([e.path]) },
-        { label: "Stage all", run: () => onStage(untracked.map((e) => e.path)) },
-      )}
+        {groups.map((g) => {
+          if (g.entries.length === 0) return null;
+          const open = !collapsed[g.id];
+          return (
+            <section key={g.id} className="change-group">
+              <div className="group-head">
+                <button className="group-toggle" aria-expanded={open} onClick={() => setCollapsed((c) => ({ ...c, [g.id]: open }))}>
+                  {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  <span>{g.title}</span>
+                  <Badge tone={g.id === "conflicts" ? "danger" : "neutral"}>{g.entries.length}</Badge>
+                </button>
+                {g.bulk && (
+                  <Button size="sm" variant="ghost" disabled={busy} onClick={g.bulk.run}>
+                    {g.bulk.label}
+                  </Button>
+                )}
+                {g.id === "conflicts" && <ShieldAlert size={14} className="conflict-icon" />}
+              </div>
+              {open && (
+                <ul className="file-list">
+                  {g.entries.map((e) => (
+                    <FileRow
+                      key={`${g.id}:${e.path}`}
+                      path={e.path}
+                      origPath={e.orig_path}
+                      code={g.code(e)}
+                      stats={g.stats(e)}
+                      active={isActive(g.side, e)}
+                      onOpen={() =>
+                        onOpenDiff({
+                          kind: "work",
+                          side: g.side,
+                          path: e.path,
+                          orig: g.side === "staged" ? e.orig_path : null,
+                        })
+                      }
+                      leading={
+                        g.id === "conflicts" ? undefined : (
+                          <input
+                            type="checkbox"
+                            className="stage-check"
+                            checked={g.checked}
+                            disabled={busy}
+                            aria-label={`${g.checked ? "Unstage" : "Stage"} ${e.path}`}
+                            onChange={() => (g.checked ? onUnstage(paths(e)) : onStage([e.path]))}
+                          />
+                        )
+                      }
+                      trailing={
+                        g.id === "conflicts" ? (
+                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onStage([e.path])} title="Mark resolved (stage)">
+                            Resolved
+                          </Button>
+                        ) : undefined
+                      }
+                    />
+                  ))}
+                </ul>
+              )}
+            </section>
+          );
+        })}
+      </div>
 
       <form
         className="composer"
@@ -182,32 +237,44 @@ export function ChangesPanel({
           void submit();
         }}
       >
-        <p className="identity muted" title="Change the active profile in the toolbar">
-          Committing as {identity ?? "your Git default identity"}
-        </p>
-        <textarea
-          placeholder="Commit message (Ctrl+Enter to commit)"
-          value={message}
-          rows={4}
-          onChange={(e) => setMessage(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              void submit();
-            }
-          }}
-        />
-        <div className="composer-row">
-          <label>
-            <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} />{" "}
-            Amend last commit
-          </label>
-          <button type="submit" disabled={!canCommit}>
-            {amend ? "Amend" : "Commit"}
-            {status.branch ? ` to ${status.branch}` : ""}
-          </button>
+        <div className="identity" title="Change the active profile from the toolbar">
+          {identity ? <Avatar name={identity.name} size={20} /> : <Avatar name="Git" size={20} />}
+          <span>
+            Committing as <strong>{identity ? identity.name : "your Git default identity"}</strong>
+            {identity && <span className="muted"> &lt;{identity.email}&gt;</span>}
+          </span>
         </div>
+        <div className="summary-wrap">
+          <input
+            className="input"
+            placeholder="Summary"
+            aria-label="Commit summary"
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            onKeyDown={onKey}
+          />
+          <span className={summary.length > SUMMARY_SOFT_LIMIT ? "counter over" : "counter"}>
+            {summary.length}/{SUMMARY_SOFT_LIMIT}
+          </span>
+        </div>
+        <textarea
+          className="textarea"
+          placeholder="Description (optional)"
+          aria-label="Commit description"
+          rows={3}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onKeyDown={onKey}
+        />
+        <label className="check-row">
+          <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> Amend the last commit
+        </label>
+        <Button type="submit" variant="primary" disabled={!canCommit} className="commit-btn">
+          {commitLabel}
+          <Shortcut keys="Ctrl+Enter" />
+        </Button>
+        {conflicted.length > 0 && <p className="muted small">Resolve the conflicts before committing.</p>}
       </form>
-    </aside>
+    </div>
   );
 }

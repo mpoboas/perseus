@@ -47,7 +47,7 @@ Definition of done for any feature. These come from the conventions the project 
 
 ---
 
-## Phase 6: UI and UX overhaul  `XL`   (in progress)
+## Phase 6: UI and UX overhaul  `XL`   (built; see "Delivered" below)
 
 **Goal.** Turn a working prototype into an application that looks and feels finished. No new Git
 capabilities: every existing capability gets a clear, fast, good-looking, discoverable interface.
@@ -94,6 +94,20 @@ keyboard-only use of the main flows; no layout shift or flicker during common op
 Vitest coverage for the new pure logic; no regressions in the existing test suites.
 **Out of scope here.** Syntax highlighting and side-by-side diff (Phase 9), tabs for several
 repositories (Phase 10), the full preferences screen (Phase 14).
+
+**Delivered.** Everything above except the items under "Not yet done". Backend: recents store,
+per-file line counts, per-branch upstream with ahead/behind/gone. Frontend: tokens and three theme
+modes, `src/ui` primitives, `src/lib` helpers (Vitest), welcome screen, toolbar, status bar,
+persisted resizable panes and graph columns, WIP row, avatars, ref chips, sidebar tree, commit
+detail with tree/flat files, checkbox staging, diff gutters, command palette, toasts, restyled
+dialogs. Checked in the running dev app (dark and light) and in a release build, where the only
+console messages are the two known isolation-iframe CSP entries (see `docs/security.md`).
+
+**Not yet done.**
+- The status bar does not show an in-progress merge/rebase; the Changes tab banner does.
+- Keyboard-only use of every flow and contrast ratios were not audited formally; focus rings,
+  roles and labels are in place, but a real accessibility pass belongs with Phase 15.
+- Colors for the "gone" upstream and conflict states were judged by eye only.
 
 ---
 

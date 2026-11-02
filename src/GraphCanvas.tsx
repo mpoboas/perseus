@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { GitCommitVertical } from "lucide-react";
 import type { CommitStore } from "./commitStore";
 import {
   type Badge,
@@ -9,29 +10,69 @@ import {
   sameSubject,
   subjectAt,
 } from "./graphLayout";
+import type { RefInfo } from "./ipc";
+import { avatarColor, initials, relativeTime } from "./lib/format";
+import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
 
-const LANE_W = 14;
-const PAD = 10;
-const MAX_GRAPH_LANES = 16;
-const NODE_R = 4;
+const LANE_W = 16;
+const PAD = 12;
+const MAX_GRAPH_LANES = 14;
+const NODE_R = 5;
+const CHIP_H = 20;
+const AVATAR_D = 20;
 const TOOLTIP_DELAY_MS = 450;
 const EDGE_SCROLL_ZONE = 28;
 const EDGE_SCROLL_STEP = 14;
-const PALETTE = [
-  "#4e79a7",
-  "#f28e2b",
-  "#e15759",
-  "#76b7b2",
-  "#59a14f",
-  "#edc948",
-  "#b07aa1",
-  "#ff9da7",
-  "#9c755f",
-  "#bab0ac",
-];
+const LANE_COUNT = 10;
 
-const color = (c: number) => PALETTE[c % PALETTE.length];
 const laneX = (lane: number) => PAD + lane * LANE_W + LANE_W / 2;
+
+/** Colors the canvas needs, read from the CSS tokens so the graph follows the theme. */
+interface Palette {
+  lanes: string[];
+  bg: string;
+  text: string;
+  dim: string;
+  faint: string;
+  border: string;
+  accent: string;
+  hover: string;
+  selected: string;
+  wip: string;
+  head: string;
+  branch: string;
+  remote: string;
+  tag: string;
+  onChip: string;
+  add: string;
+  del: string;
+  font: string;
+}
+
+function readPalette(): Palette {
+  const css = getComputedStyle(document.documentElement);
+  const v = (name: string) => css.getPropertyValue(name).trim();
+  return {
+    lanes: Array.from({ length: LANE_COUNT }, (_, i) => v(`--lane-${i}`)),
+    bg: v("--surface-1"),
+    text: v("--text"),
+    dim: v("--text-dim"),
+    faint: v("--text-faint"),
+    border: v("--border"),
+    accent: v("--accent"),
+    hover: v("--graph-hover"),
+    selected: v("--graph-selected"),
+    wip: v("--graph-wip"),
+    head: v("--ref-head"),
+    branch: v("--ref-branch"),
+    remote: v("--ref-remote"),
+    tag: v("--ref-tag"),
+    onChip: v("--ref-text-on"),
+    add: v("--st-add"),
+    del: v("--st-del"),
+    font: v("--font-ui"),
+  };
+}
 
 function line(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number, y1: number) {
   ctx.beginPath();
@@ -45,29 +86,38 @@ function line(ctx: CanvasRenderingContext2D, x0: number, y0: number, x1: number,
   ctx.stroke();
 }
 
-function relativeDate(seconds: number, now: number): string {
-  const d = now / 1000 - seconds;
-  if (d < 60) return "just now";
-  if (d < 3600) return `${Math.floor(d / 60)}m ago`;
-  if (d < 86400) return `${Math.floor(d / 3600)}h ago`;
-  if (d < 86400 * 30) return `${Math.floor(d / 86400)}d ago`;
-  return new Date(seconds * 1000).toLocaleDateString();
+export interface WipSummary {
+  files: number;
+  additions: number;
+  deletions: number;
 }
 
 interface Props {
   store: CommitStore;
   /** Row count; changing it tells the canvas that new rows have arrived. */
   count: number;
-  selected: number | null;
+  loading: boolean;
+  selected: number | "wip" | null;
   onSelect: (row: number) => void;
-  /** Scrolls the given row into the middle of the view whenever `nonce` changes. */
+  onSelectWip: () => void;
+  /** Scrolls the given commit row into the middle of the view whenever `nonce` changes. */
   reveal: { row: number; nonce: number } | null;
-  /** A badge or commit was dragged onto another. */
+  /** A chip or commit was dragged onto another. */
   onDrop: (source: Subject, target: Subject) => void;
   /** Right-click (viewport coordinates). */
   onMenu: (subject: Subject, x: number, y: number) => void;
   /** Short text for the drag ghost. */
   labelFor: (s: Subject) => string;
+  /** Uncommitted changes, drawn as a row above the first commit. */
+  wip: WipSummary | null;
+  /** Row of the commit HEAD points at, so the working-tree row can connect to it. */
+  headRow: number | null;
+  headBranch: string | null;
+  refKinds: ReadonlyMap<string, RefInfo["kind"]>;
+  authorW: number;
+  dateW: number;
+  onResizeAuthor: (w: number) => void;
+  onResizeDate: (w: number) => void;
 }
 
 interface DragState {
@@ -86,22 +136,39 @@ interface Tip {
 export function GraphCanvas({
   store,
   count,
+  loading,
   selected,
   onSelect,
+  onSelectWip,
   reveal,
   onDrop,
   onMenu,
   labelFor,
+  wip,
+  headRow,
+  headBranch,
+  refKinds,
+  authorW,
+  dateW,
+  onResizeAuthor,
+  onResizeDate,
 }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const size = useRef({ w: 800, h: 600 });
   const [viewH, setViewH] = useState(600);
+  const [scrollbarW, setScrollbarW] = useState(0);
+  const [graphW, setGraphW] = useState(PAD * 2 + LANE_W);
   const raf = useRef(0);
-  const latest = useRef({ count, selected });
-  latest.current = { count, selected };
+  const palette = useRef<Palette | null>(null);
+  const hover = useRef<number | null>(null);
 
-  /** Where each visible row's ref badges were painted, for hit-testing. */
+  const offset = wip ? 1 : 0;
+  // Everything the draw loop needs, kept in a ref so `draw` stays stable between renders.
+  const latest = useRef({ count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, offset });
+  latest.current = { count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, offset };
+
+  /** Where each visible commit's ref chips were painted, for hit-testing. */
   const badges = useRef(new Map<number, Badge[]>());
   const press = useRef<{ x: number; y: number; subject: Subject; pointerId: number } | null>(null);
   const [drag, setDrag] = useState<DragState | null>(null);
@@ -116,6 +183,8 @@ export function GraphCanvas({
     const sc = scroller.current;
     const ctx = cv?.getContext("2d");
     if (!cv || !sc || !ctx) return;
+    const pal = (palette.current ??= readPalette());
+    const lane = (c: number) => pal.lanes[c % LANE_COUNT];
 
     const { w, h } = size.current;
     const dpr = window.devicePixelRatio || 1;
@@ -129,109 +198,238 @@ export function GraphCanvas({
     ctx.clearRect(0, 0, w, h);
     badges.current.clear();
 
-    const { count: n, selected: sel } = latest.current;
+    const { count: n, selected: sel, wip: wipInfo, headRow: headIdx, headBranch: headName, refKinds: kinds, offset: off } =
+      latest.current;
+    const authW = latest.current.authorW;
+    const datW = latest.current.dateW;
     const top = sc.scrollTop;
-    const first = Math.floor(top / ROW_H);
-    const last = Math.min(n - 1, Math.ceil((top + h) / ROW_H));
-    const graphW = PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W;
-    const text = getComputedStyle(cv).color;
-    const bg = getComputedStyle(document.body).backgroundColor;
+    const total = n + off;
+    const firstDisplay = Math.max(0, Math.floor(top / ROW_H));
+    const lastDisplay = Math.min(total - 1, Math.ceil((top + h) / ROW_H));
+    const gW = PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W;
     const now = Date.now();
+    const yOf = (display: number) => display * ROW_H - top;
 
-    // Pass 1: selection highlight.
-    if (sel !== null && sel >= first && sel <= last) {
-      ctx.fillStyle = "rgba(90, 140, 255, 0.22)";
-      ctx.fillRect(0, sel * ROW_H - top, w, ROW_H);
+    // Pass 1: row backgrounds (hover and selection).
+    const selDisplay = sel === "wip" ? 0 : sel === null ? null : sel + off;
+    for (let d = firstDisplay; d <= lastDisplay; d++) {
+      if (d === selDisplay) {
+        ctx.fillStyle = pal.selected;
+        ctx.fillRect(0, yOf(d), w, ROW_H);
+        ctx.fillStyle = pal.accent;
+        ctx.fillRect(0, yOf(d), 2, ROW_H);
+      } else if (d === hover.current) {
+        ctx.fillStyle = pal.hover;
+        ctx.fillRect(0, yOf(d), w, ROW_H);
+      }
     }
+
+    // Column dividers.
+    const authorX = w - datW - authW;
+    ctx.fillStyle = pal.border;
+    ctx.fillRect(Math.round(authorX) - 0.5, 0, 1, h);
+    ctx.fillRect(Math.round(w - datW) - 0.5, 0, 1, h);
 
     // Pass 2: edges and nodes, clipped to the graph column.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, graphW, h);
+    ctx.rect(0, 0, gW, h);
     ctx.clip();
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
-    for (let r = first; r <= last; r++) {
+
+    // The working-tree row hangs off HEAD's lane with a dashed connector.
+    if (wipInfo && firstDisplay === 0) {
+      const headLane = headIdx !== null ? (store.rows[headIdx]?.graph.lane ?? 0) : 0;
+      const x = laneX(headLane);
+      const cy = yOf(0) + ROW_H / 2;
+      const toY = headIdx !== null ? yOf(headIdx + off) + ROW_H / 2 : cy + ROW_H;
+      ctx.strokeStyle = pal.wip;
+      ctx.setLineDash([3, 4]);
+      ctx.lineCap = "butt";
+      line(ctx, x, cy, x, Math.min(toY, h + ROW_H));
+      ctx.setLineDash([]);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.arc(x, cy, NODE_R, 0, Math.PI * 2);
+      ctx.fillStyle = pal.bg;
+      ctx.fill();
+      ctx.setLineDash([2.5, 2.5]);
+      ctx.lineWidth = 1.75;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.lineWidth = 2;
+    }
+
+    for (let d = Math.max(firstDisplay, off); d <= lastDisplay; d++) {
+      const r = d - off;
       const row = store.rows[r];
       if (!row) break;
       const g = row.graph;
-      const y = r * ROW_H - top;
+      const y = yOf(d);
       const cy = y + ROW_H / 2;
       const nx = laneX(g.lane);
 
-      for (const [lane, c] of g.through) {
-        ctx.strokeStyle = color(c);
-        line(ctx, laneX(lane), y, laneX(lane), y + ROW_H);
+      for (const [ln, c] of g.through) {
+        ctx.strokeStyle = lane(c);
+        line(ctx, laneX(ln), y, laneX(ln), y + ROW_H);
       }
-      for (const [lane, c] of g.incoming) {
-        ctx.strokeStyle = color(c);
-        line(ctx, laneX(lane), y, nx, cy);
+      for (const [ln, c] of g.incoming) {
+        ctx.strokeStyle = lane(c);
+        line(ctx, laneX(ln), y, nx, cy);
       }
-      for (const [lane, c] of g.outgoing) {
-        ctx.strokeStyle = color(c);
-        line(ctx, nx, cy, laneX(lane), y + ROW_H);
+      for (const [ln, c] of g.outgoing) {
+        ctx.strokeStyle = lane(c);
+        line(ctx, nx, cy, laneX(ln), y + ROW_H);
       }
 
+      const isHead = r === headIdx;
+      if (isHead) {
+        ctx.beginPath();
+        ctx.arc(nx, cy, NODE_R + 3.5, 0, Math.PI * 2);
+        ctx.strokeStyle = pal.head;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.lineWidth = 2;
+      }
+      // A background-colored halo separates the node from the lines running through it.
+      ctx.beginPath();
+      ctx.arc(nx, cy, NODE_R + 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = pal.bg;
+      ctx.fill();
       ctx.beginPath();
       ctx.arc(nx, cy, NODE_R, 0, Math.PI * 2);
-      ctx.fillStyle = color(g.color);
-      ctx.fill();
       if (row.parents.length > 1) {
-        // Merge commits get a hollow center.
-        ctx.beginPath();
-        ctx.arc(nx, cy, NODE_R - 2, 0, Math.PI * 2);
-        ctx.fillStyle = bg;
+        // Merge commits are hollow rings.
+        ctx.strokeStyle = lane(g.color);
+        ctx.lineWidth = 2.25;
+        ctx.stroke();
+        ctx.lineWidth = 2;
+      } else {
+        ctx.fillStyle = lane(g.color);
         ctx.fill();
       }
     }
     ctx.restore();
 
-    // Pass 3: text. Right-aligned columns first so the summary can fill what remains.
-    ctx.font = "13px system-ui, sans-serif";
+    // Pass 3: text columns. Right-aligned ones first so the message can fill what remains.
     ctx.textBaseline = "middle";
-    const dateW = 80;
-    const authorW = 130;
-    const summaryRight = w - dateW - authorW - 12;
-    for (let r = first; r <= last; r++) {
-      const row = store.rows[r];
-      if (!row) break;
-      const cy = r * ROW_H - top + ROW_H / 2;
-
-      ctx.globalAlpha = 0.6;
-      ctx.fillStyle = text;
-      ctx.textAlign = "right";
-      ctx.fillText(relativeDate(row.time, now), w - 10, cy);
-      ctx.textAlign = "left";
+    const messageRight = authorX - 10;
+    const messageLeft = gW + 6;
+    const clipped = (x: number, width: number, d: number, fn: () => void) => {
       ctx.save();
       ctx.beginPath();
-      ctx.rect(w - dateW - authorW, cy - ROW_H / 2, authorW - 8, ROW_H);
+      ctx.rect(x, yOf(d), Math.max(0, width), ROW_H);
       ctx.clip();
-      ctx.fillText(row.author, w - dateW - authorW, cy);
+      fn();
       ctx.restore();
-      ctx.globalAlpha = 1;
+    };
 
-      let x = graphW + 6;
+    for (let d = firstDisplay; d <= lastDisplay; d++) {
+      const cy = yOf(d) + ROW_H / 2;
+
+      if (d < off && wipInfo) {
+        ctx.font = `600 13px ${pal.font}`;
+        ctx.textAlign = "left";
+        ctx.fillStyle = pal.text;
+        const label = "Working tree";
+        ctx.fillText(label, messageLeft, cy);
+        let x = messageLeft + ctx.measureText(label).width + 10;
+        ctx.font = `12px ${pal.font}`;
+        ctx.fillStyle = pal.dim;
+        const files = `${wipInfo.files} changed file${wipInfo.files === 1 ? "" : "s"}`;
+        ctx.fillText(files, x, cy);
+        x += ctx.measureText(files).width + 10;
+        if (wipInfo.additions > 0) {
+          const t = `+${wipInfo.additions}`;
+          ctx.fillStyle = pal.add;
+          ctx.fillText(t, x, cy);
+          x += ctx.measureText(t).width + 6;
+        }
+        if (wipInfo.deletions > 0) {
+          ctx.fillStyle = pal.del;
+          ctx.fillText(`−${wipInfo.deletions}`, x, cy);
+        }
+        continue;
+      }
+
+      const r = d - off;
+      const row = store.rows[r];
+      if (!row) break;
+
+      // Date
+      ctx.font = `12px ${pal.font}`;
+      ctx.fillStyle = pal.faint;
+      ctx.textAlign = "right";
+      clipped(w - datW, datW, d, () => ctx.fillText(relativeTime(row.time, now), w - 12, cy));
+
+      // Author: avatar + name
+      ctx.textAlign = "left";
+      ctx.beginPath();
+      ctx.arc(authorX + 12 + AVATAR_D / 2, cy, AVATAR_D / 2, 0, Math.PI * 2);
+      ctx.fillStyle = avatarColor(row.author);
+      ctx.fill();
+      ctx.font = `700 9px ${pal.font}`;
+      ctx.fillStyle = "#fff";
+      ctx.textAlign = "center";
+      ctx.fillText(initials(row.author), authorX + 12 + AVATAR_D / 2, cy + 0.5);
+      ctx.textAlign = "left";
+      ctx.font = `12px ${pal.font}`;
+      ctx.fillStyle = pal.dim;
+      const nameX = authorX + 12 + AVATAR_D + 7;
+      clipped(nameX, w - datW - nameX - 6, d, () => ctx.fillText(row.author, nameX, cy));
+
+      // Ref chips, then the message.
+      let x = messageLeft;
       const rowBadges: Badge[] = [];
-      for (const ref of row.refs) {
-        const tw = ctx.measureText(ref).width;
-        ctx.fillStyle = ref === "HEAD" ? "#2f7d32" : "#3b5ea8";
+      const chips = chipsFor(row.refs, headName, kinds);
+      const limit = messageLeft + (messageRight - messageLeft) * 0.6;
+      ctx.font = `600 11.5px ${pal.font}`;
+      let shown = 0;
+      for (const chip of chips) {
+        const tw = ctx.measureText(chip.label).width;
+        const cw = tw + 14;
+        if (x + cw > limit && shown > 0) break;
+        const color =
+          chip.kind === "head" ? pal.head
+          : chip.kind === "remote" ? pal.remote
+          : chip.kind === "tag" ? pal.tag
+          : pal.branch;
         ctx.beginPath();
-        ctx.roundRect(x, cy - 9, tw + 10, 18, 9);
-        ctx.fill();
-        ctx.fillStyle = "#fff";
-        ctx.fillText(ref, x + 5, cy);
-        rowBadges.push({ ref, x, w: tw + 10 });
-        x += tw + 16;
+        ctx.roundRect(x, cy - CHIP_H / 2, cw, CHIP_H, 6);
+        if (chip.kind === "remote" || chip.kind === "tag") {
+          ctx.globalAlpha = 0.18;
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.globalAlpha = 1;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.fillStyle = color;
+        } else {
+          ctx.fillStyle = color;
+          ctx.fill();
+          ctx.fillStyle = pal.onChip;
+        }
+        ctx.textAlign = "left";
+        ctx.fillText(chip.label, x + 7, cy + 0.5);
+        rowBadges.push({ ref: chip.ref, x, w: cw });
+        x += cw + 5;
+        shown++;
+      }
+      if (shown < chips.length) {
+        const more = `+${chips.length - shown}`;
+        ctx.fillStyle = pal.faint;
+        ctx.fillText(more, x + 2, cy + 0.5);
+        x += ctx.measureText(more).width + 8;
       }
       if (rowBadges.length) badges.current.set(r, rowBadges);
 
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(x, cy - ROW_H / 2, Math.max(0, summaryRight - x), ROW_H);
-      ctx.clip();
-      ctx.fillStyle = text;
-      ctx.fillText(row.summary, x, cy);
-      ctx.restore();
+      ctx.font = `13px ${pal.font}`;
+      ctx.fillStyle = row.parents.length > 1 ? pal.dim : pal.text;
+      ctx.textAlign = "left";
+      const start = x + (rowBadges.length ? 2 : 0);
+      clipped(start, messageRight - start, d, () => ctx.fillText(row.summary, start, cy));
     }
   }, [store]);
 
@@ -245,6 +443,7 @@ export function GraphCanvas({
     const measure = () => {
       size.current = { w: sc.clientWidth, h: sc.clientHeight };
       setViewH(sc.clientHeight);
+      setScrollbarW(sc.offsetWidth - sc.clientWidth);
       if (canvas.current) {
         canvas.current.style.width = `${sc.clientWidth}px`;
         canvas.current.style.height = `${sc.clientHeight}px`;
@@ -261,21 +460,38 @@ export function GraphCanvas({
     };
   }, [schedule]);
 
-  useEffect(schedule, [count, selected, schedule]);
+  // The canvas paints its own colors, so a theme change must re-read the tokens.
+  useEffect(() => {
+    const onTheme = () => {
+      palette.current = null;
+      schedule();
+    };
+    window.addEventListener("perseus-theme", onTheme);
+    return () => window.removeEventListener("perseus-theme", onTheme);
+  }, [schedule]);
+
+  useEffect(() => {
+    setGraphW(PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W);
+  }, [count, store]);
+
+  useEffect(schedule, [count, selected, wip, headRow, headBranch, refKinds, authorW, dateW, schedule]);
 
   // Keep the selected row visible (keyboard navigation).
   useEffect(() => {
     const sc = scroller.current;
     if (!sc || selected === null) return;
-    const y = selected * ROW_H;
+    const display = selected === "wip" ? 0 : selected + offset;
+    const y = display * ROW_H;
     if (y < sc.scrollTop) sc.scrollTop = y;
     else if (y + ROW_H > sc.scrollTop + sc.clientHeight) sc.scrollTop = y + ROW_H - sc.clientHeight;
-  }, [selected]);
+  }, [selected, offset]);
 
   useEffect(() => {
     const sc = scroller.current;
     if (!sc || !reveal) return;
-    sc.scrollTop = Math.max(0, reveal.row * ROW_H - sc.clientHeight / 2);
+    sc.scrollTop = Math.max(0, (reveal.row + offset) * ROW_H - sc.clientHeight / 2);
+    // Only a new reveal request should scroll, not a change in the WIP offset.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reveal]);
 
   useEffect(() => () => window.clearTimeout(tipTimer.current), []);
@@ -287,7 +503,7 @@ export function GraphCanvas({
   };
 
   const subjectUnder = (x: number, y: number) =>
-    subjectAt(x, y, scroller.current?.scrollTop ?? 0, latest.current.count, badges.current);
+    subjectAt(x, y, scroller.current?.scrollTop ?? 0, latest.current.count, badges.current, latest.current.offset);
 
   const hideTip = () => {
     window.clearTimeout(tipTimer.current);
@@ -311,11 +527,18 @@ export function GraphCanvas({
     press.current = { x, y, subject, pointerId: e.pointerId };
   };
 
+  const setHover = (display: number | null) => {
+    if (hover.current === display) return;
+    hover.current = display;
+    schedule();
+  };
+
   const onPointerMove = (e: React.PointerEvent) => {
     const { x, y } = local(e);
     const p = press.current;
+    const top = scroller.current?.scrollTop ?? 0;
 
-    if (p && !dragRef.current && isDrag(x - p.x, y - p.y)) {
+    if (p && !dragRef.current && p.subject.kind !== "wip" && isDrag(x - p.x, y - p.y)) {
       scroller.current?.setPointerCapture(p.pointerId);
       dragRef.current = { source: p.subject, x, y, target: null };
     }
@@ -333,8 +556,11 @@ export function GraphCanvas({
       return;
     }
 
-    // Plain hover: show a tooltip once the pointer rests on a row.
-    const row = rowAt(y, scroller.current?.scrollTop ?? 0, latest.current.count);
+    const display = rowAt(y, top, latest.current.count + latest.current.offset);
+    setHover(x <= size.current.w ? display : null);
+
+    // Plain hover: show a tooltip once the pointer rests on a commit row.
+    const row = display === null || display < latest.current.offset ? null : display - latest.current.offset;
     if (row !== tipRow.current) {
       hideTip();
       tipRow.current = row;
@@ -356,7 +582,9 @@ export function GraphCanvas({
       return;
     }
     press.current = null;
-    if (p) onSelect(p.subject.row); // a press without movement is a click
+    if (!p) return;
+    if (p.subject.kind === "wip") onSelectWip();
+    else onSelect(p.subject.row); // a press without movement is a click
   };
 
   const onContextMenu = (e: React.MouseEvent) => {
@@ -365,7 +593,8 @@ export function GraphCanvas({
     const subject = subjectUnder(x, y);
     if (!subject) return;
     hideTip();
-    onSelect(subject.row);
+    if (subject.kind === "wip") onSelectWip();
+    else onSelect(subject.row);
     onMenu(subject, e.clientX, e.clientY);
   };
 
@@ -376,80 +605,177 @@ export function GraphCanvas({
     }
     if (count === 0) return;
     const page = Math.max(1, Math.floor(size.current.h / ROW_H) - 1);
-    const cur = selected ?? -1;
+    // Navigate in display rows so the working-tree row takes part like any other.
+    const cur = selected === "wip" ? 0 : selected === null ? -1 : selected + offset;
+    const last = count + offset - 1;
     const next =
       e.key === "ArrowDown" ? cur + 1
       : e.key === "ArrowUp" ? cur - 1
       : e.key === "PageDown" ? cur + page
       : e.key === "PageUp" ? cur - page
       : e.key === "Home" ? 0
-      : e.key === "End" ? count - 1
+      : e.key === "End" ? last
       : null;
     if (next === null) return;
     e.preventDefault();
-    onSelect(Math.min(count - 1, Math.max(0, next)));
+    const display = Math.min(last, Math.max(0, next));
+    if (display < offset) onSelectWip();
+    else onSelect(display - offset);
   };
 
   const top = scroller.current?.scrollTop ?? 0;
   const targetBox = (() => {
     const t = drag?.target;
-    if (!t) return null;
-    const y = t.row * ROW_H - top;
+    if (!t || t.kind === "wip") return null;
+    const y = (t.row + offset) * ROW_H - top;
     if (t.kind === "ref") {
       const b = badges.current.get(t.row)?.find((x) => x.ref === t.name);
-      if (b) return { left: b.x - 2, top: y + 3, width: b.w + 4, height: ROW_H - 6 };
+      if (b) return { left: b.x - 2, top: y + 4, width: b.w + 4, height: ROW_H - 8 };
     }
     return { left: 0, top: y, width: size.current.w, height: ROW_H };
   })();
   const tipRowData = tip ? store.rows[tip.row] : undefined;
+  const showSkeleton = loading && count === 0;
 
   return (
     <div className="graph-wrap">
-      <div
-        ref={scroller}
-        className={drag ? "graph-scroller dragging" : "graph-scroller"}
-        tabIndex={0}
-        onScroll={() => {
-          hideTip();
-          schedule();
-        }}
-        onPointerDown={onPointerDown}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={endDrag}
-        onPointerLeave={hideTip}
-        onContextMenu={onContextMenu}
-        onKeyDown={onKeyDown}
-      >
-        <canvas ref={canvas} className="graph-canvas" />
-        {/* Total scroll height = canvas height (sticky) + this spacer. */}
-        <div style={{ height: Math.max(0, count * ROW_H - viewH) }} />
+      <div className="graph-header" style={{ paddingRight: scrollbarW }}>
+        <div className="gh-cell" style={{ width: graphW }}>
+          Graph
+        </div>
+        <div className="gh-cell gh-grow">Message</div>
+        <div className="gh-cell gh-resizable" style={{ width: authorW }}>
+          <Splitter
+            orientation="vertical"
+            label="Resize author column"
+            value={authorW}
+            min={90}
+            max={320}
+            reset={170}
+            invert
+            onChange={onResizeAuthor}
+          />
+          Author
+        </div>
+        <div className="gh-cell gh-resizable" style={{ width: dateW }}>
+          <Splitter
+            orientation="vertical"
+            label="Resize date column"
+            value={dateW}
+            min={64}
+            max={200}
+            reset={96}
+            invert
+            onChange={onResizeDate}
+          />
+          Date
+        </div>
       </div>
 
-      {/* Interactive feedback lives in the DOM, above the canvas, and never takes pointer events. */}
-      <div className="graph-overlay" aria-hidden="true">
-        {targetBox && <div className="drop-target" style={targetBox} />}
-        {drag && (
-          <div className="drag-ghost" style={{ left: drag.x + 14, top: drag.y + 14 }}>
-            {labelFor(drag.source)}
+      <div className="graph-body">
+        <div
+          ref={scroller}
+          className={drag ? "graph-scroller dragging" : "graph-scroller"}
+          tabIndex={0}
+          role="listbox"
+          aria-label="Commit history"
+          onScroll={() => {
+            hideTip();
+            schedule();
+          }}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp}
+          onPointerCancel={endDrag}
+          onPointerLeave={() => {
+            hideTip();
+            setHover(null);
+          }}
+          onContextMenu={onContextMenu}
+          onKeyDown={onKeyDown}
+        >
+          <canvas ref={canvas} className="graph-canvas" />
+          {/* Total scroll height = canvas height (sticky) + this spacer. */}
+          <div style={{ height: Math.max(0, (count + offset) * ROW_H - viewH) }} />
+        </div>
+
+        {showSkeleton && (
+          <div className="graph-skeleton" aria-label="Loading commits">
+            {Array.from({ length: 14 }, (_, i) => (
+              <div key={i} className="gs-row">
+                <Skeleton width={10} height={10} />
+                <Skeleton width={`${30 + ((i * 37) % 45)}%`} height={10} />
+              </div>
+            ))}
           </div>
         )}
-        {tip && tipRowData && !drag && (
-          <div
-            className="graph-tooltip"
-            style={{ left: Math.min(tip.x + 14, Math.max(0, size.current.w - 340)), top: tip.y + 18 }}
-          >
-            <strong>{tipRowData.summary}</strong>
-            <div className="muted">
-              <code>{tipRowData.oid.slice(0, 10)}</code> · {tipRowData.author}
+        {!loading && count === 0 && (
+          <EmptyState icon={GitCommitVertical} title="No commits yet" hint="Make your first commit from the Changes tab." />
+        )}
+
+        {/* Interactive feedback lives in the DOM, above the canvas, and never takes pointer events. */}
+        <div className="graph-overlay" aria-hidden="true">
+          {targetBox && <div className="drop-target" style={targetBox} />}
+          {drag && (
+            <div className="drag-ghost" style={{ left: drag.x + 14, top: drag.y + 14 }}>
+              {labelFor(drag.source)}
             </div>
-            <div className="muted">{new Date(tipRowData.time * 1000).toLocaleString()}</div>
-            {tipRowData.parents.length > 1 && (
-              <div className="muted">Merge of {tipRowData.parents.length} parents</div>
-            )}
-          </div>
-        )}
+          )}
+          {tip && tipRowData && !drag && (
+            <div
+              className="graph-tooltip"
+              style={{
+                left: Math.min(tip.x + 14, Math.max(0, size.current.w - 360)),
+                top: Math.min(tip.y + 18, Math.max(0, size.current.h - 120)),
+              }}
+            >
+              <div className="gt-author">
+                <Avatar name={tipRowData.author} size={22} />
+                <div>
+                  <strong>{tipRowData.author}</strong>
+                  <span>{new Date(tipRowData.time * 1000).toLocaleString()}</span>
+                </div>
+              </div>
+              <p className="gt-summary">{tipRowData.summary}</p>
+              <div className="gt-meta">
+                <code>{tipRowData.oid.slice(0, 10)}</code>
+                {tipRowData.parents.length > 1 && <span>Merge of {tipRowData.parents.length} parents</span>}
+                {tipRowData.parents.length === 0 && <span>Root commit</span>}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
+}
+
+interface Chip {
+  /** The ref name this chip stands for (what drag and drop acts on). */
+  ref: string;
+  label: string;
+  kind: "head" | "branch" | "remote" | "tag";
+}
+
+/**
+ * The chips for a commit's refs. The checked-out branch absorbs the separate "HEAD" token and
+ * is drawn green; a detached HEAD keeps its own chip. Order: HEAD, branches, remotes, tags.
+ */
+function chipsFor(
+  refs: readonly string[],
+  headBranch: string | null,
+  kinds: ReadonlyMap<string, RefInfo["kind"]>,
+): Chip[] {
+  const out: Chip[] = [];
+  const hasHeadBranch = headBranch !== null && refs.includes(headBranch);
+  for (const ref of refs) {
+    if (ref === "HEAD") {
+      if (!hasHeadBranch) out.push({ ref, label: "HEAD", kind: "head" });
+      continue;
+    }
+    const kind = ref === headBranch ? "head" : (kinds.get(ref) ?? "branch");
+    out.push({ ref, label: ref, kind });
+  }
+  const rank = { head: 0, branch: 1, remote: 2, tag: 3 } as const;
+  return out.sort((a, b) => rank[a.kind] - rank[b.kind]);
 }

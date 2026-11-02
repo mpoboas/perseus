@@ -45,7 +45,7 @@ $env:WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS = "--remote-debugging-port=9333"
 
 Known, harmless console message: two "Applying inline style violates ... style-src 'self'"
 entries. They come from Tauri's isolation iframe trying to hide itself with an inline style;
-`src/App.css` hides it instead (`body > iframe`), so the policy stays strict.
+`src/styles/base.css` hides it instead (`body > iframe`), so the policy stays strict.
 
 ## Dependency checks
 

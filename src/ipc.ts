@@ -42,6 +42,12 @@ export interface RefInfo {
   kind: "branch" | "remote" | "tag";
   target: string;
   is_head: boolean;
+  /** Upstream of a local branch, e.g. `origin/main`. */
+  upstream: string | null;
+  ahead: number;
+  behind: number;
+  /** The upstream branch was deleted on the remote. */
+  gone: boolean;
 }
 
 export interface Person {
@@ -71,6 +77,12 @@ export const commitDetail = (repoId: number, oid: string) =>
 
 // ---- Working tree, writes and diffs ----
 
+/** Line counts of a change; a null count means a binary file. */
+export interface LineStats {
+  additions: number | null;
+  deletions: number | null;
+}
+
 export interface StatusEntry {
   path: string;
   orig_path: string | null;
@@ -80,6 +92,8 @@ export interface StatusEntry {
   worktree: string | null;
   untracked: boolean;
   conflicted: boolean;
+  index_stats: LineStats | null;
+  worktree_stats: LineStats | null;
 }
 
 export type Operation = "merge" | "cherry_pick" | "rebase" | "revert";
@@ -97,6 +111,7 @@ export interface FileChange {
   path: string;
   orig_path: string | null;
   status: string;
+  stats: LineStats | null;
 }
 
 export type SwitchTarget = { kind: "branch"; name: string } | { kind: "detached"; oid: string };
@@ -286,3 +301,21 @@ export function streamCommits(
   const done = invoke<WalkSummary>("stream_commits", { repoId, streamId, onChunk: channel });
   return { streamId, done };
 }
+
+// ---- Recent repositories ----
+
+export interface RecentRepo {
+  path: string;
+  name: string;
+  /** Unix seconds. */
+  last_opened: number;
+  /** False when the folder has since been moved or deleted. */
+  exists: boolean;
+}
+
+export const listRecentRepos = () => invoke<RecentRepo[]>("list_recent_repos");
+
+/** Only paths already in the recents list are accepted; the backend refuses anything else. */
+export const openRecentRepo = (path: string) => invoke<RepoInfo>("open_recent_repo", { path });
+
+export const removeRecentRepo = (path: string) => invoke<void>("remove_recent_repo", { path });

@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { Info, TriangleAlert } from "lucide-react";
 import type { GraphAction } from "./actions";
+import { Button, Dialog, TextField } from "./ui";
 
 interface Props {
   /** One or more things the gesture could mean; with several, the user picks. */
@@ -16,65 +18,61 @@ export function ConfirmDialog({ actions, dirty, onConfirm, onCancel }: Props) {
   const action = actions.find((a) => a.id === chosen) ?? actions[0];
   const ready = !action.needsName || name.trim().length > 0;
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onCancel();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onCancel]);
-
-  const submit = () => ready && onConfirm(action, name.trim());
-
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onCancel()}>
-      <form
-        className="modal confirm"
-        role="dialog"
-        aria-modal="true"
-        aria-label={action.title}
-        onSubmit={(e) => {
-          e.preventDefault();
-          submit();
-        }}
-      >
-        <header className="modal-head">
-          <h2>{actions.length > 1 ? "Choose an action" : action.title}</h2>
-        </header>
-        <div className="confirm-body">
-          {actions.length > 1 &&
-            actions.map((a) => (
-              <label key={a.id} className="choice">
-                <input type="radio" checked={a.id === chosen} onChange={() => setChosen(a.id)} />
+    <Dialog
+      title={actions.length > 1 ? "Choose an action" : action.title}
+      width={500}
+      onClose={onCancel}
+      onSubmit={() => ready && onConfirm(action, name.trim())}
+      footer={
+        <>
+          <Button type="button" variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant={action.danger ? "danger" : "primary"}
+            disabled={!ready}
+            data-autofocus={!action.needsName ? "" : undefined}
+          >
+            {action.confirmLabel}
+          </Button>
+        </>
+      }
+    >
+      <div className="dialog-body">
+        {actions.length > 1 && (
+          <div className="choices" role="radiogroup" aria-label="Action">
+            {actions.map((a) => (
+              <label key={a.id} className={a.id === chosen ? "choice active" : "choice"}>
+                <input type="radio" name="action" checked={a.id === chosen} onChange={() => setChosen(a.id)} />
                 <span>{a.title}</span>
               </label>
             ))}
-          <p>{action.description}</p>
-          {action.warning && <p className="warn-box">{action.warning}</p>}
-          {dirty && !action.needsName && (
-            <p className="muted">
-              You have uncommitted changes. Git may refuse the operation, or stop with conflicts.
-            </p>
-          )}
-          {action.needsName && (
-            <label className="field">
-              <span>Branch name</span>
-              <input
-                autoFocus
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="feature/my-change"
-              />
-            </label>
-          )}
-        </div>
-        <footer className="confirm-actions">
-          <button type="button" onClick={onCancel}>
-            Cancel
-          </button>
-          <button type="submit" className={action.danger ? "danger" : "primary"} disabled={!ready} autoFocus={!action.needsName}>
-            {action.confirmLabel}
-          </button>
-        </footer>
-      </form>
-    </div>
+          </div>
+        )}
+        <p className="lede">{action.description}</p>
+        {action.warning && (
+          <div className="callout callout-warn" role="note">
+            <TriangleAlert size={16} />
+            <p>{action.warning}</p>
+          </div>
+        )}
+        {dirty && !action.needsName && (
+          <div className="callout" role="note">
+            <Info size={16} />
+            <p>You have uncommitted changes. Git may refuse the operation, or stop with conflicts.</p>
+          </div>
+        )}
+        {action.needsName && (
+          <TextField
+            label="Branch name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="feature/my-change"
+          />
+        )}
+      </div>
+    </Dialog>
   );
 }

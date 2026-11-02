@@ -51,6 +51,14 @@ describe("badge and subject hit-testing", () => {
     const byRow = new Map([[7, badges]]);
     expect(subjectAt(150, 4, ROW_H * 7, 20, byRow)).toEqual({ kind: "ref", name: "main", row: 7 });
   });
+
+  it("puts the working-tree row above the commits when an offset is given", () => {
+    const byRow = new Map([[0, badges]]);
+    expect(subjectAt(10, 4, 0, 5, byRow, 1)).toEqual({ kind: "wip" });
+    expect(subjectAt(150, ROW_H + 4, 0, 5, byRow, 1)).toEqual({ kind: "ref", name: "main", row: 0 });
+    expect(subjectAt(10, ROW_H * 5 + 4, 0, 5, byRow, 1)).toEqual({ kind: "commit", row: 4 });
+    expect(subjectAt(10, ROW_H * 6 + 4, 0, 5, byRow, 1)).toBeNull();
+  });
 });
 
 describe("drag detection", () => {
@@ -68,5 +76,7 @@ describe("drag detection", () => {
     expect(sameSubject({ kind: "ref", name: "a", row: 1 }, { kind: "commit", row: 1 })).toBe(false);
     expect(sameSubject(null, null)).toBe(true);
     expect(sameSubject(null, { kind: "commit", row: 0 })).toBe(false);
+    expect(sameSubject({ kind: "wip" }, { kind: "wip" })).toBe(true);
+    expect(sameSubject({ kind: "wip" }, { kind: "commit", row: 0 })).toBe(false);
   });
 });

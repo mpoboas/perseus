@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { KeyRound, Plus, Trash2, User } from "lucide-react";
 import {
   type Profile,
   type ProfilesSnapshot,
@@ -9,6 +10,7 @@ import {
   setCredential,
 } from "./ipc";
 import { SignIn } from "./SignIn";
+import { Avatar, Badge, Button, Dialog, TextField } from "./ui";
 
 interface Props {
   snapshot: ProfilesSnapshot;
@@ -51,12 +53,6 @@ export function ProfilesDialog({ snapshot, onChanged, onClose }: Props) {
     setToken("");
     // Only re-seed the form when switching profiles, not on every snapshot refresh.
   }, [selected]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -110,145 +106,167 @@ export function ProfilesDialog({ snapshot, onChanged, onClose }: Props) {
     });
 
   const field = (label: string, key: keyof Form, props: React.InputHTMLAttributes<HTMLInputElement> = {}) => (
-    <label className="field">
-      <span>{label}</span>
-      <input
-        value={form[key]}
-        onChange={(e) => setForm({ ...form, [key]: e.target.value })}
-        {...props}
-      />
-    </label>
+    <TextField
+      label={label}
+      value={form[key]}
+      onChange={(e) => setForm({ ...form, [key]: e.target.value })}
+      {...props}
+    />
   );
 
   return (
-    <div className="modal-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="modal" role="dialog" aria-modal="true" aria-label="Profiles">
-        <header className="modal-head">
-          <h2>Profiles</h2>
-          <button className="mini" onClick={onClose} aria-label="Close">
-            ✕
-          </button>
-        </header>
-
-        <div className="modal-body">
-          <nav className="profile-list">
-            {snapshot.profiles.map((p) => (
-              <button
-                key={p.id}
-                className={p.id === selected ? "profile-item active" : "profile-item"}
-                onClick={() => setSelected(p.id)}
-              >
-                {p.name}
-                {p.id === snapshot.active && <span className="badge">active</span>}
-              </button>
-            ))}
+    <Dialog title="Profiles" width={820} onClose={onClose}>
+      <div className="profiles">
+        <nav className="profile-list" aria-label="Profiles">
+          {snapshot.profiles.map((p) => (
             <button
-              className={selected === null ? "profile-item active" : "profile-item"}
-              onClick={() => setSelected(null)}
+              key={p.id}
+              className={p.id === selected ? "profile-item active" : "profile-item"}
+              onClick={() => setSelected(p.id)}
             >
-              + New profile
+              <Avatar name={p.user_name || p.name} size={26} />
+              <span className="profile-item-text">
+                <strong>{p.name}</strong>
+                <span>{p.user_email}</span>
+              </span>
+              {p.id === snapshot.active && <Badge tone="success">active</Badge>}
             </button>
-          </nav>
+          ))}
+          <button
+            className={selected === null ? "profile-item active" : "profile-item"}
+            onClick={() => setSelected(null)}
+          >
+            <span className="profile-add">
+              <Plus size={14} />
+            </span>
+            <span className="profile-item-text">
+              <strong>New profile</strong>
+            </span>
+          </button>
+        </nav>
 
-          <section className="profile-form">
+        <section className="profile-form">
+          <div className="form-grid">
             {field("Profile name", "name", { placeholder: "Work", maxLength: 64 })}
             {field("Commit name", "user_name", { placeholder: "Ada Lovelace", maxLength: 100 })}
             {field("Commit email", "user_email", { placeholder: "ada@example.com", maxLength: 254 })}
-            <label className="field">
-              <span>SSH key (optional)</span>
+            <div className="field">
+              <label htmlFor="ssh-key">SSH key (optional)</label>
               <div className="field-row">
                 <input
+                  id="ssh-key"
+                  className="input"
                   value={form.ssh_key}
                   placeholder="~/.ssh/id_ed25519"
                   onChange={(e) => setForm({ ...form, ssh_key: e.target.value })}
                 />
-                <button type="button" disabled={busy} onClick={browse}>
+                <Button type="button" disabled={busy} onClick={browse}>
                   Browse…
-                </button>
+                </Button>
               </div>
-              <small className="muted">
-                Only this key is offered for SSH remotes. Use a key without a passphrase, or one
-                already loaded in your agent.
+              <small>
+                Only this key is offered for SSH remotes. Use a key without a passphrase, or one already loaded in
+                your agent.
               </small>
-            </label>
-
-            <div className="form-actions">
-              <button disabled={busy} onClick={save}>
-                {profile ? "Save changes" : "Create profile"}
-              </button>
-              {profile && (
-                <button disabled={busy} className="danger" onClick={remove}>
-                  Delete profile
-                </button>
-              )}
             </div>
+          </div>
 
+          <div className="form-actions">
+            <Button variant="primary" disabled={busy} onClick={save} icon={User}>
+              {profile ? "Save changes" : "Create profile"}
+            </Button>
             {profile && (
-              <section className="tokens">
-                <h3>Access tokens for HTTPS</h3>
-                <p className="muted">
-                  Stored in your operating system's keychain, never in Perseus's files. Pushes and
-                  pulls over HTTPS use only the active profile's tokens.
-                </p>
-                {!snapshot.helper_available && profile.credentials.length > 0 && (
-                  <p className="warn">
-                    The credential helper was not found next to the app, so these tokens cannot be
-                    used yet. Build it with <code>cargo build -p perseus-credential-helper</code>.
-                  </p>
-                )}
-                <h4 className="subhead">Sign in with a provider</h4>
-                <SignIn profile={profile} onSignedIn={onChanged} onError={setError} />
-                <h4 className="subhead">Saved tokens</h4>
-                <ul className="token-list">
-                  {profile.credentials.map((c) => (
-                    <li key={c.host}>
-                      <span className="token-host">{c.host}</span>
-                      <span className="muted">{c.username}</span>
-                      {c.oauth && <span className="badge">OAuth</span>}
-                      <button
-                        className="mini"
-                        disabled={busy}
-                        onClick={() => run(() => removeCredential(profile.id, c.host))}
-                      >
-                        Remove
-                      </button>
-                    </li>
-                  ))}
-                  {profile.credentials.length === 0 && <li className="muted">No tokens yet</li>}
-                </ul>
-                <h4 className="subhead">Or paste a token</h4>
-                <form
-                  className="token-form"
-                  autoComplete="off"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void addToken();
-                  }}
-                >
-                  <input value={host} onChange={(e) => setHost(e.target.value)} placeholder="github.com" />
-                  <input
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder={form.user_name || "username"}
-                  />
-                  <input
-                    type="password"
-                    value={token}
-                    onChange={(e) => setToken(e.target.value)}
-                    placeholder="Personal access token"
-                    autoComplete="new-password"
-                  />
-                  <button type="submit" disabled={busy || !token}>
-                    Save token
-                  </button>
-                </form>
-              </section>
+              <Button variant="danger" disabled={busy} onClick={remove} icon={Trash2}>
+                Delete profile
+              </Button>
             )}
+          </div>
 
-            {error && <p className="error-text">{error}</p>}
-          </section>
-        </div>
+          {profile && (
+            <section className="tokens">
+              <h3>
+                <KeyRound size={14} /> Access for HTTPS remotes
+              </h3>
+              <p className="muted">
+                Stored in your operating system&apos;s keychain, never in Perseus&apos;s files. Pushes and pulls over
+                HTTPS use only the active profile&apos;s tokens.
+              </p>
+              {!snapshot.helper_available && profile.credentials.length > 0 && (
+                <div className="callout callout-warn">
+                  <p>
+                    The credential helper was not found next to the app, so these tokens cannot be used yet. Build it
+                    with <code>cargo build -p perseus-credential-helper</code>.
+                  </p>
+                </div>
+              )}
+              <h4 className="subhead">Sign in with a provider</h4>
+              <SignIn profile={profile} onSignedIn={onChanged} onError={setError} />
+              <h4 className="subhead">Saved tokens</h4>
+              <ul className="token-list">
+                {profile.credentials.map((c) => (
+                  <li key={c.host}>
+                    <span className="token-host">{c.host}</span>
+                    <span className="muted">{c.username}</span>
+                    {c.oauth && <Badge tone="accent">OAuth</Badge>}
+                    <span className="grow" />
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      disabled={busy}
+                      onClick={() => run(() => removeCredential(profile.id, c.host))}
+                    >
+                      Remove
+                    </Button>
+                  </li>
+                ))}
+                {profile.credentials.length === 0 && <li className="muted">No tokens yet</li>}
+              </ul>
+              <h4 className="subhead">Or paste a token</h4>
+              <form
+                className="token-form"
+                autoComplete="off"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void addToken();
+                }}
+              >
+                <input
+                  className="input"
+                  aria-label="Host"
+                  value={host}
+                  onChange={(e) => setHost(e.target.value)}
+                  placeholder="github.com"
+                />
+                <input
+                  className="input"
+                  aria-label="Username"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  placeholder={form.user_name || "username"}
+                />
+                <input
+                  className="input"
+                  aria-label="Personal access token"
+                  type="password"
+                  value={token}
+                  onChange={(e) => setToken(e.target.value)}
+                  placeholder="Personal access token"
+                  autoComplete="new-password"
+                />
+                <Button type="submit" disabled={busy || !token}>
+                  Save token
+                </Button>
+              </form>
+            </section>
+          )}
+
+          {error && (
+            <div className="callout callout-error" role="alert">
+              <p className="selectable">{error}</p>
+            </div>
+          )}
+        </section>
       </div>
-    </div>
+    </Dialog>
   );
 }
