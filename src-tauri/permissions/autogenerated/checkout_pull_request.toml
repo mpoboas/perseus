@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-checkout-pull-request"
+description = "Enables the checkout_pull_request command without any pre-configured scope."
+commands.allow = ["checkout_pull_request"]
+
+[[permission]]
+identifier = "deny-checkout-pull-request"
+description = "Denies the checkout_pull_request command without any pre-configured scope."
+commands.deny = ["checkout_pull_request"]

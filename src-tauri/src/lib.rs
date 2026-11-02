@@ -1,5 +1,6 @@
 mod error;
 pub mod git;
+mod hosting;
 mod ipc;
 mod profiles;
 mod recents;
@@ -12,10 +13,11 @@ use serde::Serialize;
 use tauri::Manager;
 
 use ipc::channels::{self, AppState};
+use ipc::hosting_commands::{self, HostingState};
 use ipc::oauth_commands::{self, OAuthFlows};
 use ipc::{
     commands, patch_commands, profile_commands, protocol, recent_commands, repo_commands,
-    watch_commands,
+    rewrite_commands, watch_commands,
 };
 use profiles::ProfileStore;
 use recents::RecentStore;
@@ -39,6 +41,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState::default())
         .manage(OAuthFlows::default())
+        .manage(HostingState::default())
         .setup(|app| {
             // Profile metadata lives in the app data dir; tokens stay in the OS keychain.
             // `PERSEUS_DATA_DIR` redirects it (end-to-end tests use a throwaway directory).
@@ -88,6 +91,21 @@ pub fn run() {
             repo_commands::init_repo,
             repo_commands::clone_repo,
             repo_commands::open_in,
+            rewrite_commands::list_conflicts,
+            rewrite_commands::conflict_detail,
+            rewrite_commands::resolve_conflict,
+            rewrite_commands::rebase_plan,
+            rewrite_commands::interactive_rebase,
+            rewrite_commands::predict_merge,
+            rewrite_commands::predict_pick,
+            hosting_commands::hosting_info,
+            hosting_commands::list_pull_requests,
+            hosting_commands::create_pull_request,
+            hosting_commands::merge_pull_request,
+            hosting_commands::list_issues,
+            hosting_commands::ci_state,
+            hosting_commands::checkout_pull_request,
+            hosting_commands::open_in_browser,
             patch_commands::export_patch,
             patch_commands::apply_patch_file,
             profile_commands::list_profiles,

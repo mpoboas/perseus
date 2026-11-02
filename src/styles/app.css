@@ -1870,3 +1870,177 @@ mark {
 .welcome-actions.secondary {
   margin-top: 0;
 }
+
+/* ---------- Phase 11: conflicts and interactive rebase ---------- */
+
+.conflict-dialog {
+  min-height: 300px;
+}
+.conflict-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.conflict-text,
+.conflict-panes pre,
+.conflict-result pre {
+  margin: 0;
+  padding: 6px 10px;
+  overflow: auto;
+  border-radius: var(--radius-sm);
+  background: var(--surface-inset);
+  color: var(--text-dim);
+  font: 12px/18px var(--font-mono);
+  white-space: pre;
+  user-select: text;
+}
+.conflict-region {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius-md);
+  background: var(--warn-soft);
+}
+.conflict-region.resolved {
+  border-color: var(--success);
+  background: var(--success-soft);
+}
+.conflict-region header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.conflict-panes {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 8px;
+}
+.conflict-panes h4 {
+  margin-bottom: 3px;
+  color: var(--text-faint);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.conflict-panes pre {
+  max-height: 160px;
+  color: var(--text);
+}
+.conflict-pick {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip-radio {
+  display: inline-flex;
+  align-items: center;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-pill);
+  background: var(--surface-1);
+  cursor: pointer;
+  font-size: 12px;
+}
+.chip-radio input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.chip-radio.active {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 600;
+}
+.chip-radio:focus-within {
+  outline: 2px solid var(--accent-ring);
+}
+.conflict-edit {
+  font: 12px/18px var(--font-mono);
+}
+.conflict-whole {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.conflict-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.conflict-result summary {
+  cursor: pointer;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.conflict-names {
+  margin-top: 4px;
+}
+.rebase-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 420px;
+  overflow: auto;
+}
+.rebase-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+.rebase-row.dropped {
+  opacity: 0.5;
+  text-decoration: line-through;
+}
+.rebase-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.rebase-action {
+  width: 96px;
+  flex: none;
+}
+.rebase-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ---------- Phase 12: pull requests and issues ---------- */
+
+.ci-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-strong);
+}
+.ci-success {
+  background: var(--success);
+}
+.ci-failure {
+  background: var(--danger);
+}
+.ci-pending {
+  background: var(--warn);
+}
+.side-note {
+  padding: 4px 10px 4px 28px;
+  color: var(--text-faint);
+  font-size: 12px;
+}
+.pr-from {
+  align-self: center;
+  white-space: nowrap;
+}

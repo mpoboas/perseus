@@ -20,6 +20,8 @@ interface Props {
   /** Asks for confirmation, then throws the local changes of these paths away. */
   onDiscard: (paths: string[], untracked: boolean) => void;
   onStash: () => void;
+  /** Opens the conflict resolver for a file. */
+  onResolve: (path: string) => void;
   /** The last commit's message, to pre-fill the box when amending. */
   loadLastMessage: () => Promise<string | null>;
   /** The repository's commit template, if it has one. */
@@ -66,6 +68,7 @@ export function ChangesPanel({
   onAbort,
   onDiscard,
   onStash,
+  onResolve,
   loadLastMessage,
   loadTemplate,
 }: Props) {
@@ -286,8 +289,8 @@ export function ChangesPanel({
                       }
                       trailing={
                         g.id === "conflicts" ? (
-                          <Button size="sm" variant="ghost" disabled={busy} onClick={() => onStage([e.path])} title="Mark resolved (stage)">
-                            Resolved
+                          <Button size="sm" variant="primary" disabled={busy} onClick={() => onResolve(e.path)}>
+                            Resolve…
                           </Button>
                         ) : g.discard ? (
                           <IconButton

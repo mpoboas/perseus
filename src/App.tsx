@@ -37,8 +37,16 @@ import {
   type FileChange,
   type ChangeSet,
   type GitOp,
+  type CiState,
   type GitAction,
   type GraphFilter,
+  type HostingInfo,
+  type Issue,
+  type MergeMethod,
+  type PullRequest,
+  type Prediction,
+  type Resolution,
+  type TodoItem,
   type HunkPick,
   type PatchSource,
   type PatchMode,
@@ -53,10 +61,22 @@ import {
   cancelGitOp,
   applyPatchFile,
   cloneRepo,
+  checkoutPullRequest,
   cancelStream,
+  ciState,
   closeRepo,
+  createPullRequest,
+  hostingInfo,
+  listIssues,
+  listPullRequests,
+  mergePullRequest,
+  openInBrowser,
   initRepo,
+  interactiveRebase,
   openIn,
+  predictMerge,
+  predictPick,
+  resolveConflict,
   commitDetail,
   commitFiles,
   commitTemplate,
@@ -86,6 +106,9 @@ import {
 import { readPref, usePref, writePref } from "./lib/prefs";
 import { useThemePref } from "./lib/theme";
 import { CloneDialog } from "./CloneDialog";
+import { CreatePrDialog } from "./CreatePrDialog";
+import { ConflictDialog } from "./ConflictDialog";
+import { RebaseDialog } from "./RebaseDialog";
 import { NewBranchDialog } from "./NewBranchDialog";
 import { RepoTabs, type Tab as RepoTab } from "./RepoTabs";
 import { SearchDialog } from "./SearchDialog";
@@ -122,6 +145,14 @@ function App() {
   const [remotesOpen, setRemotesOpen] = useState(false);
   const [historyPath, setHistoryPath] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [hosting, setHosting] = useState<HostingInfo | null>(null);
+  const [pulls, setPulls] = useState<PullRequest[]>([]);
+  const [issues, setIssues] = useState<Issue[]>([]);
+  const [ci, setCi] = useState<Record<string, CiState>>({});
+  const [hostingError, setHostingError] = useState<string | null>(null);
+  const [prBranch, setPrBranch] = useState<string | null>(null);
+  const [resolvePath, setResolvePath] = useState<string | null>(null);
+  const [rebaseBase, setRebaseBase] = useState<{ oid: string; label: string } | null>(null);
   const [cloneOpen, setCloneOpen] = useState(false);
   const [filter, setFilter] = useState<GraphFilter>({ hidden: [], solo: [] });
   const [tabs, setTabs] = usePref<RepoTab[]>("session.tabs", []);
@@ -167,6 +198,8 @@ function App() {
   const selectedRef = useRef<number | "wip" | null>(null);
   /** Commit to re-select once a reload finishes (row numbers change when history reloads). */
   const keepOid = useRef<string | null>(null);
+  /** The selection at the moment a reload started, to tell whether the user changed it meanwhile. */
+  const keepSel = useRef<number | "wip" | null>(null);
   const watchId = useRef<number | null>(null);
   const opIdRef = useRef<number | null>(null);
   const filterRef = useRef<GraphFilter>({ hidden: [], solo: [] });
@@ -257,7 +290,9 @@ function App() {
         if (silent && summary.cancelled) return;
         if (silent) store.current = target;
         setCount(target.length);
-        if (keepOid.current) {
+        // Put the selection back on the same commit, unless the user picked another one while
+        // the history was reloading in the background.
+        if (keepOid.current && selectedRef.current === keepSel.current) {
           const row = target.index.get(keepOid.current);
           setSelected(row ?? null);
         }
@@ -298,6 +333,42 @@ function App() {
     [report],
   );
 
+  /** Pull requests, issues and their checks. Quiet on failure: a repository without a provider is normal. */
+  const loadHosting = useCallback(async (info: RepoInfo) => {
+    try {
+      const h = await hostingInfo(info.id);
+      if (repoRef.current?.id !== info.id) return;
+      setHosting(h);
+      setHostingError(null);
+      if (!h) {
+        setPulls([]);
+        setIssues([]);
+        return;
+      }
+      const [p, i] = await Promise.allSettled([listPullRequests(info.id, "open"), listIssues(info.id)]);
+      if (repoRef.current?.id !== info.id) return;
+      setPulls(p.status === "fulfilled" ? p.value : []);
+      setIssues(i.status === "fulfilled" ? i.value : []);
+      const failure = [p, i].find((r) => r.status === "rejected");
+      setHostingError(failure && failure.status === "rejected" ? String(failure.reason) : null);
+      if (p.status === "fulfilled") {
+        // Check states one request each, a few at a time, for the pull requests shown first.
+        const shas = [...new Set(p.value.slice(0, 15).map((x) => x.head_sha).filter(Boolean))];
+        for (let n = 0; n < shas.length; n += 4) {
+          const batch = shas.slice(n, n + 4);
+          const states = await Promise.allSettled(batch.map((sha) => ciState(info.id, sha)));
+          if (repoRef.current?.id !== info.id) return;
+          setCi((c) => ({
+            ...c,
+            ...Object.fromEntries(batch.flatMap((sha, k) => (states[k].status === "fulfilled" ? [[sha, states[k].value]] : []))),
+          }));
+        }
+      }
+    } catch {
+      /* no provider, or offline */
+    }
+  }, []);
+
   /** "status" after staging; "all" after anything that can move refs or history. */
   const refresh = useCallback(
     async (scope: "status" | "all") => {
@@ -309,6 +380,7 @@ function App() {
         // A reload re-numbers rows: remember the commit and find its new row when loading ends.
         const sel = selectedRef.current;
         keepOid.current = typeof sel === "number" ? (store.current.rows[sel]?.oid ?? null) : null;
+        keepSel.current = sel;
         void loadGraph(info, true);
       } else {
         await loadStatus(info);
@@ -332,7 +404,6 @@ function App() {
       let ok = true;
       try {
         await fn(info.id);
-        if (opts.done) toast.success(opts.done);
       } catch (e) {
         ok = false;
         report(opts.fail ?? "That did not work", e);
@@ -343,6 +414,8 @@ function App() {
       await refresh(scope);
       // The watcher also sees our own writes; the refresh above already covered them.
       lastActEnd.current = Date.now();
+      // Announce success once the view shows it, not before.
+      if (ok && opts.done) toast.success(opts.done);
       return ok;
     },
     [refresh, report, toast],
@@ -473,6 +546,12 @@ function App() {
         });
         break;
       }
+      case "create_pr":
+        setPrBranch(run.branch);
+        break;
+      case "interactive_rebase":
+        setRebaseBase({ oid: run.base, label: run.label });
+        break;
       case "ui":
         run.run();
         break;
@@ -503,7 +582,13 @@ function App() {
   const onMenu = (subject: Subject, x: number, y: number) => {
     const e = endpointFor(subject);
     if (!e || busy) return;
-    setMenu({ x, y, actions: [...menuActions(e, currentHead()), ...(e.type === "ref" ? filterActions(e.name) : [])] });
+    setMenu({
+      x,
+      y,
+      actions: [...menuActions(e, currentHead()), ...(e.type === "ref" ? filterActions(e.name) : [])].filter(
+        (a) => a.id !== "create-pr" || hosting,
+      ),
+    });
   };
 
   /** Throwing changes away cannot be undone, so it always asks first. */
@@ -615,6 +700,142 @@ function App() {
     }
   };
 
+  const doResolve = async (path: string, how: Resolution) => {
+    const info = repoRef.current;
+    if (!info) return false;
+    try {
+      await resolveConflict(info.id, path, how);
+      toast.success(`Resolved ${path}`);
+      await refresh("status");
+      return true;
+    } catch (e) {
+      report("Could not resolve the conflict", e);
+      return false;
+    }
+  };
+
+  const doInteractiveRebase = async (items: TodoItem[]) => {
+    const base = rebaseBase;
+    setRebaseBase(null);
+    if (!base) return;
+    await act(
+      "Rebasing…",
+      "all",
+      async (id) => {
+        const opId = newOpId();
+        opIdRef.current = opId;
+        setCancellable(true);
+        try {
+          await interactiveRebase(id, base.oid, items, setProgress, opId);
+        } finally {
+          opIdRef.current = null;
+          setCancellable(false);
+        }
+      },
+      { done: "Rebase finished", fail: "Rebase stopped" },
+    );
+  };
+
+  /** What a merge, rebase or cherry-pick would conflict on, asked of git without changing anything. */
+  const predictFor = async (action: GraphAction): Promise<Prediction | null> => {
+    const info = repoRef.current;
+    if (!info || action.run.type !== "git") return null;
+    const op = action.run.op;
+    if (op.op === "merge") return predictMerge(info.id, "HEAD", op.rev);
+    if (op.op === "rebase") return predictMerge(info.id, "HEAD", op.onto);
+    if (op.op === "cherry_pick") return predictPick(info.id, "HEAD", op.oid);
+    return null;
+  };
+
+  const onPrMenu = (pr: PullRequest, x: number, y: number) => {
+    const info = repoRef.current;
+    if (!info || busy) return;
+    const label = `#${pr.number} ${pr.title}`;
+    const merge = (method: MergeMethod, title: string, description: string): GraphAction => ({
+      id: `merge-pr-${method}`,
+      title,
+      description: `${description} This changes the repository on ${hosting?.host}.`,
+      confirmLabel: title,
+      run: {
+        type: "ui",
+        run: () =>
+          void act("Merging…", "all", (id) => mergePullRequest(id, pr.number, method), {
+            done: `Merged #${pr.number}`,
+            fail: "Could not merge",
+          }).then((ok) => ok && void loadHosting(info)),
+      },
+    });
+    setMenu({
+      x,
+      y,
+      actions: [
+        {
+          id: "checkout-pr",
+          title: `Check out ${label}`,
+          description: "",
+          confirmLabel: "Check out",
+          immediate: true,
+          run: {
+            type: "ui",
+            run: () =>
+              void act(
+                "Fetching the pull request…",
+                "all",
+                async (id) => {
+                  const branch = await checkoutPullRequest(id, pr.number);
+                  toast.info(`Checked out ${branch}`);
+                },
+                { fail: "Could not check out the pull request" },
+              ),
+          },
+        },
+        {
+          id: "open-pr",
+          title: "Open in the browser",
+          description: "",
+          confirmLabel: "Open",
+          immediate: true,
+          run: { type: "ui", run: () => void openInBrowser(info.id, pr.url).catch((e) => report("Could not open the page", e)) },
+        },
+        ...(pr.state === "open"
+          ? [
+              {
+                id: "merge-pr",
+                title: "Merge…",
+                description: `Choose how to merge ${label}.`,
+                confirmLabel: "Merge",
+                run: {
+                  type: "ui" as const,
+                  run: () =>
+                    setConfirm([
+                      merge("merge", "Merge commit", "Adds a merge commit."),
+                      merge("squash", "Squash and merge", "Combines the commits into one."),
+                      merge("rebase", "Rebase and merge", "Replays the commits onto the target branch."),
+                    ]),
+                },
+              },
+            ]
+          : []),
+      ],
+    });
+  };
+
+  const doCreatePr = async (head: string, title: string, body: string, base: string, draft: boolean) => {
+    const info = repoRef.current;
+    setPrBranch(null);
+    if (!info) return;
+    setBusy("Creating pull request…");
+    try {
+      const pr = await createPullRequest(info.id, { title, body, head, base, draft });
+      toast.success(`Created #${pr.number}`, pr.url);
+      void loadHosting(info);
+    } catch (e) {
+      report("Could not create the pull request", e);
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const doExportPatch = async (source: PatchSource) => {
     const info = repoRef.current;
     if (!info) return;
@@ -717,7 +938,11 @@ function App() {
     if (busy) return;
     const parents = store.current.rows[store.current.index.get(ref.target) ?? -1]?.parents.length;
     const e: Endpoint = { type: "ref", name: ref.name, kind: ref.kind, oid: ref.target, isHead: ref.is_head, parents };
-    setMenu({ x, y, actions: [...menuActions(e, currentHead()), ...filterActions(ref.name)] });
+    setMenu({
+      x,
+      y,
+      actions: [...menuActions(e, currentHead()), ...filterActions(ref.name)].filter((a) => a.id !== "create-pr" || hosting),
+    });
   };
 
   // ---- Opening and closing repositories ----
@@ -742,9 +967,15 @@ function App() {
     setDiff(null);
     setSelected(null);
     setTab("commit");
+    setHosting(null);
+    setPulls([]);
+    setIssues([]);
+    setCi({});
+    setHostingError(null);
     void loadGraph(picked);
     void loadRefs(picked);
     void loadStatus(picked);
+    void loadHosting(picked);
     void reloadRecents();
   };
 
@@ -913,6 +1144,8 @@ function App() {
   useEffect(() => {
     if (restored.current || recents.length === 0) return;
     restored.current = true;
+    // Tabs only make sense for repositories that still exist.
+    setTabs((t) => t.filter((x) => recents.some((r) => r.path === x.path && r.exists)));
     const last = readPref<string | null>("session.last", null);
     if (last && recents.some((r) => r.path === last && r.exists)) void openRecent(last);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1025,6 +1258,7 @@ function App() {
           icon: ArrowUpFromLine,
           run: () => void gitOp(publish ? "Publishing…" : "Pushing…", { op: "push", set_upstream: publish }, { done: publish ? "Published" : "Pushed", fail: "Push failed" }),
         });
+      if (hosting) add({ id: "hosting-refresh", title: "Refresh pull requests and issues", group: "Actions", icon: History, run: () => repoRef.current && void loadHosting(repoRef.current) });
       add({ id: "search", title: "Search commits…", group: "Actions", icon: Search, shortcut: "Ctrl+F", run: () => setSearchOpen(true) });
       add({ id: "stash", title: "Stash changes…", group: "Actions", icon: Archive, run: () => setStashOpen(true) });
       add({ id: "patch-export", title: "Export unstaged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: false }) });
@@ -1168,6 +1402,13 @@ function App() {
                   stashes={stashes}
                   hidden={new Set(filter.hidden)}
                   solo={new Set(filter.solo)}
+                  hosting={hosting}
+                  pulls={pulls}
+                  issues={issues}
+                  ci={ci}
+                  hostingError={hostingError}
+                  onPrMenu={onPrMenu}
+                  onOpenIssue={(i) => repo && void openInBrowser(repo.id, i.url).catch((e) => report("Could not open the page", e))}
                   onStashMenu={onStashMenu}
                   busy={!!busy}
                   onJump={jumpTo}
@@ -1293,6 +1534,7 @@ function App() {
                     })
                   }
                   onDiscard={askDiscard}
+                  onResolve={setResolvePath}
                   loadLastMessage={loadLastMessage}
                   loadTemplate={loadTemplate}
                   onStash={() => setStashOpen(true)}
@@ -1348,6 +1590,7 @@ function App() {
           dirty={hasTrackedChanges}
           onConfirm={execute}
           onCancel={() => setConfirm(null)}
+          predict={predictFor}
         />
       )}
       {paletteOpen && (
@@ -1367,6 +1610,33 @@ function App() {
               { done: "Changes stashed", fail: "Could not stash" },
             );
           }}
+        />
+      )}
+      {resolvePath && repo && (
+        <ConflictDialog repoId={repo.id} path={resolvePath} onResolve={doResolve} onClose={() => setResolvePath(null)} />
+      )}
+      {rebaseBase && repo && (
+        <RebaseDialog
+          repoId={repo.id}
+          base={rebaseBase.oid}
+          baseLabel={rebaseBase.label}
+          onStart={(items) => void doInteractiveRebase(items)}
+          onClose={() => setRebaseBase(null)}
+        />
+      )}
+      {prBranch && repo && (
+        <CreatePrDialog
+          head={prBranch}
+          bases={refs.filter((r) => r.kind === "branch" && r.name !== prBranch).map((r) => r.name)}
+          defaultBase={
+            refs.find((r) => r.kind === "branch" && ["main", "master", "develop"].includes(r.name) && r.name !== prBranch)?.name ??
+            refs.find((r) => r.kind === "branch" && r.name !== prBranch)?.name ??
+            "main"
+          }
+          defaultTitle={store.current.rows.find((r) => r.refs.includes(prBranch))?.summary ?? prBranch}
+          notPushed={!refs.some((r) => r.kind === "remote" && r.name.endsWith(`/${prBranch}`))}
+          onClose={() => setPrBranch(null)}
+          onCreate={(title, body, base, draft) => void doCreatePr(prBranch, title, body, base, draft)}
         />
       )}
       {searchOpen && repo && (

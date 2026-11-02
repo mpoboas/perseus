@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { Info, TriangleAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { CheckCircle2, Info, TriangleAlert } from "lucide-react";
 import type { GraphAction } from "./actions";
+import type { Prediction } from "./ipc";
 import { Button, Dialog, TextField } from "./ui";
 
 interface Props {
@@ -10,13 +11,30 @@ interface Props {
   dirty: boolean;
   onConfirm: (action: GraphAction, name: string) => void;
   onCancel: () => void;
+  /** Asks git which files would conflict, for merge, rebase and cherry-pick. */
+  predict?: (action: GraphAction) => Promise<Prediction | null>;
 }
 
-export function ConfirmDialog({ actions, dirty, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({ actions, dirty, onConfirm, onCancel, predict }: Props) {
   const [chosen, setChosen] = useState(actions[0].id);
   const [name, setName] = useState(actions[0].nameInitial ?? "");
   const action = actions.find((a) => a.id === chosen) ?? actions[0];
   const ready = !action.needsName || name.trim().length > 0;
+  const [forecast, setForecast] = useState<"checking" | Prediction | null>(null);
+
+  // Preview the outcome without changing anything, so the user sees conflicts before agreeing.
+  useEffect(() => {
+    if (!predict) return;
+    let live = true;
+    setForecast("checking");
+    predict(action).then(
+      (p) => live && setForecast(p),
+      () => live && setForecast(null),
+    );
+    return () => {
+      live = false;
+    };
+  }, [predict, action]);
 
   return (
     <Dialog
@@ -52,6 +70,33 @@ export function ConfirmDialog({ actions, dirty, onConfirm, onCancel }: Props) {
           </div>
         )}
         <p className="lede">{action.description}</p>
+        {forecast === "checking" && <p className="muted small">Checking for conflicts…</p>}
+        {forecast && forecast !== "checking" && forecast.supported && (
+          forecast.conflicts.length === 0 ? (
+            <div className="callout" role="note">
+              <CheckCircle2 size={16} />
+              <p>No conflicts expected.</p>
+            </div>
+          ) : (
+            <div className="callout callout-warn" role="note">
+              <TriangleAlert size={16} />
+              <div>
+                <p>
+                  {forecast.conflicts.length} file{forecast.conflicts.length === 1 ? "" : "s"} would conflict. You can
+                  resolve them afterwards or abort.
+                </p>
+                <ul className="conflict-names">
+                  {forecast.conflicts.slice(0, 8).map((f) => (
+                    <li key={f}>
+                      <code>{f}</code>
+                    </li>
+                  ))}
+                  {forecast.conflicts.length > 8 && <li>and {forecast.conflicts.length - 8} more</li>}
+                </ul>
+              </div>
+            </div>
+          )
+        )}
         {action.warning && (
           <div className="callout callout-warn" role="note">
             <TriangleAlert size={16} />

@@ -32,7 +32,7 @@ pub(crate) async fn blocking<T: Send + 'static>(
 
 /// A git runner for `repo_id` acting as the active profile (identity, SSH key,
 /// credential helper), or plain system behaviour when no profile is active.
-fn git_for(state: &AppState, profiles: &ProfileStore, repo_id: RepoId) -> Result<Git> {
+pub(crate) fn git_for(state: &AppState, profiles: &ProfileStore, repo_id: RepoId) -> Result<Git> {
     let git = state.repos.git(repo_id)?;
     match profiles.active() {
         Some(profile) => Ok(git.with_overrides(profile.git_overrides(helper_path().as_deref())?)),

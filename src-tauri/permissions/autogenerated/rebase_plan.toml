@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-rebase-plan"
+description = "Enables the rebase_plan command without any pre-configured scope."
+commands.allow = ["rebase_plan"]
+
+[[permission]]
+identifier = "deny-rebase-plan"
+description = "Denies the rebase_plan command without any pre-configured scope."
+commands.deny = ["rebase_plan"]

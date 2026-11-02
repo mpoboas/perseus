@@ -131,6 +131,28 @@ impl ProfileStore {
         std::fs::rename(&tmp, &self.path).map_err(AppError::profile)
     }
 
+    /// The active profile's access token for `host`, renewed first when it has expired. Used by
+    /// the hosting integrations; the token never leaves the backend.
+    pub fn fresh_token(&self, host: &str) -> Result<Option<String>> {
+        let Some(profile) = self.active() else {
+            return Ok(None);
+        };
+        let http = perseus_credentials::http::UreqHttp::new();
+        let refresher = perseus_credentials::refresh::Refresher {
+            http: &http,
+            lock_dir: perseus_credentials::refresh::default_lock_dir(),
+            now: perseus_credentials::oauth::now_unix(),
+        };
+        let fresh = perseus_credentials::refresh::fresh_credential(
+            &*self.secrets,
+            &refresher,
+            &profile.id,
+            host,
+        )
+        .map_err(AppError::profile)?;
+        Ok(fresh.credential.map(|c| c.token))
+    }
+
     pub fn snapshot(&self) -> Result<ProfilesSnapshot> {
         let s = self.lock()?;
         Ok(ProfilesSnapshot {

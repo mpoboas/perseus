@@ -89,9 +89,11 @@ describe("menuActions", () => {
       "merge",
       "rebase",
       "rename-branch",
+      "create-pr",
       "delete-branch",
       "force-delete-branch",
       "new-tag",
+      "interactive-rebase",
       "reset-soft",
       "reset-mixed",
       "reset-hard",
@@ -117,6 +119,7 @@ describe("menuActions", () => {
   it("never offers to delete, reset or check out the checked-out branch itself", () => {
     expect(menuActions(main, head).map((a) => a.id)).toEqual([
       "rename-branch",
+      "create-pr",
       "new-tag",
       "revert",
       "new-branch",
@@ -130,6 +133,7 @@ describe("menuActions", () => {
       "cherry-pick",
       "rebase",
       "new-tag",
+      "interactive-rebase",
       "reset-soft",
       "reset-mixed",
       "reset-hard",
@@ -161,6 +165,7 @@ describe("menuActions", () => {
     expect(menuActions(feature, unborn).map((a) => a.id)).toEqual([
       "checkout",
       "rename-branch",
+      "create-pr",
       "delete-branch",
       "force-delete-branch",
       "new-tag",

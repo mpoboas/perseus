@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-ci-state"
+description = "Enables the ci_state command without any pre-configured scope."
+commands.allow = ["ci_state"]
+
+[[permission]]
+identifier = "deny-ci-state"
+description = "Denies the ci_state command without any pre-configured scope."
+commands.deny = ["ci_state"]

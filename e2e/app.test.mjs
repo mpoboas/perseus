@@ -2,7 +2,7 @@
 // first, then `pnpm e2e`. Windows only (WebView2 exposes the DevTools protocol).
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import { git, launch, makeFixture, rowPoint, scratchDir } from "./harness.mjs";
@@ -139,7 +139,10 @@ describe("Perseus", () => {
     const { x, y } = await rowPoint(page, 0);
     await page.mouse.click(x, y);
     await page.locator('[role="tab"]', { hasText: "Commit" }).click();
-    await page.getByLabel("History of long.txt").click({ force: true });
+    await page.getByLabel("History of long.txt").click({ force: true, timeout: 6000 }).catch(async (e) => {
+      if (process.env.E2E_SHOTS) await page.screenshot({ path: join(process.env.E2E_SHOTS, "history-fail.png") });
+      throw e;
+    });
     await page.getByRole("dialog").getByText("Edit long.txt").waitFor();
     await page.getByRole("dialog").getByText("Add long.txt").waitFor();
     await page.getByRole("radio", { name: "Blame" }).click();
@@ -247,5 +250,102 @@ describe("Perseus with a long history", () => {
     });
     assert.ok(rows > 1000, `the scroll extent covers the history (${rows} rows)`);
     assert.equal(await page.getByText("No commits yet").count(), 0);
+  });
+});
+
+describe("Perseus resolving a merge conflict", () => {
+  let app;
+  let page;
+  let repo;
+
+  before(async () => {
+    repo = join(scratchDir("perseus-conflict-"), "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    const text = (edits = {}) =>
+      Array.from({ length: 8 }, (_, i) => edits[i + 1] ?? `line ${i + 1}`).join("\n") + "\n";
+    writeFileSync(join(repo, "f.txt"), text());
+    git(repo, "add", "-A");
+    git(repo, "commit", "-q", "-m", "base");
+    git(repo, "switch", "-q", "-c", "other");
+    writeFileSync(join(repo, "f.txt"), text({ 3: "OTHER 3" }));
+    git(repo, "commit", "-qam", "other change");
+    git(repo, "switch", "-q", "main");
+    writeFileSync(join(repo, "f.txt"), text({ 3: "MAIN 3" }));
+    git(repo, "commit", "-qam", "main change");
+    try {
+      git(repo, "merge", "other");
+    } catch {
+      /* the conflict is the point */
+    }
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9446 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  it("shows the paused merge and resolves the file with both versions kept", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText("Merge in progress").waitFor({ timeout: 10000 });
+    await page.getByRole("button", { name: "Resolve…" }).click();
+
+    await page.getByText("Conflict 1 of 1").waitFor();
+    assert.equal(await page.getByRole("button", { name: "Save and mark resolved" }).isDisabled(), true);
+    await page.getByText("Yours, then theirs").click();
+    await page.getByRole("button", { name: "Save and mark resolved" }).click();
+    await page.getByText("Resolved f.txt").waitFor();
+
+    const merged = readFileSync(join(repo, "f.txt"), "utf8");
+    assert.match(merged, /MAIN 3\nOTHER 3\n/);
+    assert.doesNotMatch(merged, /<<<<<<<|>>>>>>>/);
+  });
+
+  it("continues the merge from the banner", async () => {
+    await page.getByRole("button", { name: "Continue" }).click();
+    await page.getByText("Continued").waitFor();
+    assert.match(git(repo, "log", "-1", "--format=%P").trim(), /^\S+ \S+$/, "a merge commit with two parents");
+  });
+});
+
+describe("Perseus interactive rebase", () => {
+  let app;
+  let page;
+  let repo;
+
+  before(async () => {
+    repo = join(scratchDir("perseus-rebase-"), "repo");
+    mkdirSync(repo, { recursive: true });
+    git(repo, "init", "-q", "-b", "main");
+    for (const n of ["A", "B", "C", "D"]) {
+      writeFileSync(join(repo, `${n}.txt`), `${n}\n`);
+      git(repo, "add", "-A");
+      git(repo, "commit", "-q", "-m", `commit ${n}`);
+    }
+    app = await launch({ recents: [{ path: repo, name: "repo" }], port: 9447 });
+    page = app.page;
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  it("drops one commit and rewords another from the dialog", async () => {
+    await page.locator(".recent-main", { hasText: "repo" }).click();
+    await page.getByText(/4 commits/).waitFor();
+    // Rows are newest first: D, C, B, A. Rebase onto A.
+    const { x, y } = await rowPoint(page, 3);
+    await page.mouse.click(x, y, { button: "right" });
+    await page.getByRole("menuitem", { name: /interactively onto here/ }).click();
+
+    await page.getByLabel("Action for commit C").selectOption("drop");
+    await page.getByLabel("Action for commit B").selectOption("reword");
+    await page.getByLabel("New message for commit B").fill("B, but better");
+    await page.getByRole("button", { name: "Rebase", exact: true }).click();
+    await page.getByText("Rebase finished").waitFor({ timeout: 15000 });
+
+    assert.equal(git(repo, "log", "--format=%s", "--reverse").trim(), "commit A\nB, but better\ncommit D");
+    assert.equal(git(repo, "ls-files").trim().split("\n").sort().join(","), "A.txt,B.txt,D.txt");
   });
 });

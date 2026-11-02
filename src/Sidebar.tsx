@@ -11,13 +11,15 @@ import {
   Folder,
   GitBranch,
   Archive,
+  CircleDot,
+  GitPullRequest,
   Plus,
   Search,
   Tag,
   TriangleAlert,
   X,
 } from "lucide-react";
-import type { RefInfo, StashEntry } from "./ipc";
+import type { CiState, HostingInfo, Issue, PullRequest, RefInfo, StashEntry } from "./ipc";
 import { relativeTime } from "./lib/format";
 import { fuzzyMatch } from "./lib/fuzzy";
 import { usePref } from "./lib/prefs";
@@ -30,6 +32,14 @@ interface Props {
   /** Refs left out of the graph, and refs the graph is limited to. */
   hidden: ReadonlySet<string>;
   solo: ReadonlySet<string>;
+  /** Pull requests and issues of the repository's hosting provider (empty without one). */
+  hosting: HostingInfo | null;
+  pulls: PullRequest[];
+  issues: Issue[];
+  ci: Record<string, CiState>;
+  hostingError: string | null;
+  onPrMenu: (pr: PullRequest, x: number, y: number) => void;
+  onOpenIssue: (issue: Issue) => void;
   onStashMenu: (entry: StashEntry, x: number, y: number) => void;
   busy: boolean;
   onJump: (target: string) => void;
@@ -66,7 +76,7 @@ function Highlight({ text, positions }: { text: string; positions: number[] }) {
   return <>{parts}</>;
 }
 
-export function Sidebar({ refs, stashes, hidden, solo, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
+export function Sidebar({ refs, stashes, hidden, solo, hosting, pulls, issues, ci, hostingError, onPrMenu, onOpenIssue, onStashMenu, busy, onJump, onCheckout, onCreateBranch, onMenu }: Props) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [filter, setFilter] = useState("");
@@ -176,6 +186,66 @@ export function Sidebar({ refs, stashes, hidden, solo, onStashMenu, busy, onJump
             </section>
           );
         })}
+        {hosting && !filtering && (
+          <>
+            <section className="side-section">
+              <button className="side-head" aria-expanded={!collapsed.pulls} onClick={() => toggle("pulls")}>
+                {collapsed.pulls ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <GitPullRequest size={14} />
+                <span>{hosting.kind === "git_lab" ? "Merge requests" : "Pull requests"}</span>
+                <span className="side-count">{pulls.length}</span>
+              </button>
+              {!collapsed.pulls && (
+                <ul>
+                  {hostingError && <li className="side-note">{hostingError}</li>}
+                  {!hostingError && pulls.length === 0 && <li className="side-note">None open</li>}
+                  {pulls.map((p) => (
+                    <li key={p.number}>
+                      <button
+                        className="side-row"
+                        style={{ paddingLeft: 28 }}
+                        title={`#${p.number} ${p.title} — ${p.source_branch} → ${p.target_branch} by ${p.author}`}
+                        onClick={(e) => onPrMenu(p, e.clientX, e.clientY)}
+                        onContextMenu={(e) => {
+                          e.preventDefault();
+                          onPrMenu(p, e.clientX, e.clientY);
+                        }}
+                      >
+                        <span className={`ci-dot ci-${ci[p.head_sha] ?? "none"}`} aria-label={`Checks: ${ci[p.head_sha] ?? "none"}`} />
+                        <span className="side-label">
+                          {p.draft && <em>Draft · </em>}
+                          {p.title}
+                        </span>
+                        <span className="side-count">#{p.number}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+            <section className="side-section">
+              <button className="side-head" aria-expanded={!collapsed.issues} onClick={() => toggle("issues")}>
+                {collapsed.issues ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
+                <CircleDot size={14} />
+                <span>Issues</span>
+                <span className="side-count">{issues.length}</span>
+              </button>
+              {!collapsed.issues && (
+                <ul>
+                  {issues.length === 0 && !hostingError && <li className="side-note">None open</li>}
+                  {issues.map((i) => (
+                    <li key={i.number}>
+                      <button className="side-row" style={{ paddingLeft: 28 }} title={`#${i.number} by ${i.author}`} onClick={() => onOpenIssue(i)}>
+                        <span className="side-label">{i.title}</span>
+                        <span className="side-count">#{i.number}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </>
+        )}
         {stashes.length > 0 && !filtering && (
           <section className="side-section">
             <button className="side-head" aria-expanded={!collapsed.stashes} onClick={() => toggle("stashes")}>

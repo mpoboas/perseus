@@ -25,6 +25,10 @@ export type ActionRun =
   /** A quick action; a function receives the name the user typed in the dialog. */
   | { type: "action"; action: GitAction | ((name: string) => GitAction) }
   | { type: "copy"; text: string }
+  /** Opens the interactive-rebase dialog for the commits after `base`. */
+  | { type: "interactive_rebase"; base: string; label: string }
+  /** Opens the create-pull-request dialog for a local branch. */
+  | { type: "create_pr"; branch: string }
   /** Something that only changes what the app shows (hide a branch, …); runs immediately. */
   | { type: "ui"; run: () => void };
 
@@ -214,6 +218,14 @@ export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
           action: (n) => ({ action: "branch_rename", old: subject.name, new: n }),
         },
       });
+      out.push({
+        id: "create-pr",
+        title: `Create a pull request from ${describe(subject)}…`,
+        description: "",
+        confirmLabel: "Open",
+        immediate: true,
+        run: { type: "create_pr", branch: subject.name },
+      });
       if (!subject.isHead) {
         out.push({
           id: "delete-branch",
@@ -291,6 +303,14 @@ export function manageActions(subject: Endpoint, head: Head): GraphAction[] {
   }
 
   if (head.branch && head.oid !== null && oid !== head.oid) {
+    out.push({
+      id: "interactive-rebase",
+      title: `Rebase ${headLabel(head)} interactively onto here…`,
+      description: "",
+      confirmLabel: "Open",
+      immediate: true,
+      run: { type: "interactive_rebase", base: oid, label: here },
+    });
     const onto = `${headLabel(head)} to ${here}`;
     out.push({
       id: "reset-soft",

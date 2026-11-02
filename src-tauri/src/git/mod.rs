@@ -1,6 +1,7 @@
 pub mod actions;
 pub mod cli;
 pub mod clone;
+pub mod conflicts;
 pub mod detail;
 pub mod diff;
 pub mod graph;
@@ -8,6 +9,7 @@ pub mod history;
 pub mod lanes;
 pub mod ops;
 pub mod patch;
+pub mod rebase;
 pub mod refs;
 pub mod repo;
 pub mod search;

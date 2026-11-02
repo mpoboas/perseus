@@ -502,3 +502,148 @@ export function cloneRepo(
 export type OpenIn = "folder" | "terminal" | "editor";
 
 export const openIn = (repoId: number, target: OpenIn) => invoke<void>("open_in", { repoId, target });
+
+// ---- Conflicts, interactive rebase, conflict prediction ----
+
+export type ConflictKind =
+  | "both_modified"
+  | "both_added"
+  | "deleted_by_us"
+  | "deleted_by_them"
+  | "added_by_us"
+  | "added_by_them"
+  | "both_deleted";
+
+export interface ConflictFile {
+  path: string;
+  kind: ConflictKind;
+}
+
+export type ConflictSegment =
+  | { type: "text"; text: string }
+  | { type: "conflict"; ours: string; base: string | null; theirs: string };
+
+export interface ConflictDetail {
+  path: string;
+  kind: ConflictKind;
+  binary: boolean;
+  segments: ConflictSegment[];
+  ours: string | null;
+  theirs: string | null;
+  base: string | null;
+}
+
+export type Resolution =
+  | { how: "content"; text: string }
+  | { how: "ours" }
+  | { how: "theirs" }
+  | { how: "delete" };
+
+export interface PlanCommit {
+  oid: string;
+  summary: string;
+  is_merge: boolean;
+}
+
+export type TodoAction = "pick" | "reword" | "edit" | "squash" | "fixup" | "drop";
+
+export interface TodoItem {
+  action: TodoAction;
+  oid: string;
+  message?: string | null;
+}
+
+export interface Prediction {
+  /** False when this git is too old to preview a merge (before 2.38). */
+  supported: boolean;
+  conflicts: string[];
+}
+
+export const listConflicts = (repoId: number) => invoke<ConflictFile[]>("list_conflicts", { repoId });
+
+export const conflictDetail = (repoId: number, path: string) =>
+  invoke<ConflictDetail>("conflict_detail", { repoId, path });
+
+export const resolveConflict = (repoId: number, path: string, resolution: Resolution) =>
+  invoke<void>("resolve_conflict", { repoId, path, resolution });
+
+export const rebasePlan = (repoId: number, base: string) => invoke<PlanCommit[]>("rebase_plan", { repoId, base });
+
+export function interactiveRebase(
+  repoId: number,
+  base: string,
+  items: TodoItem[],
+  onProgress: (line: string) => void,
+  opId: number,
+): Promise<string> {
+  const channel = new Channel<string>();
+  channel.onmessage = onProgress;
+  return invoke<string>("interactive_rebase", { repoId, opId, base, items, onProgress: channel });
+}
+
+export const predictMerge = (repoId: number, ours: string, theirs: string) =>
+  invoke<Prediction>("predict_merge", { repoId, ours, theirs });
+
+export const predictPick = (repoId: number, onto: string, oid: string) =>
+  invoke<Prediction>("predict_pick", { repoId, onto, oid });
+
+// ---- Hosting: pull requests, issues, CI ----
+
+export interface HostingInfo {
+  kind: "git_hub" | "git_lab";
+  host: string;
+  path: string;
+  /** The active profile holds a token for this host. */
+  signed_in: boolean;
+  web_url: string;
+}
+
+export interface PullRequest {
+  number: number;
+  title: string;
+  state: "open" | "closed" | "merged" | string;
+  draft: boolean;
+  author: string;
+  source_branch: string;
+  target_branch: string;
+  head_sha: string;
+  url: string;
+  updated: string;
+}
+
+export interface Issue {
+  number: number;
+  title: string;
+  state: string;
+  author: string;
+  url: string;
+  labels: string[];
+  updated: string;
+}
+
+export type CiState = "success" | "failure" | "pending" | "none";
+export type MergeMethod = "merge" | "squash" | "rebase";
+export type PrFilter = "open" | "closed" | "all";
+
+export const hostingInfo = (repoId: number) => invoke<HostingInfo | null>("hosting_info", { repoId });
+
+export const listPullRequests = (repoId: number, filter: PrFilter) =>
+  invoke<PullRequest[]>("list_pull_requests", { repoId, filter });
+
+export const createPullRequest = (
+  repoId: number,
+  pullRequest: { title: string; body: string; head: string; base: string; draft: boolean },
+) => invoke<PullRequest>("create_pull_request", { repoId, pullRequest });
+
+export const mergePullRequest = (repoId: number, number: number, method: MergeMethod) =>
+  invoke<void>("merge_pull_request", { repoId, number, method });
+
+export const listIssues = (repoId: number) => invoke<Issue[]>("list_issues", { repoId });
+
+export const ciState = (repoId: number, sha: string) => invoke<CiState>("ci_state", { repoId, sha });
+
+/** Fetches the pull request into a local branch and checks it out; resolves with the branch name. */
+export const checkoutPullRequest = (repoId: number, number: number) =>
+  invoke<string>("checkout_pull_request", { repoId, number });
+
+export const openInBrowser = (repoId: number, url: string) => invoke<void>("open_in_browser", { repoId, url });

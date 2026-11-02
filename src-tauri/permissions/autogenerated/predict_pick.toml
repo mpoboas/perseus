@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-predict-pick"
+description = "Enables the predict_pick command without any pre-configured scope."
+commands.allow = ["predict_pick"]
+
+[[permission]]
+identifier = "deny-predict-pick"
+description = "Denies the predict_pick command without any pre-configured scope."
+commands.deny = ["predict_pick"]

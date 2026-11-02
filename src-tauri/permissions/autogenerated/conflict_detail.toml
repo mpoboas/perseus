@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-conflict-detail"
+description = "Enables the conflict_detail command without any pre-configured scope."
+commands.allow = ["conflict_detail"]
+
+[[permission]]
+identifier = "deny-conflict-detail"
+description = "Denies the conflict_detail command without any pre-configured scope."
+commands.deny = ["conflict_detail"]

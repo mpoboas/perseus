@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-list-issues"
+description = "Enables the list_issues command without any pre-configured scope."
+commands.allow = ["list_issues"]
+
+[[permission]]
+identifier = "deny-list-issues"
+description = "Denies the list_issues command without any pre-configured scope."
+commands.deny = ["list_issues"]

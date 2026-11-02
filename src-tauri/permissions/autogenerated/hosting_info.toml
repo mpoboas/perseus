@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-hosting-info"
+description = "Enables the hosting_info command without any pre-configured scope."
+commands.allow = ["hosting_info"]
+
+[[permission]]
+identifier = "deny-hosting-info"
+description = "Denies the hosting_info command without any pre-configured scope."
+commands.deny = ["hosting_info"]
