@@ -1,6 +1,7 @@
 //! Write operations. Each function validates its inputs, then runs one git command.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 
 use serde::{Deserialize, Serialize};
 
@@ -127,16 +128,33 @@ pub fn in_progress(git: &Git) -> Option<Operation> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum PullMode {
+    #[default]
+    FfOnly,
+    Merge,
+    Rebase,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum GitOp {
     Fetch,
-    /// Fast-forward only: never creates a surprise merge commit.
-    Pull,
+    /// Fast-forward only unless a mode is chosen: never a surprise merge commit by default.
+    Pull {
+        #[serde(default)]
+        mode: PullMode,
+    },
     Push {
         #[serde(default)]
         set_upstream: bool,
         remote: Option<String>,
+        /// Overwrite the remote branch, but only if nobody else pushed since we last fetched.
+        #[serde(default)]
+        force_with_lease: bool,
+        #[serde(default)]
+        tags: bool,
     },
     Merge {
         rev: String,
@@ -168,35 +186,64 @@ fn current_branch(git: &Git) -> Result<String> {
 
 /// Runs a long-lived operation, forwarding progress lines. Returns git's stdout.
 pub fn run(git: &Git, op: &GitOp, on_line: impl FnMut(&str)) -> Result<String> {
+    run_cancellable(git, op, &AtomicBool::new(false), on_line)
+}
+
+/// Like [`run`], but setting `cancel` stops the operation (see `Git::stream_cancellable`).
+pub fn run_cancellable(
+    git: &Git,
+    op: &GitOp,
+    cancel: &AtomicBool,
+    on_line: impl FnMut(&str),
+) -> Result<String> {
     let out = match op {
-        GitOp::Fetch => git.stream(["fetch", "--progress", "--all"], on_line)?,
-        GitOp::Pull => git.stream(["pull", "--progress", "--ff-only"], on_line)?,
+        GitOp::Fetch => {
+            git.stream_cancellable(["fetch", "--progress", "--all"], on_line, cancel)?
+        }
+        GitOp::Pull { mode } => {
+            let mut args = vec!["pull", "--progress"];
+            match mode {
+                PullMode::FfOnly => args.push("--ff-only"),
+                PullMode::Merge => args.extend(["--no-rebase", "--no-edit"]),
+                PullMode::Rebase => args.push("--rebase"),
+            }
+            git.stream_cancellable(args, on_line, cancel)?
+        }
         GitOp::Push {
             set_upstream,
             remote,
+            force_with_lease,
+            tags,
         } => {
+            let mut args = vec!["push", "--progress"];
+            if *force_with_lease {
+                args.push("--force-with-lease");
+            }
+            if *tags {
+                args.push("--tags");
+            }
+            let upstream_args;
             if *set_upstream {
                 let remote = validate::remote_name(remote.as_deref().unwrap_or("origin"))?;
                 let branch = current_branch(git)?;
-                git.stream(
-                    ["push", "--progress", "-u", remote, branch.as_str()],
-                    on_line,
-                )?
-            } else {
-                git.stream(["push", "--progress"], on_line)?
+                upstream_args = ["-u".to_string(), remote.to_string(), branch];
+                args.extend(upstream_args.iter().map(String::as_str));
+            } else if let Some(remote) = remote {
+                args.push(validate::remote_name(remote)?);
             }
+            git.stream_cancellable(args, on_line, cancel)?
         }
         GitOp::Merge { rev } => {
             let rev = rev_arg(rev)?;
-            git.stream(["merge", "--no-edit", rev.as_str()], on_line)?
+            git.stream_cancellable(["merge", "--no-edit", rev.as_str()], on_line, cancel)?
         }
         GitOp::CherryPick { oid } => {
             let oid = validate::oid(oid)?.to_string();
-            git.stream(["cherry-pick", oid.as_str()], on_line)?
+            git.stream_cancellable(["cherry-pick", oid.as_str()], on_line, cancel)?
         }
         GitOp::Rebase { onto } => {
             let onto = rev_arg(onto)?;
-            git.stream(["rebase", onto.as_str()], on_line)?
+            git.stream_cancellable(["rebase", onto.as_str()], on_line, cancel)?
         }
         GitOp::Abort | GitOp::Continue => {
             let current = in_progress(git)
@@ -206,7 +253,7 @@ pub fn run(git: &Git, op: &GitOp, on_line: impl FnMut(&str)) -> Result<String> {
             } else {
                 "--continue"
             };
-            git.stream([current.command(), flag], on_line)?
+            git.stream_cancellable([current.command(), flag], on_line, cancel)?
         }
     };
     Ok(String::from_utf8_lossy(&out).trim().to_string())
@@ -381,6 +428,154 @@ mod op_tests {
         assert!(!git.root().join("pwned").exists());
     }
 
+    /// Two clones of one bare remote: `one` is the repo under test, `two` pushes behind its back.
+    fn two_clones() -> (
+        tempfile::TempDir,
+        tempfile::TempDir,
+        tempfile::TempDir,
+        Git,
+        Git,
+    ) {
+        let remote = tempfile::tempdir().unwrap();
+        Git::new(remote.path())
+            .output(["init", "-q", "--bare", "-b", "main"])
+            .unwrap();
+        let url = remote.path().to_str().unwrap().to_string();
+        let (d1, one) = init_repo();
+        commit_file(&one, "a.txt", "a\n", "first");
+        one.output(["remote", "add", "origin", url.as_str()])
+            .unwrap();
+        one.output(["push", "-q", "-u", "origin", "main"]).unwrap();
+        let (d2, two) = init_repo();
+        two.output(["remote", "add", "origin", url.as_str()])
+            .unwrap();
+        two.output(["fetch", "-q", "origin"]).unwrap();
+        two.output(["reset", "-q", "--hard", "origin/main"])
+            .unwrap();
+        (remote, d1, d2, one, two)
+    }
+
+    #[test]
+    fn pull_modes_differ_when_history_diverges() {
+        let (_r, _d1, _d2, one, two) = two_clones();
+        commit_file(&two, "b.txt", "b\n", "theirs");
+        two.output(["push", "-q", "origin", "main"]).unwrap();
+        commit_file(&one, "c.txt", "c\n", "mine");
+
+        // Fast-forward only refuses, and leaves everything as it was.
+        let before = rev(&one, "HEAD");
+        assert!(
+            run(
+                &one,
+                &GitOp::Pull {
+                    mode: PullMode::FfOnly
+                },
+                quiet
+            )
+            .is_err()
+        );
+        assert_eq!(rev(&one, "HEAD"), before);
+
+        // Rebase replays our commit on top of theirs: a straight line.
+        run(
+            &one,
+            &GitOp::Pull {
+                mode: PullMode::Rebase,
+            },
+            quiet,
+        )
+        .unwrap();
+        let parents = one
+            .output(["rev-list", "--parents", "-n1", "HEAD"])
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&parents).split_whitespace().count(),
+            2,
+            "no merge commit"
+        );
+        assert_eq!(read(&one, "b.txt"), "b\n");
+        assert_eq!(read(&one, "c.txt"), "c\n");
+    }
+
+    #[test]
+    fn pull_with_merge_mode_creates_a_merge_commit() {
+        let (_r, _d1, _d2, one, two) = two_clones();
+        commit_file(&two, "b.txt", "b\n", "theirs");
+        two.output(["push", "-q", "origin", "main"]).unwrap();
+        commit_file(&one, "c.txt", "c\n", "mine");
+        run(
+            &one,
+            &GitOp::Pull {
+                mode: PullMode::Merge,
+            },
+            quiet,
+        )
+        .unwrap();
+        let parents = one
+            .output(["rev-list", "--parents", "-n1", "HEAD"])
+            .unwrap();
+        assert_eq!(
+            String::from_utf8_lossy(&parents).split_whitespace().count(),
+            3,
+            "a merge commit"
+        );
+    }
+
+    #[test]
+    fn force_with_lease_protects_other_peoples_work() {
+        let (_r, _d1, _d2, one, two) = two_clones();
+        // `one` rewrites its last commit; a plain push is rejected as non-fast-forward.
+        one.output(["commit", "-q", "--amend", "-m", "rewritten"])
+            .unwrap();
+        let plain = GitOp::Push {
+            set_upstream: false,
+            remote: None,
+            force_with_lease: false,
+            tags: false,
+        };
+        assert!(run(&one, &plain, quiet).is_err());
+
+        // With the lease it succeeds, because nobody pushed since our last fetch.
+        let lease = GitOp::Push {
+            set_upstream: false,
+            remote: None,
+            force_with_lease: true,
+            tags: false,
+        };
+        run(&one, &lease, quiet).unwrap();
+
+        // Now `two` pushes something new; the lease notices that `one` has not seen it.
+        two.output(["fetch", "-q", "origin"]).unwrap();
+        two.output(["reset", "-q", "--hard", "origin/main"])
+            .unwrap();
+        commit_file(&two, "b.txt", "b\n", "theirs");
+        two.output(["push", "-q", "origin", "main"]).unwrap();
+        one.output(["commit", "-q", "--amend", "-m", "rewritten again"])
+            .unwrap();
+        assert!(
+            run(&one, &lease, quiet).is_err(),
+            "the lease must refuse to overwrite unseen work"
+        );
+    }
+
+    #[test]
+    fn push_can_include_tags() {
+        let (remote, _d1, _d2, one, _two) = two_clones();
+        one.output(["tag", "v9"]).unwrap();
+        let op = GitOp::Push {
+            set_upstream: false,
+            remote: None,
+            force_with_lease: false,
+            tags: true,
+        };
+        run(&one, &op, quiet).unwrap();
+        assert!(
+            Git::new(remote.path())
+                .output(["rev-parse", "-q", "--verify", "refs/tags/v9"])
+                .is_ok()
+        );
+    }
+
     #[test]
     fn push_pull_fetch_against_a_local_remote() {
         let remote = tempfile::tempdir().unwrap();
@@ -399,6 +594,8 @@ mod op_tests {
             &GitOp::Push {
                 set_upstream: true,
                 remote: None,
+                force_with_lease: false,
+                tags: false,
             },
             |l| lines.push(l.to_string()),
         )
@@ -417,7 +614,14 @@ mod op_tests {
 
         run(&one, &GitOp::Fetch, quiet).unwrap();
         assert!(rev(&one, "origin/main") != rev(&one, "HEAD"));
-        run(&one, &GitOp::Pull, quiet).unwrap();
+        run(
+            &one,
+            &GitOp::Pull {
+                mode: PullMode::FfOnly,
+            },
+            quiet,
+        )
+        .unwrap();
         assert_eq!(rev(&one, "origin/main"), rev(&one, "HEAD"));
         assert_eq!(read(&one, "b.txt"), "b\n");
 
@@ -426,7 +630,9 @@ mod op_tests {
                 &one,
                 &GitOp::Push {
                     set_upstream: true,
-                    remote: Some("-o".into())
+                    remote: Some("-o".into()),
+                    force_with_lease: false,
+                    tags: false,
                 },
                 quiet
             )

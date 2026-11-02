@@ -20,6 +20,10 @@ const ALLOWED = new Set([
   "switch_ref",
   "new_branch",
   "run_git_op",
+  "cancel_git_op",
+  "git_action",
+  "list_stashes",
+  "list_remotes",
   "list_profiles",
   "save_profile",
   "delete_profile",
@@ -37,8 +41,13 @@ const ALLOWED = new Set([
   "unwatch_repo",
 ]);
 
+// Tauri's own plumbing, not an app command. When a Channel message is larger than 8 KiB (every
+// chunk of commit history) Tauri stores it and the page fetches it with this command; blocking
+// it silently drops the data. It only returns payloads the backend queued for this webview.
+const FRAMEWORK = new Set(["plugin:__TAURI_CHANNEL__|fetch"]);
+
 window.__TAURI_ISOLATION_HOOK__ = (payload) => {
-  if (typeof payload.cmd !== "string" || !ALLOWED.has(payload.cmd)) {
+  if (typeof payload.cmd !== "string" || !(ALLOWED.has(payload.cmd) || FRAMEWORK.has(payload.cmd))) {
     // The message is dropped, so nothing reaches Rust. The caller's promise simply never
     // settles; this log line is how a developer finds out why. Arguments are not logged.
     console.error("Perseus blocked an IPC call to a command that is not on the allowlist:", String(payload.cmd));

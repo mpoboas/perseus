@@ -75,3 +75,13 @@ fn every_registered_command_is_granted_to_the_main_window() {
         );
     }
 }
+
+/// The one framework command the hook lets through must not grow unnoticed: every entry is a
+/// door the webview can use without a capability review.
+#[test]
+fn only_the_channel_fetch_framework_command_bypasses_the_allowlist() {
+    let hook = fs::read_to_string(root().join("../isolation/index.js")).unwrap();
+    let framework = quoted(between(&hook, "const FRAMEWORK = new Set([", "]);"));
+    let expected: BTreeSet<String> = ["plugin:__TAURI_CHANNEL__|fetch".to_string()].into();
+    assert_eq!(framework, expected);
+}

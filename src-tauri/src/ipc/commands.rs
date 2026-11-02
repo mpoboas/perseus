@@ -1,7 +1,11 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use tauri::State;
 use tauri::ipc::Channel;
 
 use crate::error::{AppError, Result};
+use crate::git::actions::{self, Action, RemoteInfo, StashEntry};
 use crate::git::cli::Git;
 use crate::git::detail::{self, CommitDetail};
 use crate::git::diff::{self, FileChange};
@@ -135,20 +139,69 @@ pub async fn new_branch(
 }
 
 /// Fetch/pull/push/merge/rebase/cherry-pick/abort/continue. Progress lines from git
-/// stream over `on_progress`; the resolved value is git's final stdout.
+/// stream over `on_progress`; the resolved value is git's final stdout. `cancel_git_op` with the
+/// same `op_id` stops it.
 #[tauri::command]
 pub async fn run_git_op(
     state: State<'_, AppState>,
     profiles: State<'_, ProfileStore>,
     repo_id: RepoId,
+    op_id: u32,
     op: GitOp,
     on_progress: Channel<String>,
 ) -> Result<String> {
     let git = git_for(&state, &profiles, repo_id)?;
-    blocking(move || {
-        ops::run(&git, &op, |line| {
+    let cancel = Arc::new(AtomicBool::new(false));
+    state
+        .ops
+        .lock()
+        .map_err(|_| AppError::Internal("operation registry poisoned".into()))?
+        .insert(op_id, Arc::clone(&cancel));
+    let flag = Arc::clone(&cancel);
+    let result = blocking(move || {
+        ops::run_cancellable(&git, &op, &flag, |line| {
             let _ = on_progress.send(line.to_string());
         })
     })
-    .await
+    .await;
+    if let Ok(mut ops) = state.ops.lock() {
+        // Only remove our own entry: the id may have been reused by a newer operation.
+        if ops.get(&op_id).is_some_and(|f| Arc::ptr_eq(f, &cancel)) {
+            ops.remove(&op_id);
+        }
+    }
+    result
+}
+
+#[tauri::command]
+pub fn cancel_git_op(state: State<'_, AppState>, op_id: u32) {
+    if let Ok(ops) = state.ops.lock()
+        && let Some(flag) = ops.get(&op_id)
+    {
+        flag.store(true, Ordering::Relaxed);
+    }
+}
+
+/// Quick actions: stash, tags, branch management, reset, revert, discard, remotes.
+#[tauri::command]
+pub async fn git_action(
+    state: State<'_, AppState>,
+    profiles: State<'_, ProfileStore>,
+    repo_id: RepoId,
+    action: Action,
+) -> Result<()> {
+    let git = git_for(&state, &profiles, repo_id)?;
+    blocking(move || actions::run(&git, &action)).await
+}
+
+#[tauri::command]
+pub async fn list_stashes(state: State<'_, AppState>, repo_id: RepoId) -> Result<Vec<StashEntry>> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || actions::list_stashes(&git)).await
+}
+
+#[tauri::command]
+pub async fn list_remotes(state: State<'_, AppState>, repo_id: RepoId) -> Result<Vec<RemoteInfo>> {
+    let git = state.repos.git(repo_id)?;
+    blocking(move || actions::list_remotes(&git)).await
 }

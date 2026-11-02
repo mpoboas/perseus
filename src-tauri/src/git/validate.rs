@@ -38,6 +38,28 @@ pub fn remote_name(name: &str) -> Result<&str> {
     }
 }
 
+/// A remote URL: https/http/ssh/git/file URLs, scp-style `user@host:path`, or a local path.
+/// Rejects a leading `-` (option injection), control characters, and transport helpers such as
+/// `ext::<command>` or `fd::<n>`, which make git run arbitrary programs.
+pub fn remote_url(url: &str) -> Result<&str> {
+    let helper = url.split_once("::").is_some_and(|(scheme, _)| {
+        !scheme.is_empty()
+            && scheme
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '+'))
+    });
+    let bad = url.trim() != url
+        || url.is_empty()
+        || url.len() > 2048
+        || url.starts_with('-')
+        || url.chars().any(char::is_control);
+    if bad || helper {
+        Err(invalid("remote URL"))
+    } else {
+        Ok(url)
+    }
+}
+
 /// Full-length hex object id.
 pub fn oid(s: &str) -> Result<ObjectId> {
     ObjectId::from_hex(s.as_bytes()).map_err(|_| invalid("commit id"))
@@ -97,6 +119,34 @@ mod tests {
         assert!(remote_name("my-fork.2").is_ok());
         for bad in ["", "-o", "a b", "a/b", "http://x", "a;b"] {
             assert!(remote_name(bad).is_err(), "{bad:?} accepted");
+        }
+    }
+
+    #[test]
+    fn remote_urls() {
+        for good in [
+            "https://github.com/a/b.git",
+            "ssh://git@host:2222/a/b.git",
+            "git@github.com:a/b.git",
+            "file:///srv/repo.git",
+            "C:\\Users\\me\\My Repos\\x.git",
+            "/srv/git/x.git",
+            "../sibling.git",
+        ] {
+            assert!(remote_url(good).is_ok(), "{good}");
+        }
+        for bad in [
+            "",
+            "-oProxyCommand=evil",
+            "--upload-pack=evil",
+            "ext::sh -c touch /tmp/pwned",
+            "fd::17",
+            "foo::bar",
+            " https://x/y",
+            "https://x/y\n",
+            "https://x/\u{0}y",
+        ] {
+            assert!(remote_url(bad).is_err(), "{bad:?} accepted");
         }
     }
 

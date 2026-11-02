@@ -18,9 +18,11 @@ const ws = new WebSocket(page.webSocketDebuggerUrl);
 await new Promise((r) => (ws.onopen = r));
 let id = 0;
 const pending = new Map();
+const events = [];
 ws.onmessage = (m) => {
   const msg = JSON.parse(m.data);
   if (msg.id && pending.has(msg.id)) pending.get(msg.id)(msg);
+  else if (msg.method) events.push(msg);
 };
 const send = (method, params = {}) =>
   new Promise((resolve) => {
@@ -34,6 +36,8 @@ const evaluate = async (expression) => {
   return r.result.result.value;
 };
 
+await send('Runtime.enable');
+await send('Log.enable');
 // Open the repository from the welcome screen's recents (they load asynchronously).
 let opened = false;
 for (let i = 0; i < 100 && !opened; i++) {
@@ -67,6 +71,10 @@ for (;;) {
   await new Promise((r) => setTimeout(r, 100));
 }
 const loadMs = Date.now() - t0;
+for (const e of events) if (e.method === 'Runtime.exceptionThrown' || (e.method === 'Log.entryAdded' && e.params.entry.level === 'error') || (e.method === 'Runtime.consoleAPICalled' && e.params.type === 'error')) console.error('page-error', JSON.stringify(e.params).slice(0, 400));
+await new Promise((r) => setTimeout(r, 2500));
+const dbg = await evaluate(`(() => { const sc = document.querySelector('.graph-scroller'); return { sh: sc.scrollHeight, ch: sc.clientHeight, kids: [...sc.children].map((c) => c.tagName + ':' + c.getBoundingClientRect().height + ':' + c.style.height), graph: (document.querySelector('.graph-wrap')?.innerText ?? '').slice(0, 120), fiber: (() => { const el = document.querySelector('.graph-wrap'); const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$')); let f = el[key]; while (f && !(f.memoizedProps && 'count' in f.memoizedProps && 'store' in f.memoizedProps)) f = f.return; return f ? { count: f.memoizedProps.count, rows: f.memoizedProps.store.rows.length, loading: f.memoizedProps.loading, maxLanes: f.memoizedProps.store.maxLanes } : null; })(), status: document.querySelector('.statusbar')?.innerText ?? '' }; })()`);
+console.error('debug', JSON.stringify(dbg));
 
 const result = await evaluate(`new Promise((resolve) => {
   const sc = document.querySelector('.graph-scroller');

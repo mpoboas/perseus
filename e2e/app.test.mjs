@@ -1,6 +1,7 @@
 // End-to-end tests against the production executable. Run `pnpm tauri build --no-bundle`
 // first, then `pnpm e2e`. Windows only (WebView2 exposes the DevTools protocol).
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -98,5 +99,34 @@ describe("Perseus", () => {
   it("logs nothing worse than the known isolation-iframe CSP entries", async () => {
     const unexpected = app.consoleErrors.filter((m) => !/Applying inline style violates/.test(m));
     assert.deepEqual(unexpected, []);
+  });
+});
+
+// Every chunk of history is larger than Tauri's 8 KiB direct-message threshold, so it travels
+// through the framework's channel-fetch command. The isolation hook once blocked that command
+// and a real repository showed up empty; a four-commit fixture can never catch it.
+describe("Perseus with a long history", () => {
+  let app;
+
+  before(async () => {
+    const dir = join(scratchDir("perseus-big-"), "big");
+    execFileSync("node", ["scripts/make-perf-repo.mjs", dir, "1200"], { stdio: "ignore" });
+    app = await launch({ recents: [{ path: dir, name: "big" }], port: 9445 });
+  });
+
+  after(async () => {
+    await app?.stop();
+  });
+
+  it("loads every commit and scrolls to the oldest one", async () => {
+    const page = app.page;
+    await page.locator(".recent-main", { hasText: "big" }).click();
+    await page.getByText(/1.?200 commits/).waitFor({ timeout: 30000 });
+    const rows = await page.evaluate(() => {
+      const sc = document.querySelector(".graph-scroller");
+      return Math.round((sc.scrollHeight - sc.clientHeight) / 32);
+    });
+    assert.ok(rows > 1000, `the scroll extent covers the history (${rows} rows)`);
+    assert.equal(await page.getByText("No commits yet").count(), 0);
   });
 });

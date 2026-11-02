@@ -12,7 +12,10 @@ use std::ffi::OsStr;
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use crate::error::{AppError, Result};
 
@@ -60,6 +63,13 @@ impl Git {
 
     pub fn with_overrides(mut self, overrides: GitOverrides) -> Self {
         self.overrides = overrides;
+        self
+    }
+
+    /// Adds one environment variable for this runner's commands (after the hardening defaults,
+    /// so it can relax one of them for a command that has no user-supplied pathspecs).
+    pub fn with_env(mut self, key: &str, value: &str) -> Self {
+        self.overrides.env.push((key.into(), value.into()));
         self
     }
 
@@ -201,43 +211,131 @@ impl Git {
 
     /// Runs a long operation (fetch/push/merge), calling `on_line` for each line or
     /// carriage-return-terminated progress update git prints on stderr.
-    pub fn stream<I, S>(&self, args: I, mut on_line: impl FnMut(&str)) -> Result<Vec<u8>>
+    pub fn stream<I, S>(&self, args: I, on_line: impl FnMut(&str)) -> Result<Vec<u8>>
+    where
+        I: IntoIterator<Item = S>,
+        S: AsRef<OsStr>,
+    {
+        self.stream_cancellable(args, on_line, &AtomicBool::new(false))
+    }
+
+    /// Like [`stream`](Self::stream), but setting `cancel` kills git and everything it started
+    /// (ssh, credential helpers, `git-remote-https`) and returns a "cancelled" error.
+    pub fn stream_cancellable<I, S>(
+        &self,
+        args: I,
+        mut on_line: impl FnMut(&str),
+        cancel: &AtomicBool,
+    ) -> Result<Vec<u8>>
     where
         I: IntoIterator<Item = S>,
         S: AsRef<OsStr>,
     {
         let mut child = self.spawn(self.command(args))?;
         let stdout = drain(child.stdout.take());
+        let stderr_pipe = child.stderr.take();
+        let pid = child.id();
+        let child = Arc::new(Mutex::new(child));
+        let finished = Arc::new(AtomicBool::new(false));
 
-        let mut all_stderr = Vec::new();
-        if let Some(mut stderr) = child.stderr.take() {
-            let mut chunk = [0u8; 4096];
-            let mut line = Vec::new();
-            loop {
-                let n = stderr.read(&mut chunk).map_err(AppError::git)?;
-                if n == 0 {
-                    break;
-                }
-                all_stderr.extend_from_slice(&chunk[..n]);
-                for &b in &chunk[..n] {
-                    if b == b'\n' || b == b'\r' {
-                        if !line.is_empty() {
-                            on_line(&String::from_utf8_lossy(&line));
-                            line.clear();
+        let (status, all_stderr, read_error) = std::thread::scope(|scope| {
+            // Polls the flag on a side thread: the read loop below blocks on git's output.
+            let watcher = scope.spawn({
+                let finished = Arc::clone(&finished);
+                let child = Arc::clone(&child);
+                move || {
+                    while !finished.load(Ordering::Relaxed) {
+                        if cancel.load(Ordering::Relaxed) {
+                            kill_tree(pid, &child);
+                            return;
                         }
-                    } else {
-                        line.push(b);
+                        std::thread::sleep(Duration::from_millis(50));
                     }
                 }
+            });
+
+            let mut all_stderr = Vec::new();
+            let mut read_error = None;
+            if let Some(mut stderr) = stderr_pipe {
+                let mut chunk = [0u8; 4096];
+                let mut line = Vec::new();
+                loop {
+                    let n = match stderr.read(&mut chunk) {
+                        Ok(n) => n,
+                        Err(e) => {
+                            read_error = Some(AppError::git(e));
+                            break;
+                        }
+                    };
+                    if n == 0 {
+                        break;
+                    }
+                    all_stderr.extend_from_slice(&chunk[..n]);
+                    for &b in &chunk[..n] {
+                        if b == b'\n' || b == b'\r' {
+                            if !line.is_empty() {
+                                on_line(&String::from_utf8_lossy(&line));
+                                line.clear();
+                            }
+                        } else {
+                            line.push(b);
+                        }
+                    }
+                }
+                if !line.is_empty() {
+                    on_line(&String::from_utf8_lossy(&line));
+                }
             }
-            if !line.is_empty() {
-                on_line(&String::from_utf8_lossy(&line));
-            }
-        }
-        let status = child.wait().map_err(AppError::git)?;
+
+            // `try_wait` in a loop: a blocking `wait` would hold the lock the killer needs.
+            let status = loop {
+                let polled = child.lock().map(|mut c| c.try_wait());
+                match polled {
+                    Ok(Ok(Some(status))) => break Ok(status),
+                    Ok(Ok(None)) => std::thread::sleep(Duration::from_millis(10)),
+                    Ok(Err(e)) => break Err(AppError::git(e)),
+                    Err(_) => break Err(AppError::Internal("child lock poisoned".into())),
+                }
+            };
+            finished.store(true, Ordering::Relaxed);
+            let _ = watcher.join();
+            (status, all_stderr, read_error)
+        });
+
         let stdout = stdout.join().unwrap_or_default();
-        check(status, &all_stderr, &stdout, &[0])?;
+        if cancel.load(Ordering::Relaxed) {
+            return Err(AppError::Git("cancelled".into()));
+        }
+        if let Some(e) = read_error {
+            return Err(e);
+        }
+        check(status?, &all_stderr, &stdout, &[0])?;
         Ok(stdout)
+    }
+}
+
+/// Kills the process and its descendants. `Child::kill` alone would leave `ssh` or
+/// `git-remote-https` running with the pipes open.
+fn kill_tree(pid: u32, child: &Mutex<Child>) {
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        let _ = Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status();
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = Command::new("pkill")
+            .args(["-KILL", "-P", &pid.to_string()])
+            .status();
+    }
+    if let Ok(mut c) = child.lock() {
+        let _ = c.kill();
     }
 }
 
@@ -362,5 +460,28 @@ mod tests {
             .unwrap_err();
         assert!(!lines.is_empty());
         assert!(err.to_string().contains("nope"));
+    }
+
+    #[test]
+    fn cancelling_kills_a_running_command_promptly() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let (_d, git) = init_repo();
+        let cancel = AtomicBool::new(false);
+        let started = std::time::Instant::now();
+        let result = std::thread::scope(|s| {
+            s.spawn(|| {
+                std::thread::sleep(std::time::Duration::from_millis(400));
+                cancel.store(true, Ordering::Relaxed);
+            });
+            // A shell alias that would sleep for a minute if left alone.
+            git.stream_cancellable(["-c", "alias.slow=!sleep 60", "slow"], |_| {}, &cancel)
+        });
+        let err = result.unwrap_err();
+        assert!(err.to_string().contains("cancelled"), "{err}");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "took {:?}",
+            started.elapsed()
+        );
     }
 }

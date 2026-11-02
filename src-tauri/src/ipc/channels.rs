@@ -18,6 +18,8 @@ pub struct AppState {
     pub repos: RepoRegistry,
     /// Cancellation flags for in-flight streams, keyed by the frontend-chosen stream id.
     streams: Mutex<HashMap<u32, Arc<AtomicBool>>>,
+    /// Cancellation flags for running git operations, keyed by the frontend-chosen op id.
+    pub ops: Mutex<HashMap<u32, Arc<AtomicBool>>>,
     /// Active repository watches, keyed by the frontend-chosen watch id.
     pub watches: Mutex<HashMap<u32, Watch>>,
 }

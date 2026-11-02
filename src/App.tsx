@@ -128,6 +128,9 @@ function App() {
   const watchId = useRef<number | null>(null);
   const busyRef = useRef<string | null>(null);
   const lastActEnd = useRef(0);
+  const adoptedAt = useRef(0);
+  const pendingChange = useRef<ChangeSet>({ refs: false, worktree: false });
+  const changeTimer = useRef(0);
   const onChangedRef = useRef<(c: ChangeSet) => void>(() => undefined);
   const repoRef = useRef<RepoInfo | null>(null);
   repoRef.current = repo;
@@ -200,7 +203,10 @@ function App() {
       streamId.current = id;
       try {
         const summary = await done;
-        if (silent && (summary.cancelled || streamId.current !== id)) return;
+        // A newer load took over while this one was running: it owns the state now, and this
+        // result (built from an older store) must not overwrite it.
+        if (streamId.current !== id) return;
+        if (silent && summary.cancelled) return;
         if (silent) store.current = target;
         setCount(target.length);
         if (keepOid.current) {
@@ -214,8 +220,8 @@ function App() {
       } catch (e) {
         report("Could not read the history", e);
       } finally {
-        keepOid.current = null;
         if (streamId.current === id) {
+          keepOid.current = null;
           streamId.current = null;
           setLoading(false);
         }
@@ -291,10 +297,32 @@ function App() {
 
   /** Outside changes (an editor, a terminal, another git client) refresh what moved, quietly. */
   onChangedRef.current = (c) => {
-    const info = repoRef.current;
-    if (!info || busyRef.current || Date.now() - lastActEnd.current < 700) return;
-    if (c.refs) void refresh("all");
-    else if (c.worktree) void loadStatus(info);
+    if (!repoRef.current) return;
+    pendingChange.current = {
+      refs: pendingChange.current.refs || c.refs,
+      worktree: pendingChange.current.worktree || c.worktree,
+    };
+    // Our own writes and a freshly opened repository's first load already cover what moved, and
+    // a running operation refreshes when it ends. Anything that arrives meanwhile waits and is
+    // applied afterwards instead of being dropped.
+    const wait = Math.max(
+      700 - (Date.now() - lastActEnd.current),
+      2000 - (Date.now() - adoptedAt.current),
+      busyRef.current ? 500 : 0,
+    );
+    window.clearTimeout(changeTimer.current);
+    changeTimer.current = window.setTimeout(
+      () => {
+        const info = repoRef.current;
+        const pending = pendingChange.current;
+        pendingChange.current = { refs: false, worktree: false };
+        if (!info) return;
+        if (busyRef.current) return onChangedRef.current(pending);
+        if (pending.refs) void refresh("all");
+        else if (pending.worktree) void loadStatus(info);
+      },
+      Math.max(0, wait),
+    );
   };
 
   const startWatching = (info: RepoInfo) => {
@@ -399,6 +427,7 @@ function App() {
     const previous = repoRef.current;
     if (previous && previous.id !== picked.id) await closeRepo(previous.id);
     repoRef.current = picked;
+    adoptedAt.current = Date.now();
     wasInOperation.current = false;
     setRepo(picked);
     startWatching(picked);
