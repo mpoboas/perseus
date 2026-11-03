@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="branding/perseus-logo-white.png">
+    <img src="branding/perseus-logo.png" alt="The Perseus logo: a winged helmet and a commit graph" width="180">
+  </picture>
+</p>
+
 # Perseus
 
 A fast, free and open-source visual Git client. Perseus is built with [Tauri](https://tauri.app)
@@ -65,6 +72,7 @@ pnpm tauri build --no-bundle && pnpm e2e    # end-to-end tests against the relea
 - [OAuth providers](docs/oauth.md)
 - [Performance notes](docs/performance.md)
 - [Roadmap and status](docs/roadmap.md), and the [GitKraken comparison](docs/gitkraken-comparison.md)
+- [Branding](docs/branding.md): the logos and how the app icons are made
 - [Contributing](CONTRIBUTING.md)
 
 ## What is not done yet
@@ -75,7 +83,7 @@ Perseus is not 1.0. The main gaps, all tracked in the [roadmap](docs/roadmap.md)
   auto-update signing key and the first public release. Until then installers are unsigned.
 - **macOS and Linux** build in CI but have not been run by hand.
 - No Bitbucket or Azure DevOps integration; no in-app terminal; no AI helpers (deliberately out of scope).
-- Undo/redo of Git operations, syntax-highlighted and side-by-side diffs, and customizable shortcuts.
+- Workspaces, in-app pull request review, GPG signing, customizable shortcuts and UI zoom.
 
 ## License
 

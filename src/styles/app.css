@@ -376,7 +376,9 @@ mark {
   padding: 0 16px;
 }
 .logo {
-  filter: drop-shadow(0 8px 20px var(--accent-soft));
+  width: auto;
+  user-select: none;
+  filter: drop-shadow(0 10px 24px var(--accent-soft));
 }
 .recents h2 {
   margin-bottom: 8px;

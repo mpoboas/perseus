@@ -17,28 +17,12 @@ interface Props {
   onInit: () => void;
 }
 
-/** The mark: a commit graph that bends around a node, in the accent color. */
-export function Logo({ size = 56 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 64 64" role="img" aria-label="Perseus" className="logo">
-      <defs>
-        <linearGradient id="perseus-g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="var(--accent-hover)" />
-          <stop offset="1" stopColor="var(--accent)" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="16" fill="url(#perseus-g)" />
-      <g fill="none" stroke="var(--accent-fg)" strokeWidth="3.5" strokeLinecap="round">
-        <path d="M22 14v36" />
-        <path d="M22 28c0 8 20 4 20 14" />
-      </g>
-      <g fill="var(--accent-fg)">
-        <circle cx="22" cy="14" r="5" />
-        <circle cx="22" cy="50" r="5" />
-        <circle cx="42" cy="44" r="5" />
-      </g>
-    </svg>
-  );
+/**
+ * The Perseus mark (`branding/`): the winged helmet and the commit graph, in its own colours. It is the
+ * same artwork as the application icon. `height` is in pixels; the width follows the artwork.
+ */
+export function Logo({ height = 96 }: { height?: number }) {
+  return <img src="/logo.png" alt="Perseus" height={height} className="logo" draggable={false} />;
 }
 
 export function Welcome({

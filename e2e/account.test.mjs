@@ -84,6 +84,20 @@ describe("Perseus using the signed-in account", () => {
     return dir;
   };
 
+  /** Runs a palette command once its entry is listed (typing and Enter alone can beat the filtering). */
+  const palette = async (query, entry) => {
+    await page.keyboard.press("Control+k");
+    await page.getByRole("combobox", { name: "Search commands" }).fill(query);
+    await page.getByRole("option", { name: entry }).first().waitFor();
+    await page.keyboard.press("Enter");
+  };
+
+  /** Closes the open dialog and waits until it has gone, so its focus hand-back cannot land on what comes next. */
+  const closeDialog = async () => {
+    await page.keyboard.press("Escape");
+    await page.getByRole("dialog").waitFor({ state: "detached" });
+  };
+
   before(async () => {
     root = scratchDir("perseus-account-");
     const source = makeFixture(join(root, "src"));
@@ -126,16 +140,14 @@ describe("Perseus using the signed-in account", () => {
 
   it("forks first when asked, clones the fork and keeps the original as upstream", async () => {
     startIn("forks");
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search commands" }).fill("clone a repository");
-    await page.keyboard.press("Enter");
+    await palette("clone a repository", /Clone a repository/);
     await page.getByRole("tab", { name: "GitHub.com" }).click();
     await page.getByRole("option", { name: /widgets/ }).click();
     await page.getByLabel(/Fork it to my account first/).check();
     await page.getByRole("button", { name: "Fork and clone" }).click();
-    await until(() => existsSync(join(root, "forks", "widgets", "a.txt")), "the fork is cloned");
-
     const clone = join(root, "forks", "widgets");
+    // The files appear first; the app adds `upstream` just after the clone finishes.
+    await until(() => existsSync(join(clone, "a.txt")) && git(clone, "remote").includes("upstream"), "the fork is cloned and upstream added");
     assert.equal(git(clone, "remote", "get-url", "origin").trim(), join(root, "fork", "widgets.git"), "origin is the fork");
     assert.equal(git(clone, "remote", "get-url", "upstream").trim(), join(root, "widgets.git"), "upstream is the original");
     const forks = host.calls.filter((c) => c.method === "POST" && c.path.endsWith("/forks"));
@@ -151,14 +163,12 @@ describe("Perseus using the signed-in account", () => {
     await page.getByRole("option", { name: /own/ }).click();
     await page.getByText("This repository is already yours.").waitFor();
     assert.equal(await page.getByLabel(/Fork it to my account first/).isDisabled(), true);
-    await page.keyboard.press("Escape");
+    await closeDialog();
   });
 
   it("creates a local repository with a README", async () => {
     const parent = startIn("created-here");
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search commands" }).fill("create a new repository");
-    await page.keyboard.press("Enter");
+    await palette("create a new repository", /Create a new repository/);
     await page.getByLabel("Name", { exact: true }).fill("notes");
     await page.getByLabel("Description (optional)").fill("Things to remember");
     await page.getByRole("button", { name: "Create the repository" }).click();
@@ -172,9 +182,7 @@ describe("Perseus using the signed-in account", () => {
 
   it("creates a repository in an organization and publishes its first commit", async () => {
     const parent = startIn("published");
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search commands" }).fill("create a new repository");
-    await page.keyboard.press("Enter");
+    await palette("create a new repository", /Create a new repository/);
     await page.getByRole("tab", { name: "GitHub.com" }).click();
     await page.getByLabel("Owner").selectOption("acme");
     await page.getByLabel("Name", { exact: true }).fill("shipped");
@@ -193,9 +201,7 @@ describe("Perseus using the signed-in account", () => {
 
   it("keeps the repository and says so when the host refuses to create it", async () => {
     const parent = startIn("refused");
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search commands" }).fill("create a new repository");
-    await page.keyboard.press("Enter");
+    await palette("create a new repository", /Create a new repository/);
     await page.getByRole("tab", { name: "GitHub.com" }).click();
     await page.getByLabel("Name", { exact: true }).fill("taken");
     await page.getByRole("button", { name: "Create and publish to GitHub.com" }).click();
@@ -207,15 +213,13 @@ describe("Perseus using the signed-in account", () => {
 
   it("will not publish under a name the host would refuse", async () => {
     startIn("badnames");
-    await page.keyboard.press("Control+k");
-    await page.getByRole("combobox", { name: "Search commands" }).fill("create a new repository");
-    await page.keyboard.press("Enter");
+    await palette("create a new repository", /Create a new repository/);
     await page.getByRole("tab", { name: "GitHub.com" }).click();
     await page.getByLabel("Name", { exact: true }).fill("my project");
     await page.getByText(/no spaces/).waitFor();
     assert.equal(await page.getByRole("button", { name: "Create and publish to GitHub.com" }).isDisabled(), true);
     await page.getByRole("tab", { name: "Local only" }).click();
     assert.equal(await page.getByRole("button", { name: "Create the repository" }).isDisabled(), false, "a local folder may have a space");
-    await page.keyboard.press("Escape");
+    await closeDialog();
   });
 });

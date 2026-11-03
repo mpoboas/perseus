@@ -126,6 +126,8 @@ fn load_dotenv() {
 
 fn main() {
     load_dotenv();
+    // The executable's icon is embedded from here; without this, new icons alone do not rebuild it.
+    println!("cargo:rerun-if-changed=icons");
     tauri_build::try_build(Attributes::new().app_manifest(AppManifest::new().commands(COMMANDS)))
         .expect("failed to run tauri-build");
 }
