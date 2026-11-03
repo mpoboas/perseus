@@ -46,6 +46,44 @@ fn app_info() -> AppInfo {
     }
 }
 
+/// Windows takes the taskbar button's icon from a slot of its own (the "big" icon) that
+/// `set_icon`, which fills the title bar's small one, leaves empty: it would then fall back to the
+/// executable's icon. This fills it with the same image.
+#[cfg(windows)]
+fn set_taskbar_icon(window: &tauri::WebviewWindow, icon: &tauri::image::Image<'_>) {
+    use windows_sys::Win32::UI::WindowsAndMessaging::{
+        CreateIcon, ICON_BIG, SendMessageW, WM_SETICON,
+    };
+
+    let (w, h) = (icon.width() as i32, icon.height() as i32);
+    // Windows wants blue, green, red, alpha.
+    let mut bgra = icon.rgba().to_vec();
+    for px in bgra.as_chunks_mut::<4>().0 {
+        px.swap(0, 2);
+    }
+    // The 1-bit "and" mask: rows are padded to whole 16-bit words; all zero, as the alpha channel does the cutting.
+    let mask = vec![0u8; (w as usize).div_ceil(16) * 2 * h as usize];
+    let Ok(hwnd) = window.hwnd() else {
+        return;
+    };
+    // SAFETY: both buffers outlive the call and `CreateIcon` copies them. The icon handle is kept for
+    // the life of the window on purpose (it is not destroyed), and `hwnd` is this window's own handle.
+    unsafe {
+        let hicon = CreateIcon(
+            std::ptr::null_mut(),
+            w,
+            h,
+            1,
+            32,
+            mask.as_ptr(),
+            bgra.as_ptr(),
+        );
+        if !hicon.is_null() {
+            SendMessageW(hwnd.0 as _, WM_SETICON, ICON_BIG as usize, hicon as isize);
+        }
+    }
+}
+
 pub fn run() {
     let mut builder = tauri::Builder::default();
     // A second launch (a `perseus-app://` link, or the shortcut again) hands over to the running
@@ -98,6 +136,17 @@ pub fn run() {
             ));
             app.manage(RecentStore::load(data_dir.join("recents.json")));
             app.manage(Folders::new(data_dir.join("last-folder.txt")));
+
+            // The window (its title bar and its taskbar button) carries the white mark, which reads
+            // on the dark chrome; the executable's own icon (`icons/icon.ico`) is the colour logo.
+            if let Some(window) = app.get_webview_window("main")
+                && let Ok(icon) =
+                    tauri::image::Image::from_bytes(include_bytes!("../icons/window.png"))
+            {
+                let _ = window.set_icon(icon.clone());
+                #[cfg(windows)]
+                set_taskbar_icon(&window, &icon);
+            }
 
             // Links that open a repository: the ones that started this launch, and later ones.
             let handle = app.handle().clone();
