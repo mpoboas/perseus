@@ -27,7 +27,7 @@ and `perseus-app://` links. It is ahead on cost, privacy and weight.
 
 It is **still not at parity**. What is missing is mostly depth and polish rather than whole
 areas: **workspaces** (multi-repo), **Bitbucket and Azure DevOps**, in-app **pull request
-review**, **per-line conflict picks**, **GPG signing**, **customizable shortcuts**, an
+review**, **per-line conflict picks**, **GPG signing**, an
 **integrated terminal**, AI helpers, and a signed, auto-updating installer. Section 3 ranks what
 is left.
 
@@ -186,8 +186,8 @@ was tested, not that it matches GitKraken's polish.
 | Feature | GitKraken | Perseus |
 |---|---|---|
 | Command palette (Ctrl+P: checkout, branch, search, stash, patch…) | Free | ✅ `Ctrl+K`: actions, branches, profiles |
-| Customizable keyboard shortcuts | Free | ❌ fixed; `?` lists them |
-| Themes, UI zoom, preferences screens | Free | 🟡 light / dark / follow system and a full Settings page modelled on GitKraken's (General, Profiles, Integrations, UI Customization, Activity log, repo-specific); no zoom, one theme pair |
+| Customizable keyboard shortcuts | Free | ✅ Settings → Keyboard shortcuts: a recorder, conflict check, reset; `?` lists them |
+| Themes, UI zoom, preferences screens | Free | ✅ light / dark / follow system in two palettes (Slate, Indigo), zoom 50–200%, and a full Settings page modelled on GitKraken's (General, Profiles, Integrations, UI Customization, Keyboard shortcuts, Activity log, repo-specific) |
 | Integrated terminal | Public repos free | ❌ |
 | Right-click context menus | Free | ✅ graph, sidebar, files; commit and branch menus follow GitKraken's grouping, with a Reset flyout |
 | Hover/drag feedback and confirm dialogs | Free | ✅ |
@@ -238,7 +238,7 @@ highlighting for languages beyond the built-in list.
 9. **GPG signing**.
 
 **Tier 3: polish and reach**
-10. Customizable shortcuts, zoom, more preferences, accessibility audit, localisation.
+10. ~~Customizable shortcuts, zoom, more preferences~~ done; accessibility audit done apart from a screen-reader pass; localisation started (Portuguese).
 11. Code-signed installers, auto-update, macOS and Linux hands-on verification (owner-only items
     are listed in `docs/releasing.md`).
 12. An integrated terminal. (Deep links, repo maintenance, forks, favorites and tab sets are done.)

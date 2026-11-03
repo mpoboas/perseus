@@ -10,8 +10,8 @@ testing. Sizes are rough focused-work estimates for one developer: **S** 1-2 day
 ## Status (re-checked 2026-11-02 against [gitkraken-comparison.md](gitkraken-comparison.md))
 
 Phases 0-14 are built and tested, apart from the items under "Still missing" below; Phase 15 is
-built as far as it can be without the owner. The comparison counts 74 of its 112 rows as done,
-16 partial and 22 missing. Decisions taken by default while the owner was away are listed so they
+built as far as it can be without the owner. The comparison counts 76 of its 112 rows as done,
+15 partial and 21 missing. Decisions taken by default while the owner was away are listed so they
 can be revisited.
 
 | Phase | State | Notes |
@@ -24,8 +24,8 @@ can be revisited.
 | 11 Conflicts and history editing | Done except the editor's depth | Conflict resolver, interactive rebase, conflict preview (toolbar button, which now also merges into main), **cherry-pick of several commits**. Not done: per-line picks with a live output pane, external merge tools, "squash selected commits" shortcut, revert ranges |
 | 12 Hosting | GitHub and GitLab | Pull/merge requests, issues, CI state. Not done: in-app review, PR filters/saved views, Bitbucket, Azure DevOps, Jira/Trello, and live testing against real accounts (unit tests only; OAuth sign-in for GitHub and GitLab was verified live) |
 | 13 Identity and signing | Done except GPG | Askpass prompts for git and ssh, SSH signing + verification badges, key generation, profile rules and pinning, skip hooks. Not done: GPG, uploading a generated public key to GitHub/GitLab |
-| 14 Workflow extras | Partly | Submodules (incl. add), worktrees, Git LFS (detect/track), large-file warning, preferences, activity log, **Gitflow** (no support branches or bugfix kind), **auto-fetch**, command palette, **repository maintenance** (gc, integrity check, commit graph), **forking** on GitHub and GitLab. **Deferred on purpose:** integrated terminal, AI helpers. Not done: workspaces, customizable shortcuts, zoom, LFS locks, worktree graph indicator |
-| 15 Release engineering | Partly | README, user guide, threat model, local error log, per-OS bundle matrix in CI. **Owner-only (not done):** code-signing certificates, notarization, updater signing key and update hosting, first public release, macOS/Linux hands-on verification, formal accessibility audit, i18n |
+| 14 Workflow extras | Partly | Submodules (incl. add), worktrees, Git LFS (detect/track), large-file warning, preferences, activity log, **Gitflow** (no support branches or bugfix kind), **auto-fetch**, command palette, **repository maintenance** (gc, integrity check, commit graph), **forking** on GitHub and GitLab. **Deferred on purpose:** integrated terminal, AI helpers. **Customizable shortcuts**, **zoom** and a second palette are done. Not done: workspaces, LFS locks, worktree graph indicator |
+| 15 Release engineering | Partly | README, user guide, threat model, local error log, per-OS bundle matrix in CI. **Owner-only (not done):** code-signing certificates, notarization, updater signing key and update hosting, first public release, macOS/Linux hands-on verification, formal accessibility audit with real assistive technology. Done since: contrast audit and fixes, screen-reader list for the graph, shortcut customization, zoom, localisation groundwork with Portuguese (`docs/accessibility.md`, `docs/localisation.md`) |
 
 Defaults chosen without the owner (revisable): **MIT license** (now in `LICENSE`); **Windows first**;
 **no telemetry**; no integrated terminal and no AI helpers in scope; signing, notarization, updater
@@ -51,8 +51,8 @@ matrix. Tiers follow the comparison's build order; the size is a rough estimate.
 
 | # | Item | Size |
 |---|---|---|
-| 6 | Customizable shortcuts, UI zoom, more preferences (a second theme pair) | M |
-| 7 | Accessibility audit (keyboard-only use, contrast, a list alternative to the canvas graph) and localisation | L |
+| 6 | ~~Customizable shortcuts, UI zoom, a second theme pair~~ **Done** | M |
+| 7 | Accessibility: **done** are the contrast audit and fixes, the graph as a list for screen readers, the menu key and high-contrast support; **open** is a pass with VoiceOver / NVDA. Localisation: the catalogue, a language setting and Portuguese for the first screens are in; most dialogs are still English | L |
 | 8 | Integrated terminal (largest attack-surface addition; needs owner decision #9) | L |
 | 9 | Optional AI helpers with a bring-your-own key (needs owner decision #4) | L |
 

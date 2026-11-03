@@ -11,9 +11,10 @@ A fast, free and open-source visual Git client. Perseus is built with [Tauri](ht
 (a Rust backend and the operating system's own web view) instead of Electron, so it starts quickly,
 uses little memory and stays responsive on very large histories.
 
-> **Status: pre-1.0.** Everyday Git, conflict resolution, interactive rebase and pull requests for
-> GitHub and GitLab work and are covered by tests. Windows is the only platform that has been
-> exercised so far; see [What is not done yet](#what-is-not-done-yet).
+> **Status: first release (0.1.0).** Everyday Git, conflict resolution, interactive rebase and pull
+> requests for GitHub and GitLab work and are covered by tests. Windows is the best tested platform;
+> macOS builds as an app and a disk image and has been run; Linux builds in CI but has not been run by
+> hand. Installers are not code-signed yet. See [What is not done yet](#what-is-not-done-yet).
 
 ## What it does
 
@@ -38,21 +39,26 @@ uses little memory and stays responsive on very large histories.
   process.
 - **SSH commit signing** and signature badges, with in-app key generation.
 - **Pull requests and issues** for GitHub and GitLab: list, create, check out, merge, with CI status.
-- Light, dark and system themes, a command palette (`Ctrl+K`), and a log of every git command run.
+- **Make it yours**: light, dark and system themes in two palettes, zoom, a command palette (`Ctrl+K`, `⌘K` on
+  a Mac), **every keyboard shortcut rebindable**, and an interface in English or European Portuguese.
+- **Accessible by design**: contrast checked against WCAG AA in every theme, keyboard-only use, the commit graph
+  also offered to screen readers as a list, high-contrast modes ([details](docs/accessibility.md)).
+- A log of every git command run.
 
 No account is required, nothing is sent anywhere except to the Git hosts you talk to, and there is
 no telemetry.
 
 ## Install and run
 
-Prerequisites: [Git](https://git-scm.com), [Node.js](https://nodejs.org) 22+, [pnpm](https://pnpm.io),
-a [Rust](https://rustup.rs) toolchain and, on Windows, the WebView2 runtime (already part of Windows 11).
-On Linux you also need the packages listed in `.github/workflows/ci.yml`.
+Prerequisites: [Git](https://git-scm.com), [Node.js](https://nodejs.org) 22+, [pnpm](https://pnpm.io)
+(`corepack enable pnpm`), a [Rust](https://rustup.rs) toolchain and, on Windows, the WebView2 runtime (already
+part of Windows 11). On macOS you need the Xcode command line tools (`xcode-select --install`). On Linux you
+also need the packages listed in `.github/workflows/ci.yml`.
 
 ```bash
 pnpm install
 pnpm tauri dev            # development build with hot reload
-pnpm tauri build          # installer (Windows: NSIS) in target/release/bundle
+pnpm tauri build          # installer in target/release/bundle (Windows: NSIS; macOS: Perseus.app and a .dmg)
 ```
 
 ## Checks
@@ -72,7 +78,9 @@ pnpm tauri build --no-bundle && pnpm e2e    # end-to-end tests against the relea
 - [OAuth providers](docs/oauth.md)
 - [Performance notes](docs/performance.md)
 - [Roadmap and status](docs/roadmap.md), and the [GitKraken comparison](docs/gitkraken-comparison.md)
+- [Accessibility](docs/accessibility.md) and [localisation](docs/localisation.md)
 - [Branding](docs/branding.md): the logos and how the app icons are made
+- [Changelog](CHANGELOG.md) and [releasing](docs/releasing.md)
 - [Contributing](CONTRIBUTING.md)
 
 ## What is not done yet
@@ -81,9 +89,13 @@ Perseus is not 1.0. The main gaps, all tracked in the [roadmap](docs/roadmap.md)
 
 - **Release engineering that needs the owner**: code-signing certificates, macOS notarization, the
   auto-update signing key and the first public release. Until then installers are unsigned.
-- **macOS and Linux** build in CI but have not been run by hand.
+- **macOS** builds as `Perseus.app` and a `.dmg`, passes the test suite and has been launched; it is signed
+  ad hoc only, so the first launch needs right-click → Open until the app is notarized. **Linux** builds in CI
+  but has not been run by hand.
 - No Bitbucket or Azure DevOps integration; no in-app terminal; no AI helpers (deliberately out of scope).
-- Workspaces, in-app pull request review, GPG signing, customizable shortcuts and UI zoom.
+- Workspaces, in-app pull request review and GPG signing.
+- A screen-reader pass (VoiceOver, NVDA) and the rest of the translation: most dialogs are still English
+  ([accessibility](docs/accessibility.md), [localisation](docs/localisation.md)).
 
 ## License
 

@@ -177,7 +177,7 @@ existing fork gives you that fork.
 
 ## Settings
 
-The gear in the toolbar (`Ctrl+,`, or *Settings…* in the palette) opens Settings as a page of its own, laid out
+The gear in the toolbar (`Ctrl+,`, or `⌘,` on a Mac, or *Settings…* in the palette) opens Settings as a page of its own, laid out
 like GitKraken's preferences: sections on the left, the chosen one on the right, everything saved the moment it
 changes. `Esc` or *Exit Settings* goes back to where you were.
 
@@ -185,8 +185,10 @@ changes. `Esc` or *Exit Settings* goes back to where you were.
   the large-file warning.
 - **Profiles** and **Integrations**: who you commit as and which hosts you are signed in to, with a shortcut to
   manage them.
-- **UI Customization**: theme, toolbar labels, date format, which graph columns show, the ghost branch on hover,
-  the coloured row bands, and profile pictures.
+- **UI Customization**: language, theme (dark, light or follow the system), colours (Slate or Indigo, each with a
+  dark and a light version), zoom, toolbar labels, date format, which graph columns show, the ghost branch on
+  hover, the coloured row bands, and profile pictures.
+- **Keyboard shortcuts**: every shortcut that can move, with a recorder (see below).
 - **Activity log**: every git command Perseus ran, with timing and the first line of any error. Passwords inside
   URLs are replaced by `***`. The log lives in memory only.
 - **Repo-specific** (for the open repository): the profile it always uses, push after each commit, skip hooks by
@@ -200,8 +202,19 @@ party. A setting turns all pictures off.
 
 ## Keyboard shortcuts
 
-Press `?` for the full list. The most useful: `Ctrl+K` palette, `Ctrl+O` open, `Ctrl+F` search,
-`Ctrl+B` sidebar, `F5` refresh, `Ctrl+Enter` commit, `Esc` close the diff.
+Press `?` for the full list. On a Mac `Ctrl` below is `⌘`. The most useful: `Ctrl+K` palette, `Ctrl+O` open,
+`Ctrl+F` search, `Ctrl+B` sidebar, `F5` refresh, `Ctrl+Enter` commit, `Ctrl+=` / `Ctrl+-` / `Ctrl+0` zoom,
+`Esc` close the diff. In the graph, the arrow keys, Page Up/Down and Home/End move between commits, and the
+menu key (or `Shift+F10`) opens the selected commit's context menu.
+
+To change one, open *Settings → Keyboard shortcuts*, press **Change** next to the action and then the keys you
+want. A combination that something else already uses is shown first and only taken when you confirm; a bare
+letter is refused, since it would be typed into text boxes. The ✕ removes a shortcut, the arrow restores its
+default, and *Restore all defaults* undoes everything. Changes apply at once and are remembered.
+
+Perseus can also speak Portuguese (Portugal): *Settings → UI Customization → Language*. Not every message is
+translated yet; see `docs/localisation.md`. For keyboard, screen-reader and contrast details see
+`docs/accessibility.md`.
 
 ## Where your data lives
 
