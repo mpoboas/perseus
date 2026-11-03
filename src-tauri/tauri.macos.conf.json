@@ -1,0 +1,8 @@
+{
+  "bundle": {
+    "icon": [
+      "icons/macos/icon.png",
+      "icons/macos/icon.icns"
+    ]
+  }
+}
