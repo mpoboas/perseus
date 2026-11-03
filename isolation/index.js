@@ -6,6 +6,7 @@
 // Keep ALLOWED in sync with src-tauri/build.rs: a test fails when they differ.
 const ALLOWED = new Set([
   "app_info",
+  "set_zoom",
   "pick_and_open_repo",
   "close_repo",
   "stream_commits",

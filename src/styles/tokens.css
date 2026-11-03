@@ -34,7 +34,7 @@
 
   --text: #e7eaf0;
   --text-dim: #a3abbb;
-  --text-faint: #6c7589;
+  --text-faint: #7d8597;
 
   --accent: #6f8fff;
   --accent-hover: #8aa5ff;
@@ -103,7 +103,7 @@
 
   --text: #191c23;
   --text-dim: #566074;
-  --text-faint: #8791a5;
+  --text-faint: #676f7e;
 
   --accent: #3b5bdb;
   --accent-hover: #2f4bc0;
@@ -111,19 +111,19 @@
   --accent-soft: rgba(59, 91, 219, 0.11);
   --accent-ring: rgba(59, 91, 219, 0.5);
 
-  --success: #1f9d63;
+  --success: #187b4e;
   --success-soft: rgba(31, 157, 99, 0.12);
-  --warn: #b97800;
+  --warn: #956100;
   --warn-soft: rgba(185, 120, 0, 0.12);
-  --danger: #d62f45;
+  --danger: #cb2d42;
   --danger-soft: rgba(214, 47, 69, 0.1);
-  --info: #1c7ed6;
+  --info: #186ebb;
 
-  --st-add: #1f9d63;
-  --st-mod: #b97800;
-  --st-del: #d62f45;
+  --st-add: #187b4e;
+  --st-mod: #956100;
+  --st-del: #cb2d42;
   --st-ren: #3b5bdb;
-  --st-conflict: #d62f45;
+  --st-conflict: #cb2d42;
   --st-other: #566074;
 
   --diff-add-bg: rgba(31, 157, 99, 0.12);
@@ -139,11 +139,11 @@
   --graph-hover: rgba(25, 32, 56, 0.04);
   --graph-selected: rgba(59, 91, 219, 0.14);
   --graph-selected-edge: #3b5bdb;
-  --graph-wip: #8791a5;
-  --ref-head: #1f9d63;
+  --graph-wip: #676f7e;
+  --ref-head: #187b4e;
   --ref-branch: #3b5bdb;
   --ref-remote: #8e4fb8;
-  --ref-tag: #b97800;
+  --ref-tag: #a26900;
   --ref-text-on: #ffffff;
 
   --lane-0: #3b5bdb;
@@ -151,9 +151,75 @@
   --lane-2: #d6334f;
   --lane-3: #12968f;
   --lane-4: #2f9e44;
-  --lane-5: #c99a06;
+  --lane-5: #aa8205;
   --lane-6: #8e4fb8;
   --lane-7: #d6336c;
   --lane-8: #8a5a33;
   --lane-9: #5f6b82;
+}
+
+/*
+ * Second palette: the logo's indigo. It only restates what differs from the slate sets above, so the
+ * status, diff and lane colours stay shared. `src/lib/contrast.test.ts` checks every theme's text and
+ * graphics against WCAG AA.
+ */
+:root[data-palette="indigo"][data-theme="dark"] {
+  --bg: #0a0c24;
+  --surface-1: #101336;
+  --surface-2: #161a44;
+  --surface-3: #20265a;
+  --surface-inset: #0c0e2b;
+  --border: #252b62;
+  --border-strong: #38418a;
+
+  --text: #eceeff;
+  --text-dim: #b4b9e6;
+  --text-faint: #8e96cf;
+
+  --accent: #8f9dff;
+  --accent-hover: #aab5ff;
+  --accent-fg: #0a0c26;
+  --accent-soft: rgba(143, 157, 255, 0.18);
+  --accent-ring: rgba(143, 157, 255, 0.6);
+
+  --info: #7db4f5;
+  --st-ren: #8f9dff;
+  --diff-hunk-bg: rgba(143, 157, 255, 0.12);
+
+  --scrim: rgba(3, 4, 16, 0.66);
+  --graph-selected: rgba(143, 157, 255, 0.22);
+  --graph-selected-edge: #8f9dff;
+  --graph-wip: #b4b9e6;
+  --ref-branch: #8f9dff;
+  --lane-0: #8f9dff;
+}
+
+:root[data-palette="indigo"][data-theme="light"] {
+  --bg: #f0f1fb;
+  --surface-1: #ffffff;
+  --surface-2: #eceefa;
+  --surface-3: #dfe2f5;
+  --surface-inset: #f6f7fd;
+  --border: #d9dcf0;
+  --border-strong: #bfc4e6;
+
+  --text: #14173a;
+  --text-dim: #444a7e;
+  --text-faint: #5f669c;
+
+  --accent: #4348d6;
+  --accent-hover: #3438b8;
+  --accent-fg: #ffffff;
+  --accent-soft: rgba(67, 72, 214, 0.11);
+  --accent-ring: rgba(67, 72, 214, 0.5);
+
+  --st-ren: #4348d6;
+  --diff-hunk-bg: rgba(67, 72, 214, 0.08);
+
+  --scrim: rgba(20, 23, 58, 0.42);
+  --graph-selected: rgba(67, 72, 214, 0.14);
+  --graph-selected-edge: #4348d6;
+  --graph-wip: #5f669c;
+  --ref-branch: #4348d6;
+  --lane-0: #4348d6;
 }

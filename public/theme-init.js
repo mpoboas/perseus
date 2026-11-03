@@ -6,6 +6,7 @@
     var dark = window.matchMedia("(prefers-color-scheme: dark)").matches;
     var theme = pref === "light" || pref === "dark" ? pref : dark ? "dark" : "light";
     document.documentElement.dataset.theme = theme;
+    document.documentElement.dataset.palette = localStorage.getItem("perseus.palette") === "indigo" ? "indigo" : "slate";
   } catch (e) {
     document.documentElement.dataset.theme = "dark";
   }

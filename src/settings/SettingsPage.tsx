@@ -1,5 +1,5 @@
 import { type ComponentType, useEffect, useState } from "react";
-import { ArrowLeft, GitCommitHorizontal, HardDrive, Palette, Plug, ScrollText, Settings, UserCog, Users } from "lucide-react";
+import { ArrowLeft, GitCommitHorizontal, HardDrive, Keyboard, Palette, Plug, ScrollText, Settings, UserCog, Users } from "lucide-react";
 import type { ProfilesSnapshot, RepoInfo } from "../ipc";
 import type { ThemePref } from "../lib/theme";
 import { Avatar } from "../ui";
@@ -14,8 +14,9 @@ import {
   NoRepository,
   ProfilesPage,
 } from "./pages";
+import { ShortcutsPage } from "./ShortcutsPage";
 
-export type PageId = "general" | "profiles" | "integrations" | "appearance" | "activity" | "identity" | "commit" | "lfs";
+export type PageId = "general" | "profiles" | "integrations" | "appearance" | "shortcuts" | "activity" | "identity" | "commit" | "lfs";
 
 type IconType = ComponentType<{ size?: number; strokeWidth?: number }>;
 
@@ -24,6 +25,7 @@ const GLOBAL: { id: PageId; title: string; icon: IconType }[] = [
   { id: "profiles", title: "Profiles", icon: Users },
   { id: "integrations", title: "Integrations", icon: Plug },
   { id: "appearance", title: "UI Customization", icon: Palette },
+  { id: "shortcuts", title: "Keyboard shortcuts", icon: Keyboard },
   { id: "activity", title: "Activity log", icon: ScrollText },
 ];
 
@@ -91,6 +93,9 @@ export function SettingsPage({ repo, profiles, theme, onTheme, initialPage = "ge
         break;
       case "appearance":
         body = <AppearancePage theme={theme} onTheme={onTheme} />;
+        break;
+      case "shortcuts":
+        body = <ShortcutsPage />;
         break;
       case "activity":
         body = <ActivityPage />;

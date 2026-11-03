@@ -273,3 +273,22 @@
     text-align: left;
   }
 }
+
+/* Keyboard shortcuts page */
+.sc-row {
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sc-row .shortcut {
+  margin: 0;
+  padding: 0;
+}
+
+.sc-recording {
+  color: var(--accent);
+  font-weight: 600;
+  padding: 3px 10px;
+  border: 1px dashed var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-soft);
+}

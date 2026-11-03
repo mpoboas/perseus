@@ -2,6 +2,7 @@ import { type ComponentType, type ReactNode, forwardRef, useEffect, useId, useSt
 import { Loader2 } from "lucide-react";
 import { avatarUrl, subscribeAvatars } from "../lib/avatars";
 import { avatarColor, initials } from "../lib/format";
+import { bindingText, displayKeys } from "../lib/shortcuts";
 import { Tooltip } from "./Tooltip";
 
 type IconType = ComponentType<{ size?: number; strokeWidth?: number; className?: string }>;
@@ -18,12 +19,12 @@ export function Kbd({ children }: { children: ReactNode }) {
   return <kbd className="kbd">{children}</kbd>;
 }
 
-/** "Ctrl+Shift+K" → individual key caps. */
+/** A binding such as "Mod+Shift+K" as key caps, in this system's own words (⌘ ⇧ K on a Mac, Ctrl Shift K elsewhere). */
 export function Shortcut({ keys }: { keys: string }) {
   return (
-    <span className="shortcut" aria-label={keys}>
-      {keys.split("+").map((k) => (
-        <Kbd key={k}>{k}</Kbd>
+    <span className="shortcut" aria-label={bindingText(keys)}>
+      {displayKeys(keys).map((k, i) => (
+        <Kbd key={i}>{k}</Kbd>
       ))}
     </span>
   );

@@ -38,6 +38,21 @@ struct AppInfo {
     version: &'static str,
 }
 
+/// Page zoom, like a browser's: the web view lays the page out again at this scale, so the canvas
+/// graph stays sharp. The webview sends what the user chose (`UiZoom` in Settings); the range is
+/// checked here too, so a compromised page cannot ask for an unusable window.
+#[tauri::command]
+fn set_zoom(window: tauri::WebviewWindow, factor: f64) -> error::Result<()> {
+    if !(0.5..=2.0).contains(&factor) {
+        return Err(error::AppError::Internal(format!(
+            "zoom {factor} is outside 50% to 200%"
+        )));
+    }
+    window
+        .set_zoom(factor)
+        .map_err(|e| error::AppError::Internal(e.to_string()))
+}
+
 #[tauri::command]
 fn app_info() -> AppInfo {
     AppInfo {
@@ -170,6 +185,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_info,
+            set_zoom,
             channels::pick_and_open_repo,
             channels::close_repo,
             channels::stream_commits,

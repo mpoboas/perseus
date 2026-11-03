@@ -4,6 +4,7 @@ use tauri_build::{AppManifest, Attributes};
 // explicitly (generates an `allow-<command>` permission per entry).
 const COMMANDS: &[&str] = &[
     "app_info",
+    "set_zoom",
     "pick_and_open_repo",
     "close_repo",
     "stream_commits",

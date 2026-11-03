@@ -3,6 +3,7 @@ import { Archive, CheckCircle2, TriangleAlert, ChevronDown, ChevronRight, GitCom
 import { FileRow } from "./FileRow";
 import type { DiffTarget, LargeFile, LineStats, RepoStatus, StatusEntry, WorkSide } from "./ipc";
 import { usePref } from "./lib/prefs";
+import { matches, useBindings } from "./lib/shortcuts";
 import { Avatar, Badge, Button, EmptyState, IconButton, Shortcut } from "./ui";
 
 interface Props {
@@ -81,6 +82,7 @@ export function ChangesPanel({
   largeFiles,
   onTrackLarge,
 }: Props) {
+  const commitKeys = useBindings().commit;
   const [summary, setSummary] = useState("");
   const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
@@ -196,7 +198,7 @@ export function ChangesPanel({
   };
 
   const onKey = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+    if (commitKeys.some((b) => matches(e.nativeEvent, b))) {
       e.preventDefault();
       void submit();
     }
@@ -428,7 +430,7 @@ export function ChangesPanel({
         </div>
         <Button type="submit" variant="primary" disabled={!canCommit} className="commit-btn">
           {commitLabel}
-          <Shortcut keys="Ctrl+Enter" />
+          {commitKeys[0] && <Shortcut keys={commitKeys[0]} />}
         </Button>
         {conflicted.length > 0 && <p className="muted small">Resolve the conflicts before committing.</p>}
       </form>

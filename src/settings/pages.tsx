@@ -3,7 +3,8 @@ import { type LfsStatus, type LogEntry, type Profile, type ProfilesSnapshot, typ
 import { AVATAR_PREF, GRAVATAR_PREF } from "../lib/avatars";
 import { absoluteTime, relativeTime } from "../lib/format";
 import { usePref } from "../lib/prefs";
-import type { ThemePref } from "../lib/theme";
+import { PALETTES, type ThemePref, usePalette } from "../lib/theme";
+import { ZOOM_DEFAULT, ZOOM_PREF, ZOOM_STEPS, sanitizeZoom } from "../lib/zoom";
 import { Badge, Button, EmptyState } from "../ui";
 import { CheckRow, NumberRow, Row, Section, SelectRow, TextRow } from "./fields";
 import { KEYS, LARGE_FILE_DEFAULT, pinnedProfileKey, repoKey } from "./keys";
@@ -234,6 +235,8 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
   const [diffWords, setDiffWords] = usePref<boolean>(KEYS.diffWords, true);
   const [pictures, setPictures] = usePref<boolean>(AVATAR_PREF, true);
   const [gravatar, setGravatar] = usePref<boolean>(GRAVATAR_PREF, false);
+  const [palette, setPalette] = usePalette();
+  const [zoomPref, setZoomPref] = usePref<number>(ZOOM_PREF, ZOOM_DEFAULT);
   const sample = Math.floor(Date.now() / 1000) - 26 * 86400;
 
   return (
@@ -248,6 +251,20 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
             { value: "light", label: "Light" },
           ]}
           onChange={onTheme}
+        />
+        <SelectRow
+          label="Colours"
+          value={palette}
+          options={PALETTES.map((p) => ({ value: p.id, label: p.label }))}
+          hint="Slate is neutral grey-blue; Indigo uses the logo's colours. Each has a dark and a light version, chosen by Theme."
+          onChange={setPalette}
+        />
+        <SelectRow
+          label="Zoom"
+          value={String(sanitizeZoom(zoomPref))}
+          options={ZOOM_STEPS.map((z) => ({ value: String(z), label: `${z}%` }))}
+          hint="Makes everything bigger or smaller, like a browser's zoom. The shortcuts are listed under Keyboard shortcuts."
+          onChange={(v) => setZoomPref(Number(v))}
         />
         <CheckRow label="Show toolbar icon labels" checked={labels} onChange={setLabels} />
       </Section>

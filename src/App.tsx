@@ -32,6 +32,8 @@ import {
   Link2,
   Wrench,
   GitFork,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import { type Endpoint, type GraphAction, type Head, dropActions, menuActions } from "./actions";
 import { ChangesPanel } from "./ChangesPanel";
@@ -96,6 +98,7 @@ import {
   interactiveRebase,
   openIn,
   predictMerge,
+  setZoom,
   predictPick,
   resolveConflict,
   commitDetail,
@@ -147,6 +150,8 @@ import {
   watchRepo,
 } from "./ipc";
 import { readPref, usePref, writePref } from "./lib/prefs";
+import { actionFor, undoHint, useBindings } from "./lib/shortcuts";
+import { ZOOM_DEFAULT, ZOOM_PREF, sanitizeZoom, stepZoom } from "./lib/zoom";
 import { useThemePref } from "./lib/theme";
 import { AskpassDialog } from "./AskpassDialog";
 import { ExtrasSections } from "./ExtrasSections";
@@ -298,6 +303,13 @@ function App() {
 
   const [pullMode, setPullMode] = usePref<PullMode>("git.pullMode", "ff_only");
   const [sidebarOpen, setSidebarOpen] = usePref("layout.sidebarOpen", true);
+  const keys = useBindings();
+  const [zoomPref, setZoomPref] = usePref<number>(ZOOM_PREF, ZOOM_DEFAULT);
+  const zoom = sanitizeZoom(zoomPref);
+  useEffect(() => {
+    // The browser pane (`pnpm dev`) has no backend to ask; there the call simply fails and the page stays at 100%.
+    setZoom(zoom / 100).catch(() => undefined);
+  }, [zoom]);
   const [sidebarW, setSidebarW] = usePref("layout.sidebarW", 248);
   const [rightW, setRightW] = usePref("layout.rightW", 380);
   const [diffH, setDiffH] = usePref("layout.diffH", 320);
@@ -886,7 +898,7 @@ function App() {
         description: untracked
           ? `Deletes ${what} from disk. These files are not tracked by git, so nothing can bring them back.`
           : `Restores ${what} to the last committed version, dropping staged and unstaged edits.`,
-        warning: untracked ? "This cannot be undone." : "Undo (Ctrl+Z) can bring this back until you close Perseus.",
+        warning: untracked ? "This cannot be undone." : `${undoHint()} can bring this back until you close Perseus.`,
         confirmLabel: "Discard",
         danger: true,
         run: { type: "action", action: { action: "discard", paths, untracked } },
@@ -1233,7 +1245,7 @@ function App() {
           id: "discard-parts",
           title: `Discard ${what} in ${path}`,
           description: `Removes ${what} from the file on disk, restoring the staged (or committed) version of those lines.`,
-          warning: "Undo (Ctrl+Z) can bring this back until you close Perseus.",
+          warning: `${undoHint()} can bring this back until you close Perseus.`,
           confirmLabel: "Discard",
           danger: true,
           run: { type: "action", action },
@@ -1300,7 +1312,7 @@ function App() {
           id: "stash-drop",
           title: `Drop “${label}”`,
           description: "Removes this stash from the list.",
-          warning: "Undo (Ctrl+Z) brings it back until you close Perseus; after that git fsck can sometimes recover it.",
+          warning: `${undoHint()} brings it back until you close Perseus; after that git fsck can sometimes recover it.`,
           confirmLabel: "Drop",
           danger: true,
           run: { type: "action", action: { action: "stash_drop", index: entry.index } },
@@ -1817,41 +1829,64 @@ function App() {
   const overlayOpen = paletteOpen || shortcutsOpen || settingsOpen || profilesOpen || newBranchOpen || !!confirm || !!menu;
   const keyHandler = useRef<(e: KeyboardEvent) => void>(() => undefined);
   keyHandler.current = (e) => {
-    const mod = e.ctrlKey || e.metaKey;
+    // The shortcut recorder in Settings is listening for the keys it is about to bind.
+    if (document.querySelector("[data-recording-shortcut]")) return;
     const target = e.target as HTMLElement | null;
     const typing = !!target && (/^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName) || target.isContentEditable);
-    const key = e.key.toLowerCase();
-    if (mod && (key === "k" || key === "p")) {
-      e.preventDefault();
-      setPaletteOpen((o) => !o);
-    } else if (mod && key === "o") {
-      e.preventDefault();
-      if (!busy) void open();
-    } else if (mod && key === "f" && repo) {
-      e.preventDefault();
-      setSearchOpen(true);
-    } else if (mod && key === "z" && repo && !typing) {
-      e.preventDefault();
-      void stepHistory(e.shiftKey ? "redo" : "undo");
-    } else if (mod && key === "y" && repo && !typing) {
-      e.preventDefault();
-      void stepHistory("redo");
-    } else if (mod && e.key === ",") {
-      e.preventDefault();
-      if (settingsOpen) setSettingsOpen(false);
-      else openSettings();
-    } else if (mod && key === "b" && repo) {
-      e.preventDefault();
-      setSidebarOpen((o) => !o);
-    } else if (e.key === "F5" || (mod && key === "r")) {
-      e.preventDefault();
-      void refresh("all");
-      void reloadRecents();
-    } else if (e.key === "Escape" && diff && !overlayOpen) {
-      setDiff(null);
-    } else if (e.key === "?" && !typing && !overlayOpen) {
-      setShortcutsOpen(true);
+    const action = actionFor(e, keys, typing);
+    if (action === "commit") return; // the message box handles this one itself
+    if (action === "undo" || action === "redo") {
+      // Inside a text box Ctrl+Z undoes the typing, not the last Git action.
+      if (!repo || typing) return;
+    } else if (action === "search" || action === "sidebar") {
+      if (!repo) return;
+    } else if (action === "help") {
+      if (overlayOpen) return;
     }
+    switch (action) {
+      case "palette":
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      case "open":
+        e.preventDefault();
+        if (!busy) void open();
+        return;
+      case "search":
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      case "undo":
+      case "redo":
+        e.preventDefault();
+        void stepHistory(action);
+        return;
+      case "settings":
+        e.preventDefault();
+        if (settingsOpen) setSettingsOpen(false);
+        else openSettings();
+        return;
+      case "sidebar":
+        e.preventDefault();
+        setSidebarOpen((o) => !o);
+        return;
+      case "refresh":
+        e.preventDefault();
+        void refresh("all");
+        void reloadRecents();
+        return;
+      case "help":
+        e.preventDefault();
+        setShortcutsOpen(true);
+        return;
+      case "zoomIn":
+      case "zoomOut":
+      case "zoomReset":
+        e.preventDefault();
+        setZoomPref(action === "zoomReset" ? ZOOM_DEFAULT : stepZoom(zoom, action === "zoomIn" ? 1 : -1));
+        return;
+    }
+    if (e.key === "Escape" && diff && !overlayOpen) setDiff(null);
   };
   useEffect(() => {
     const h = (e: KeyboardEvent) => keyHandler.current(e);
@@ -1866,7 +1901,7 @@ function App() {
     const add = (i: PaletteItem) => out.push(i);
     const publish = !!status?.branch && !status.upstream;
 
-    add({ id: "open", title: "Open repository…", group: "Actions", icon: FolderOpen, shortcut: "Ctrl+O", run: () => void open() });
+    add({ id: "open", title: "Open repository…", group: "Actions", icon: FolderOpen, shortcut: keys.open[0], run: () => void open() });
     add({ id: "clone", title: "Clone a repository…", group: "Actions", icon: Download, run: () => setCloneOpen(true) });
     add({ id: "init", title: "Create a new repository…", group: "Actions", icon: FolderPlus, run: () => setCreateOpen(true) });
     if (repo) {
@@ -1882,7 +1917,7 @@ function App() {
           run: () => void gitOp(publish ? "Publishing…" : "Pushing…", { op: "push", set_upstream: publish }, { done: publish ? "Published" : "Pushed", fail: "Push failed" }),
         });
       if (hosting) add({ id: "hosting-refresh", title: "Refresh pull requests and issues", group: "Actions", icon: History, run: () => repoRef.current && void loadHosting(repoRef.current) });
-      add({ id: "search", title: "Search commits…", group: "Actions", icon: Search, shortcut: "Ctrl+F", run: () => setSearchOpen(true) });
+      add({ id: "search", title: "Search commits…", group: "Actions", icon: Search, shortcut: keys.search[0], run: () => setSearchOpen(true) });
       add({ id: "stash", title: "Stash changes…", group: "Actions", icon: Archive, run: () => setStashOpen(true) });
       add({ id: "patch-export", title: "Export unstaged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: false }) });
       add({ id: "patch-export-staged", title: "Export staged changes as a patch…", group: "Actions", icon: Archive, run: () => void doExportPatch({ source: "worktree", staged: true }) });
@@ -1900,11 +1935,11 @@ function App() {
         add({ id: "pull-rebase", title: "Pull (rebase)", group: "Actions", icon: ArrowDownToLine, run: () => void gitOp("Pulling…", { op: "pull", mode: "rebase" }, { done: "Pulled", fail: "Pull failed" }) });
       }
       if (cancellable) add({ id: "cancel", title: "Cancel the running operation", group: "Actions", icon: X, run: cancelRunning });
-      add({ id: "undo", title: "Undo", subtitle: lastOf(undoStack(repo.path).undo)?.label, group: "Actions", icon: Undo2, shortcut: "Ctrl+Z", run: () => void stepHistory("undo") });
-      add({ id: "redo", title: "Redo", subtitle: lastOf(undoStack(repo.path).redo)?.label, group: "Actions", icon: Redo2, shortcut: "Ctrl+Shift+Z", run: () => void stepHistory("redo") });
-      add({ id: "refresh", title: "Refresh", group: "Actions", icon: History, shortcut: "F5", run: () => void refresh("all") });
+      add({ id: "undo", title: "Undo", subtitle: lastOf(undoStack(repo.path).undo)?.label, group: "Actions", icon: Undo2, shortcut: keys.undo[0], run: () => void stepHistory("undo") });
+      add({ id: "redo", title: "Redo", subtitle: lastOf(undoStack(repo.path).redo)?.label, group: "Actions", icon: Redo2, shortcut: keys.redo[0], run: () => void stepHistory("redo") });
+      add({ id: "refresh", title: "Refresh", group: "Actions", icon: History, shortcut: keys.refresh[0], run: () => void refresh("all") });
       add({ id: "newbranch", title: "New branch…", group: "Actions", icon: GitBranchPlus, run: () => setNewBranchOpen(true) });
-      add({ id: "sidebar", title: sidebarOpen ? "Hide sidebar" : "Show sidebar", group: "Actions", icon: PanelLeft, shortcut: "Ctrl+B", run: () => setSidebarOpen((o) => !o) });
+      add({ id: "sidebar", title: sidebarOpen ? "Hide sidebar" : "Show sidebar", group: "Actions", icon: PanelLeft, shortcut: keys.sidebar[0], run: () => setSidebarOpen((o) => !o) });
       add({ id: "open-folder", title: "Show in file manager", group: "Actions", icon: FolderOpen, run: () => void doOpenIn("folder") });
       add({ id: "open-terminal", title: "Open in terminal", group: "Actions", icon: Terminal, run: () => void doOpenIn("terminal") });
       add({ id: "open-editor", title: "Open in editor (VS Code)", group: "Actions", icon: Code2, run: () => void doOpenIn("editor") });
@@ -1932,9 +1967,12 @@ function App() {
     add({ id: "theme-light", title: "Theme: Light", group: "Actions", icon: Sun, run: () => setTheme("light") });
     add({ id: "theme-dark", title: "Theme: Dark", group: "Actions", icon: Moon, run: () => setTheme("dark") });
     add({ id: "theme-system", title: "Theme: Follow system", group: "Actions", icon: Sun, run: () => setTheme("system") });
+    add({ id: "zoom-in", title: "Zoom in", group: "Actions", icon: ZoomIn, shortcut: keys.zoomIn[0], run: () => setZoomPref(stepZoom(zoom, 1)) });
+    add({ id: "zoom-out", title: "Zoom out", group: "Actions", icon: ZoomOut, shortcut: keys.zoomOut[0], run: () => setZoomPref(stepZoom(zoom, -1)) });
+    add({ id: "zoom-reset", title: "Actual size", group: "Actions", icon: ZoomIn, shortcut: keys.zoomReset[0], run: () => setZoomPref(ZOOM_DEFAULT) });
     add({ id: "profiles", title: "Manage profiles…", group: "Actions", icon: Users, run: () => setProfilesOpen(true) });
-    add({ id: "shortcuts", title: "Keyboard shortcuts", group: "Actions", icon: Keyboard, shortcut: "?", run: () => setShortcutsOpen(true) });
-    add({ id: "settings", title: "Settings…", group: "Actions", icon: Settings, shortcut: "Ctrl+,", run: () => openSettings() });
+    add({ id: "shortcuts", title: "Keyboard shortcuts", group: "Actions", icon: Keyboard, shortcut: keys.help[0], run: () => setShortcutsOpen(true) });
+    add({ id: "settings", title: "Settings…", group: "Actions", icon: Settings, shortcut: keys.settings[0], run: () => openSettings() });
     add({ id: "activity", title: "Activity log", group: "Actions", icon: History, run: () => openSettings("activity") });
 
     for (const r of refs) {
@@ -1964,7 +2002,7 @@ function App() {
     return out;
     // The closures above read current state; the palette is rebuilt whenever any of it changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [repo, status, refs, profiles, recents, sidebarOpen, busy, cancellable]);
+  }, [repo, status, refs, profiles, recents, sidebarOpen, busy, cancellable, keys, zoom]);
 
   const menuItems = (actions: GraphAction[]): MenuItem[] => layoutMenu(actions, status?.branch ?? null);
 
@@ -2359,7 +2397,13 @@ function App() {
       {paletteOpen && (
         <CommandPalette items={paletteItems} onClose={() => setPaletteOpen(false)} onGotoCommit={gotoCommit} />
       )}
-      {shortcutsOpen && <ShortcutsDialog onClose={() => setShortcutsOpen(false)} />}
+      {shortcutsOpen && <ShortcutsDialog
+          onClose={() => setShortcutsOpen(false)}
+          onCustomize={() => {
+            setShortcutsOpen(false);
+            openSettings("shortcuts");
+          }}
+        />}
       {renaming &&
         (() => {
           const target = recents.find((r) => r.path === renaming);

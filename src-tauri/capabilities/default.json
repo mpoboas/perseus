@@ -6,6 +6,7 @@
   "permissions": [
     "core:default",
     "allow-app-info",
+    "allow-set-zoom",
     "allow-pick-and-open-repo",
     "allow-close-repo",
     "allow-stream-commits",

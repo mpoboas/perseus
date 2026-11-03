@@ -35,6 +35,7 @@ import { ConflictButton } from "./ConflictButton";
 import type { ProfilesSnapshot, PullMode, RecentRepo, RefInfo, RepoInfo, RepoStatus } from "./ipc";
 import { undoName } from "./lib/format";
 import { repoLabel, splitRecents } from "./lib/repos";
+import { bindingText, useBindings } from "./lib/shortcuts";
 import type { ThemePref } from "./lib/theme";
 import { Avatar, Button, IconButton, MenuButton, type MenuItem, Shortcut, Tooltip } from "./ui";
 import { Picker } from "./ui/Picker";
@@ -98,6 +99,7 @@ const THEME_ITEMS: { id: ThemePref; label: string; icon: typeof Sun }[] = [
 ];
 
 export function Toolbar(p: Props) {
+  const keys = useBindings();
   const { repo, status, busy } = p;
   const publish = !!status?.branch && !status.upstream;
   const activeProfile = p.profiles?.profiles.find((x) => x.id === p.profiles?.active) ?? null;
@@ -133,7 +135,7 @@ export function Toolbar(p: Props) {
           <IconButton
             icon={PanelLeft}
             label={p.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
-            shortcut="Ctrl+B"
+            shortcut={keys.sidebar[0]}
             active={p.sidebarOpen}
             onClick={p.onToggleSidebar}
           />
@@ -208,7 +210,7 @@ export function Toolbar(p: Props) {
                     <IconButton
                       icon={FolderOpen}
                       label="Open a repository…"
-                      shortcut="Ctrl+O"
+                      shortcut={keys.open[0]}
                       onClick={() => {
                         close();
                         p.onOpen();
@@ -312,12 +314,12 @@ export function Toolbar(p: Props) {
 
       {repo && (
         <div className="tb-group tb-actions" role="group" aria-label="Remote actions">
-          <Tooltip label={p.undoLabel ? `Undo ${undoName(p.undoLabel)} (Ctrl+Z)` : "Nothing to undo"}>
+          <Tooltip label={p.undoLabel ? `Undo ${undoName(p.undoLabel)}${keys.undo[0] ? ` (${bindingText(keys.undo[0])})` : ""}` : "Nothing to undo"}>
             <Button icon={Undo2} disabled={busy || !p.undoLabel} onClick={p.onUndo}>
               Undo
             </Button>
           </Tooltip>
-          <Tooltip label={p.redoLabel ? `Redo ${undoName(p.redoLabel)} (Ctrl+Shift+Z)` : "Nothing to redo"}>
+          <Tooltip label={p.redoLabel ? `Redo ${undoName(p.redoLabel)}${keys.redo[0] ? ` (${bindingText(keys.redo[0])})` : ""}` : "Nothing to redo"}>
             <Button icon={Redo2} disabled={busy || !p.redoLabel} onClick={p.onRedo}>
               Redo
             </Button>
@@ -407,7 +409,7 @@ export function Toolbar(p: Props) {
         <button className="search-btn" onClick={p.onPalette} aria-label="Open command palette">
           <Search size={14} />
           <span>Search commands</span>
-          <Shortcut keys="Ctrl+K" />
+          {keys.palette[0] && <Shortcut keys={keys.palette[0]} />}
         </button>
 
         <MenuButton
@@ -441,8 +443,8 @@ export function Toolbar(p: Props) {
             </Tooltip>
           )}
         />
-        <IconButton icon={CircleHelp} label="Keyboard shortcuts" shortcut="?" onClick={p.onShortcuts} />
-        <IconButton icon={Settings} label="Settings" shortcut="Ctrl+," onClick={p.onPreferences} />
+        <IconButton icon={CircleHelp} label="Keyboard shortcuts" shortcut={keys.help[0]} onClick={p.onShortcuts} />
+        <IconButton icon={Settings} label="Settings" shortcut={keys.settings[0]} onClick={p.onPreferences} />
       </div>
     </header>
   );

@@ -2,6 +2,7 @@ import { Download, FolderOpen, FolderPlus, FolderX, GitBranch, Pencil, Search, S
 import type { RecentRepo } from "./ipc";
 import { relativeTime } from "./lib/format";
 import { repoLabel, splitRecents } from "./lib/repos";
+import { useBindings } from "./lib/shortcuts";
 import { Button, IconButton, Shortcut } from "./ui";
 
 interface Props {
@@ -37,6 +38,7 @@ export function Welcome({
   onClone,
   onInit,
 }: Props) {
+  const keys = useBindings();
   const { favorites, others } = splitRecents(recents);
 
   const row = (r: RecentRepo) => {
@@ -79,11 +81,11 @@ export function Welcome({
           <div className="welcome-actions">
             <Button variant="primary" icon={FolderOpen} disabled={busy} onClick={onOpen}>
               Open repository
-              <Shortcut keys="Ctrl+O" />
+              {keys.open[0] && <Shortcut keys={keys.open[0]} />}
             </Button>
             <Button icon={Search} onClick={onPalette}>
               Command palette
-              <Shortcut keys="Ctrl+K" />
+              {keys.palette[0] && <Shortcut keys={keys.palette[0]} />}
             </Button>
           </div>
           <div className="welcome-actions secondary">

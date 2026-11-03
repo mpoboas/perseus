@@ -466,6 +466,8 @@ export function watchLinks(onLink: (link: DeepLink) => void) {
   return invoke<void>("watch_links", { onLink: channel });
 }
 
+/** Page zoom as a factor (1 = 100%); the backend refuses anything outside 0.5 to 2. */
+export const setZoom = (factor: number) => invoke<void>("set_zoom", { factor });
 export const linksRegistered = () => invoke<boolean>("links_registered");
 
 /** Points `perseus-app://` at this copy of Perseus for the current user. */
