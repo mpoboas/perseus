@@ -206,22 +206,16 @@ pub fn generate_key(dir: &Path, label: &str, comment: &str) -> Result<NewKey> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::git::cli::GitOverrides;
     use crate::git::cli::testutil::*;
 
     fn signing_git(git: &Git, key: &Path) -> Git {
-        git.clone().with_overrides(GitOverrides {
-            config: vec![
-                ssh_program_config().expect("ssh-keygen is available"),
-                ("gpg.format".into(), "ssh".into()),
-                (
-                    "user.signingkey".into(),
-                    key.to_string_lossy().replace('\\', "/"),
-                ),
-                ("commit.gpgsign".into(), "true".into()),
-            ],
-            env: vec![],
-        })
+        let (program_key, program) = ssh_program_config().expect("ssh-keygen is available");
+        // `with_config` keeps the runner's other settings (the tests' isolation from the user's own configuration).
+        git.clone()
+            .with_config(&program_key, &program)
+            .with_config("gpg.format", "ssh")
+            .with_config("user.signingkey", &key.to_string_lossy().replace('\\', "/"))
+            .with_config("commit.gpgsign", "true")
     }
 
     #[test]

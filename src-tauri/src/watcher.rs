@@ -93,7 +93,14 @@ pub fn watch(
     on_change: impl Fn(ChangeSet) + Send + 'static,
 ) -> Result<Watch> {
     let (tx, rx) = mpsc::channel::<ChangeSet>();
-    let base = root.to_path_buf();
+    // Some systems report events under the resolved path (macOS: `/private/var/...` for a folder
+    // reached as `/var/...`, or through any symlink), so a path is matched against both spellings.
+    let mut bases = vec![root.to_path_buf()];
+    if let Ok(real) = root.canonicalize()
+        && real != bases[0]
+    {
+        bases.push(real);
+    }
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
         let Ok(event) = res else { return };
         // Pure reads (access events) never change anything.
@@ -102,7 +109,7 @@ pub fn watch(
         }
         let mut set = ChangeSet::default();
         for path in &event.paths {
-            if let Ok(rel) = path.strip_prefix(&base) {
+            if let Some(rel) = bases.iter().find_map(|b| path.strip_prefix(b).ok()) {
                 set.merge(classify(rel));
             }
         }

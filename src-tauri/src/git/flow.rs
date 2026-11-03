@@ -522,10 +522,12 @@ mod tests {
                 .unwrap()
                 .contains(&"feature/login".to_string())
         );
-        assert_eq!(
-            subjects(&git, "develop", 2),
-            ["Merge branch 'feature/login' into develop", "add login"]
-        );
+        // The merge comes first; its two parents follow in an order that depends on whether the
+        // commits happened in the same second, so only their content is compared.
+        let mut top = subjects(&git, "develop", 3);
+        assert_eq!(top.remove(0), "Merge branch 'feature/login' into develop");
+        top.sort();
+        assert_eq!(top, ["add login", "base"]);
         // main did not move.
         assert_eq!(subjects(&git, "main", 1), ["base"]);
     }

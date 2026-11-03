@@ -605,6 +605,16 @@ fn failure_text(raw: &str) -> String {
              `workflow` scope, or a new login from Git Credential Manager), then push again.",
         );
     }
+    // Other Git clients (Sourcetree, notably) leave `format =` empty under `[gpg]`. Git refuses to
+    // run any signing command while that line exists, even when a profile passes the right value
+    // with `-c`, and its message does not say how to get out.
+    if text.contains("invalid value for 'gpg.format': ''") {
+        text.push_str(
+            "\n\nHint: your ~/.gitconfig has an empty `format =` under [gpg]. Perseus never edits \
+             your Git configuration, so remove that line yourself (or run \
+             `git config --global --unset gpg.format`), then try again.",
+        );
+    }
     text
 }
 
@@ -612,10 +622,15 @@ fn failure_text(raw: &str) -> String {
 pub mod testutil {
     use super::*;
 
-    /// Creates a repo with a deterministic identity and no signing/hooks surprises.
+    /// Creates a repo with a deterministic identity and no signing/hooks surprises. The user's own
+    /// and the system's Git configuration are left out, so a template, a signing format or an
+    /// excludes file set on the developer's machine cannot change what a test sees.
     pub fn init_repo() -> (tempfile::TempDir, Git) {
         let dir = tempfile::tempdir().unwrap();
-        let git = Git::new(dir.path());
+        let nothing = if cfg!(windows) { "NUL" } else { "/dev/null" };
+        let git = Git::new(dir.path())
+            .with_env("GIT_CONFIG_GLOBAL", nothing)
+            .with_env("GIT_CONFIG_NOSYSTEM", "1");
         git.output(["init", "-q", "-b", "main"]).unwrap();
         for (k, v) in [
             ("user.name", "Tester"),
@@ -647,6 +662,18 @@ pub mod testutil {
 mod tests {
     use super::testutil::*;
     use super::{MAX_ERROR_CHARS, failure_text, recent_commands, redact};
+
+    #[test]
+    fn an_empty_gpg_format_in_the_users_config_is_explained() {
+        let raw = "error: invalid value for 'gpg.format': ''\nfatal: bad config variable 'gpg.format' in file '/home/a/.gitconfig' at line 6";
+        let text = failure_text(raw);
+        assert!(text.starts_with("error: invalid value"), "{text}");
+        assert!(
+            text.contains("git config --global --unset gpg.format"),
+            "{text}"
+        );
+        assert!(!failure_text("fatal: not a git repository").contains("Hint"));
+    }
 
     #[test]
     fn failure_text_drops_progress_and_keeps_the_reason() {
