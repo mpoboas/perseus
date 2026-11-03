@@ -1,5 +1,6 @@
 import { CircleAlert, GitCommitVertical, User } from "lucide-react";
 import type { RepoInfo } from "./ipc";
+import { useT } from "./i18n";
 import { Spinner } from "./ui";
 
 interface Props {
@@ -18,6 +19,7 @@ interface Props {
 }
 
 export function StatusBar({ repo, busy, progress, loading, loaded, commitCount, identity, lastError, onShowError, onCancel }: Props) {
+  const t = useT();
   return (
     <footer className="statusbar">
       <div className="sb-left">
@@ -28,36 +30,36 @@ export function StatusBar({ repo, busy, progress, loading, loaded, commitCount, 
             {progress && <span className="sb-progress">{progress}</span>}
             {onCancel && (
               <button className="sb-cancel" onClick={onCancel}>
-                Cancel
+                {t("status.cancel")}
               </button>
             )}
           </span>
         ) : loading ? (
           <span className="sb-busy" role="status">
             <Spinner size={12} />
-            Reading history… {commitCount.toLocaleString()} commits
+            {t("status.reading", { count: commitCount.toLocaleString() })}
           </span>
         ) : repo ? (
           <span className="sb-item sb-path selectable" title={repo.path}>
             {repo.path}
           </span>
         ) : (
-          <span className="sb-item">Ready</span>
+          <span className="sb-item">{t("status.ready")}</span>
         )}
       </div>
       <div className="sb-right">
         {lastError && (
-          <button className="sb-item sb-error" onClick={onShowError} title="Show the last error again">
-            <CircleAlert size={12} /> Last operation failed
+          <button className="sb-item sb-error" onClick={onShowError} title={t("status.showError")}>
+            <CircleAlert size={12} /> {t("status.lastFailed")}
           </button>
         )}
         {repo && loaded && (
-          <span className="sb-item" title="Time to read the full history">
+          <span className="sb-item" title={t("status.historyTime")}>
             <GitCommitVertical size={12} /> {loaded}
           </span>
         )}
-        <span className="sb-item" title={identity ? `${identity.name} <${identity.email}>` : "Using your Git configuration"}>
-          <User size={12} /> {identity ? identity.name : "Git default identity"}
+        <span className="sb-item" title={identity ? `${identity.name} <${identity.email}>` : t("status.usingGitConfig")}>
+          <User size={12} /> {identity ? identity.name : t("status.gitDefaultIdentity")}
         </span>
       </div>
     </footer>

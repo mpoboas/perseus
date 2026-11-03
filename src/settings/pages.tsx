@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { type LfsStatus, type LogEntry, type Profile, type ProfilesSnapshot, type RepoInfo, activityLog, lfsStatus, lfsTrack, linksRegistered, registerLinks } from "../ipc";
 import { AVATAR_PREF, GRAVATAR_PREF } from "../lib/avatars";
 import { absoluteTime, relativeTime } from "../lib/format";
+import { LANGUAGES, type LanguagePref, useLanguage, useT } from "../i18n";
 import { usePref } from "../lib/prefs";
 import { PALETTES, type ThemePref, usePalette } from "../lib/theme";
 import { ZOOM_DEFAULT, ZOOM_PREF, ZOOM_STEPS, sanitizeZoom } from "../lib/zoom";
@@ -235,6 +236,8 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
   const [diffWords, setDiffWords] = usePref<boolean>(KEYS.diffWords, true);
   const [pictures, setPictures] = usePref<boolean>(AVATAR_PREF, true);
   const [gravatar, setGravatar] = usePref<boolean>(GRAVATAR_PREF, false);
+  const t = useT();
+  const [language, setLanguage] = useLanguage();
   const [palette, setPalette] = usePalette();
   const [zoomPref, setZoomPref] = usePref<number>(ZOOM_PREF, ZOOM_DEFAULT);
   const sample = Math.floor(Date.now() / 1000) - 26 * 86400;
@@ -243,30 +246,37 @@ export function AppearancePage({ theme, onTheme }: { theme: ThemePref; onTheme: 
     <>
       <Section>
         <SelectRow
-          label="Theme"
+          label={t("appearance.language")}
+          value={language}
+          options={LANGUAGES.map((l) => ({ value: l.id, label: l.id === "system" ? t("appearance.followSystem") : l.label }))}
+          hint={t("appearance.languageHint")}
+          onChange={(v: LanguagePref) => setLanguage(v)}
+        />
+        <SelectRow
+          label={t("appearance.theme")}
           value={theme}
           options={[
-            { value: "system", label: "Follow system" },
-            { value: "dark", label: "Dark" },
-            { value: "light", label: "Light" },
+            { value: "system", label: t("appearance.followSystem") },
+            { value: "dark", label: t("appearance.themeDark") },
+            { value: "light", label: t("appearance.themeLight") },
           ]}
           onChange={onTheme}
         />
         <SelectRow
-          label="Colours"
+          label={t("appearance.colours")}
           value={palette}
           options={PALETTES.map((p) => ({ value: p.id, label: p.label }))}
-          hint="Slate is neutral grey-blue; Indigo uses the logo's colours. Each has a dark and a light version, chosen by Theme."
+          hint={t("appearance.coloursHint")}
           onChange={setPalette}
         />
         <SelectRow
-          label="Zoom"
+          label={t("appearance.zoom")}
           value={String(sanitizeZoom(zoomPref))}
           options={ZOOM_STEPS.map((z) => ({ value: String(z), label: `${z}%` }))}
-          hint="Makes everything bigger or smaller, like a browser's zoom. The shortcuts are listed under Keyboard shortcuts."
+          hint={t("appearance.zoomHint")}
           onChange={(v) => setZoomPref(Number(v))}
         />
-        <CheckRow label="Show toolbar icon labels" checked={labels} onChange={setLabels} />
+        <CheckRow label={t("appearance.toolbarLabels")} checked={labels} onChange={setLabels} />
       </Section>
 
       <Section title="Date and time">

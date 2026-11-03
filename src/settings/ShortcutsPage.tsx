@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { RotateCcw, X } from "lucide-react";
+import { type Key, useT } from "../i18n";
 import {
   SHORTCUTS,
   type ShortcutDef,
@@ -16,7 +17,6 @@ import { Button, IconButton, Shortcut } from "../ui";
 import { Section } from "./fields";
 
 const GROUPS: ShortcutGroup[] = ["General", "View", "Changes"];
-const labelOf = (id: ShortcutId) => SHORTCUTS.find((s) => s.id === id)?.label ?? id;
 
 interface Pending {
   id: ShortcutId;
@@ -31,10 +31,12 @@ interface Pending {
  * working by accident. Changes save at once, like the rest of Settings.
  */
 export function ShortcutsPage() {
+  const t = useT();
+  const name = (id: ShortcutId) => t(`shortcut.${id}` as Key);
   const [overrides, setOverrides] = useShortcutOverrides();
   const bindings = resolve(overrides);
   const [recording, setRecording] = useState<ShortcutId | null>(null);
-  const [problem, setProblem] = useState<string | null>(null);
+  const [problem, setProblem] = useState<Key | null>(null);
   const [pending, setPending] = useState<Pending | null>(null);
 
   useEffect(() => {
@@ -89,44 +91,44 @@ export function ShortcutsPage() {
     const isRecording = recording === s.id;
     return (
       <div key={s.id} className="set-row" data-recording-shortcut={isRecording || undefined}>
-        <span className="set-label">{s.label}</span>
+        <span className="set-label">{name(s.id)}</span>
         <div className="set-control">
           <div className="set-inline sc-row">
             {isRecording ? (
               <span className="sc-recording" role="status">
-                Press the new keys… (Esc to cancel)
+                {t("shortcutsPage.recording")}
               </span>
             ) : own.length > 0 ? (
               own.map((b) => <Shortcut key={b} keys={b} />)
             ) : (
-              <span className="muted">Not assigned</span>
+              <span className="muted">{t("shortcut.notAssigned")}</span>
             )}
             <Button
               size="sm"
-              aria-label={`Change the shortcut for ${s.label}`}
+              aria-label={t("shortcutsPage.changeFor", { action: name(s.id) })}
               onClick={() => {
                 setPending(null);
                 setProblem(null);
                 setRecording(isRecording ? null : s.id);
               }}
             >
-              {isRecording ? "Cancel" : "Change"}
+              {t(isRecording ? "shortcutsPage.cancel" : "shortcutsPage.change")}
             </Button>
             {own.length > 0 && !isRecording && (
-              <IconButton icon={X} label={`Remove the shortcut for ${s.label}`} size="sm" onClick={() => unbind(s.id)} />
+              <IconButton icon={X} label={t("shortcutsPage.removeFor", { action: name(s.id) })} size="sm" onClick={() => unbind(s.id)} />
             )}
             {changed && !isRecording && (
-              <IconButton icon={RotateCcw} label={`Restore the default for ${s.label}`} size="sm" onClick={() => reset(s.id)} />
+              <IconButton icon={RotateCcw} label={t("shortcutsPage.restoreFor", { action: name(s.id) })} size="sm" onClick={() => reset(s.id)} />
             )}
           </div>
           {isRecording && problem && (
             <p className="set-warn" role="alert">
-              {problem}
+              {t(problem)}
             </p>
           )}
           {pending?.id === s.id && (
             <p className="set-warn" role="alert">
-              That is already used for “{labelOf(pending.conflict!)}”.{" "}
+              {t("shortcutsPage.taken", { action: name(pending.conflict!) })}{" "}
               <Button
                 size="sm"
                 onClick={() => {
@@ -134,10 +136,10 @@ export function ShortcutsPage() {
                   setPending(null);
                 }}
               >
-                Use it here instead
+                {t("shortcutsPage.useHere")}
               </Button>{" "}
               <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
-                Keep the old one
+                {t("shortcutsPage.keepOld")}
               </Button>
             </p>
           )}
@@ -149,18 +151,15 @@ export function ShortcutsPage() {
   const anyChanged = Object.keys(overrides).length > 0;
   return (
     <>
-      <p className="set-note">
-        Click Change next to an action, then press the keys you want. “Mod” below is Command on a Mac and Control elsewhere. Moving
-        between commits in the graph, Esc and similar keys are fixed; the full list is under the Help button (?).
-      </p>
+      <p className="set-note">{t("shortcutsPage.intro")}</p>
       {GROUPS.map((g) => (
-        <Section key={g} title={g}>
+        <Section key={g} title={t(`shortcut.group.${g}` as Key)}>
           {SHORTCUTS.filter((s) => s.group === g).map(row)}
         </Section>
       ))}
       {anyChanged && (
         <Section>
-          <Button onClick={() => setOverrides({})}>Restore all defaults</Button>
+          <Button onClick={() => setOverrides({})}>{t("shortcutsPage.restoreAll")}</Button>
         </Section>
       )}
     </>

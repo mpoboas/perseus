@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import { ConflictButton } from "./ConflictButton";
 import type { ProfilesSnapshot, PullMode, RecentRepo, RefInfo, RepoInfo, RepoStatus } from "./ipc";
+import { type Key, useT } from "./i18n";
 import { undoName } from "./lib/format";
 import { repoLabel, splitRecents } from "./lib/repos";
 import { bindingText, useBindings } from "./lib/shortcuts";
@@ -92,13 +93,14 @@ interface Props {
   onPreferences: () => void;
 }
 
-const THEME_ITEMS: { id: ThemePref; label: string; icon: typeof Sun }[] = [
-  { id: "system", label: "System", icon: Monitor },
-  { id: "light", label: "Light", icon: Sun },
-  { id: "dark", label: "Dark", icon: Moon },
-];
+const THEME_ITEMS = [
+  { id: "system", label: "tb.themeSystem", icon: Monitor },
+  { id: "light", label: "tb.themeLight", icon: Sun },
+  { id: "dark", label: "tb.themeDark", icon: Moon },
+] as const satisfies readonly { id: ThemePref; label: Key; icon: typeof Sun }[];
 
 export function Toolbar(p: Props) {
+  const t = useT();
   const keys = useBindings();
   const { repo, status, busy } = p;
   const publish = !!status?.branch && !status.upstream;
@@ -107,7 +109,7 @@ export function Toolbar(p: Props) {
   const [showAllRepos, setShowAllRepos] = useState(false);
   const recentRepos = p.recents.filter((r) => r.exists && r.path !== repo?.path);
   const listed = repo ? p.recents.find((r) => r.path === repo.path) : undefined;
-  const repoName = repo ? (listed ? repoLabel(listed) : repo.name) : "Open a repository";
+  const repoName = repo ? (listed ? repoLabel(listed) : repo.name) : t("tb.noRepository");
   const localBranches = p.refs.filter((r) => r.kind === "branch").sort((a, b) => a.name.localeCompare(b.name));
   // A remote branch with no local twin can still be switched to: git makes the tracking branch.
   const remoteOnly = p.refs.filter(
@@ -115,17 +117,17 @@ export function Toolbar(p: Props) {
   );
 
   const profileItems: MenuItem[] = [
-    { id: "sec", section: "Commit as" },
-    { id: "p:", label: "System default", checked: !p.profiles?.active },
+    { id: "sec", section: t("tb.commitAs") },
+    { id: "p:", label: t("tb.systemDefault"), checked: !p.profiles?.active },
     ...(p.profiles?.profiles.map(
       (x): MenuItem => ({ id: `p:${x.id}`, label: x.name, hint: x.user_email, checked: x.id === p.profiles?.active }),
     ) ?? []),
     { id: "sep", separator: true },
-    ...(repo && activeProfile ? ([{ id: "pin", label: `Always use ${activeProfile.name} for ${repo.name}`, icon: Pin }] as MenuItem[]) : []),
-    { id: "manage", label: "Manage profiles…", icon: Users },
+    ...(repo && activeProfile ? ([{ id: "pin", label: t("tb.alwaysUse", { profile: activeProfile.name, repo: repo.name }), icon: Pin }] as MenuItem[]) : []),
+    { id: "manage", label: t("tb.manageProfiles"), icon: Users },
   ];
 
-  const themeItems: MenuItem[] = THEME_ITEMS.map((t) => ({ id: t.id, label: t.label, icon: t.icon, checked: p.theme === t.id }));
+  const themeItems: MenuItem[] = THEME_ITEMS.map((x) => ({ id: x.id, label: t(x.label), icon: x.icon, checked: p.theme === x.id }));
   const ThemeIcon = THEME_ITEMS.find((t) => t.id === p.theme)?.icon ?? Monitor;
 
   return (
@@ -134,18 +136,18 @@ export function Toolbar(p: Props) {
         {repo && (
           <IconButton
             icon={PanelLeft}
-            label={p.sidebarOpen ? "Hide sidebar" : "Show sidebar"}
+            label={t(p.sidebarOpen ? "tb.hideSidebar" : "tb.showSidebar")}
             shortcut={keys.sidebar[0]}
             active={p.sidebarOpen}
             onClick={p.onToggleSidebar}
           />
         )}
         <Picker
-          caption="repository"
+          caption={t("tb.captionRepository")}
           value={repoName}
-          ariaLabel="Switch repository"
+          ariaLabel={t("tb.switchRepository")}
           disabled={busy}
-          placeholder="Search"
+          placeholder={t("tb.search")}
           width={290}
         >
           {({ query, close }) => {
@@ -170,7 +172,7 @@ export function Toolbar(p: Props) {
                 </button>
                 <button
                   className={r.favorite ? "pk-star on" : "pk-star"}
-                  aria-label={r.favorite ? `Remove ${repoLabel(r)} from favorites` : `Add ${repoLabel(r)} to favorites`}
+                  aria-label={t(r.favorite ? "welcome.removeFavorite" : "welcome.addFavorite", { name: repoLabel(r) })}
                   aria-pressed={r.favorite}
                   onClick={() => p.onToggleFavorite(r.path, !r.favorite)}
                 >
@@ -184,24 +186,24 @@ export function Toolbar(p: Props) {
                   <>
                     <div className="pk-head">
                       <Star size={13} />
-                      Favorites
+                      {t("tb.favorites")}
                     </div>
                     {favorites.map(row)}
                   </>
                 )}
                 <div className="pk-head">
                   <Clock size={13} />
-                  Recently opened
+                  {t("tb.recentlyOpened")}
                 </div>
                 {shown.map(row)}
                 {shown.length === 0 && favorites.length === 0 && (
-                  <div className="pk-empty">{q ? "No repositories match" : "No other repositories yet"}</div>
+                  <div className="pk-empty">{t(q ? "tb.noRepositoriesMatch" : "tb.noOtherRepositories")}</div>
                 )}
-                {shown.length === 0 && favorites.length > 0 && <div className="pk-empty">Nothing else yet</div>}
+                {shown.length === 0 && favorites.length > 0 && <div className="pk-empty">{t("tb.nothingElse")}</div>}
                 <div className="pk-foot">
                   {!q ? (
                     <button className="pk-link" onClick={() => setShowAllRepos((v) => !v)}>
-                      {showAllRepos ? "Show fewer" : "View all repositories"}
+                      {t(showAllRepos ? "tb.showFewer" : "tb.viewAll")}
                     </button>
                   ) : (
                     <span />
@@ -209,7 +211,7 @@ export function Toolbar(p: Props) {
                   <span className="pk-foot-actions">
                     <IconButton
                       icon={FolderOpen}
-                      label="Open a repository…"
+                      label={t("tb.open")}
                       shortcut={keys.open[0]}
                       onClick={() => {
                         close();
@@ -218,7 +220,7 @@ export function Toolbar(p: Props) {
                     />
                     <IconButton
                       icon={Download}
-                      label="Clone a repository…"
+                      label={t("tb.clone")}
                       onClick={() => {
                         close();
                         p.onClone();
@@ -226,7 +228,7 @@ export function Toolbar(p: Props) {
                     />
                     <IconButton
                       icon={FolderPlus}
-                      label="Create a new repository…"
+                      label={t("tb.create")}
                       onClick={() => {
                         close();
                         p.onInit();
@@ -239,9 +241,9 @@ export function Toolbar(p: Props) {
           }}
         </Picker>
         {repo && p.filterCount > 0 && (
-          <button className="chip filter-chip" onClick={p.onClearFilter} title="Show every branch again">
+          <button className="chip filter-chip" onClick={p.onClearFilter} title={t("tb.showAllBranches")}>
             <Eye size={13} />
-            <span className="chip-text">Graph filtered ({p.filterCount})</span>
+            <span className="chip-text">{t("tb.graphFiltered", { count: p.filterCount })}</span>
             <X size={12} />
           </button>
         )}
@@ -249,12 +251,12 @@ export function Toolbar(p: Props) {
           <>
             <ChevronRight size={15} className="pk-sep" aria-hidden="true" />
             <Picker
-              caption="branch"
-              value={status.branch ?? "detached HEAD"}
-              ariaLabel="Switch branch"
-              tooltip={status.upstream ? `Tracking ${status.upstream}` : "No upstream branch"}
+              caption={t("tb.captionBranch")}
+              value={status.branch ?? t("tb.detachedHead")}
+              ariaLabel={t("tb.switchBranch")}
+              tooltip={status.upstream ? t("tb.tracking", { upstream: status.upstream }) : t("tb.noUpstream")}
               disabled={busy}
-              placeholder="Search"
+              placeholder={t("tb.search")}
               width={270}
               extra={
                 <>
@@ -288,19 +290,19 @@ export function Toolbar(p: Props) {
                         key={r.name}
                         className={r.is_head ? "pk-item current" : "pk-item"}
                         onClick={() => pick(r)}
-                        title={r.upstream ? `Tracking ${r.upstream}` : undefined}
+                        title={r.upstream ? t("tb.tracking", { upstream: r.upstream }) : undefined}
                       >
                         <GitBranch size={14} className="pk-icon" />
                         <span className="pk-name">{r.name}</span>
                       </button>
                     ))}
                     {remote.map((r) => (
-                      <button key={r.name} className="pk-item" onClick={() => pick(r)} title="Remote branch: creates a local tracking branch">
+                      <button key={r.name} className="pk-item" onClick={() => pick(r)} title={t("tb.remoteBranchTip")}>
                         <Cloud size={14} className="pk-icon" />
                         <span className="pk-name">{r.name}</span>
                       </button>
                     ))}
-                    {local.length + remote.length === 0 && <div className="pk-empty">No branches match</div>}
+                    {local.length + remote.length === 0 && <div className="pk-empty">{t("tb.noBranchesMatch")}</div>}
                   </>
                 );
               }}
@@ -313,33 +315,33 @@ export function Toolbar(p: Props) {
       <div className="tb-spacer" />
 
       {repo && (
-        <div className="tb-group tb-actions" role="group" aria-label="Remote actions">
-          <Tooltip label={p.undoLabel ? `Undo ${undoName(p.undoLabel)}${keys.undo[0] ? ` (${bindingText(keys.undo[0])})` : ""}` : "Nothing to undo"}>
+        <div className="tb-group tb-actions" role="group" aria-label={t("tb.remoteActions")}>
+          <Tooltip label={p.undoLabel ? `${t("tb.undoNamed", { what: undoName(p.undoLabel) })}${keys.undo[0] ? ` (${bindingText(keys.undo[0])})` : ""}` : t("tb.nothingToUndo")}>
             <Button icon={Undo2} disabled={busy || !p.undoLabel} onClick={p.onUndo}>
-              Undo
+              {t("tb.undo")}
             </Button>
           </Tooltip>
-          <Tooltip label={p.redoLabel ? `Redo ${undoName(p.redoLabel)}${keys.redo[0] ? ` (${bindingText(keys.redo[0])})` : ""}` : "Nothing to redo"}>
+          <Tooltip label={p.redoLabel ? `${t("tb.redoNamed", { what: undoName(p.redoLabel) })}${keys.redo[0] ? ` (${bindingText(keys.redo[0])})` : ""}` : t("tb.nothingToRedo")}>
             <Button icon={Redo2} disabled={busy || !p.redoLabel} onClick={p.onRedo}>
-              Redo
+              {t("tb.redo")}
             </Button>
           </Tooltip>
           <div className="tb-sep" aria-hidden="true" />
-          <Tooltip label="Fetch from the remotes">
+          <Tooltip label={t("tb.fetchTip")}>
             <Button icon={RefreshCw} disabled={busy} onClick={p.onFetch}>
-              Fetch
+              {t("tb.fetch")}
             </Button>
           </Tooltip>
           <div className="split-btn">
             <Tooltip
               label={
                 status?.upstream
-                  ? { ff_only: "Pull (fast-forward only)", merge: "Pull (merge)", rebase: "Pull (rebase)" }[p.pullMode]
-                  : "No upstream branch to pull from"
+                  ? t({ ff_only: "tb.pullFf", merge: "tb.pullMerge", rebase: "tb.pullRebase" }[p.pullMode] as Key)
+                  : t("tb.noUpstreamToPull")
               }
             >
               <Button icon={ArrowDownToLine} disabled={busy || !status?.upstream} onClick={p.onPull}>
-                Pull
+                {t("tb.pull")}
                 {!!status?.behind && <span className="count-pill">{status.behind}</span>}
               </Button>
             </Tooltip>
@@ -347,21 +349,21 @@ export function Toolbar(p: Props) {
               align="end"
               minWidth={250}
               items={[
-                { id: "sec", section: "When history has diverged" },
-                { id: "ff_only", label: "Refuse (fast-forward only)", checked: p.pullMode === "ff_only" },
-                { id: "merge", label: "Create a merge commit", checked: p.pullMode === "merge" },
-                { id: "rebase", label: "Rebase my commits", checked: p.pullMode === "rebase" },
+                { id: "sec", section: t("tb.pullWhenDiverged") },
+                { id: "ff_only", label: t("tb.pullRefuse"), checked: p.pullMode === "ff_only" },
+                { id: "merge", label: t("tb.pullMergeCommit"), checked: p.pullMode === "merge" },
+                { id: "rebase", label: t("tb.pullRebaseMine"), checked: p.pullMode === "rebase" },
               ]}
               onPick={(id) => p.onPullMode(id as PullMode)}
               render={({ open: _open, ...props }) => (
-                <IconButton icon={ChevronDown} label="Pull options" size="md" disabled={busy} {...props} />
+                <IconButton icon={ChevronDown} label={t("tb.pullOptions")} size="md" disabled={busy} {...props} />
               )}
             />
           </div>
           <div className="split-btn">
-            <Tooltip label={publish ? "Publish this branch to the remote" : status?.upstream ? `Push to ${status.upstream}` : "Push"}>
+            <Tooltip label={publish ? t("tb.publishTip") : status?.upstream ? t("tb.pushTo", { upstream: status.upstream }) : t("tb.push")}>
               <Button icon={ArrowUpFromLine} disabled={busy || !status?.branch} onClick={p.onPush}>
-                {publish ? "Publish" : "Push"}
+                {t(publish ? "tb.publish" : "tb.push")}
                 {!!status?.ahead && status.upstream && <span className="count-pill">{status.ahead}</span>}
               </Button>
             </Tooltip>
@@ -369,35 +371,35 @@ export function Toolbar(p: Props) {
               align="end"
               minWidth={250}
               items={[
-                { id: "force", label: "Force push (with lease)…", danger: true, disabled: !status?.upstream },
-                { id: "tags", label: "Push all tags" },
+                { id: "force", label: t("tb.forcePush"), danger: true, disabled: !status?.upstream },
+                { id: "tags", label: t("tb.pushTags") },
               ]}
               onPick={(id) => p.onPushVariant(id as "force" | "tags")}
               render={({ open: _open, ...props }) => (
-                <IconButton icon={ChevronDown} label="Push options" size="md" disabled={busy || !status?.branch} {...props} />
+                <IconButton icon={ChevronDown} label={t("tb.pushOptions")} size="md" disabled={busy || !status?.branch} {...props} />
               )}
             />
           </div>
           <div className="tb-sep" aria-hidden="true" />
-          <Tooltip label="Create a branch here">
+          <Tooltip label={t("tb.branchTip")}>
             <Button icon={GitBranchPlus} disabled={busy} onClick={p.onNewBranch}>
-              Branch
+              {t("tb.branch")}
             </Button>
           </Tooltip>
-          <Tooltip label="Stash your changes">
+          <Tooltip label={t("tb.stashTip")}>
             <Button icon={Archive} disabled={busy || !status?.entries.length} onClick={p.onStash}>
-              Stash
+              {t("tb.stash")}
             </Button>
           </Tooltip>
-          <Tooltip label={p.stashCount > 0 ? "Apply the newest stash and remove it" : "No stashes to pop"}>
+          <Tooltip label={t(p.stashCount > 0 ? "tb.popTip" : "tb.noStashes")}>
             <Button icon={ArchiveRestore} disabled={busy || p.stashCount === 0} onClick={p.onPop}>
-              Pop
+              {t("tb.pop")}
               {p.stashCount > 0 && <span className="count-pill">{p.stashCount}</span>}
             </Button>
           </Tooltip>
           {p.loading && (
             <Button variant="ghost" icon={X} onClick={p.onCancelLoad}>
-              Stop loading
+              {t("tb.stopLoading")}
             </Button>
           )}
         </div>
@@ -406,9 +408,9 @@ export function Toolbar(p: Props) {
       <div className="tb-spacer" />
 
       <div className="tb-group">
-        <button className="search-btn" onClick={p.onPalette} aria-label="Open command palette">
+        <button className="search-btn" onClick={p.onPalette} aria-label={t("tb.openPalette")}>
           <Search size={14} />
-          <span>Search commands</span>
+          <span>{t("tb.searchCommands")}</span>
           {keys.palette[0] && <Shortcut keys={keys.palette[0]} />}
         </button>
 
@@ -422,9 +424,9 @@ export function Toolbar(p: Props) {
             else if (id.startsWith("p:")) p.onSwitchProfile(id.slice(2) || null);
           }}
           render={({ open, ...props }) => (
-            <button className={open ? "chip-btn open" : "chip-btn"} disabled={busy} aria-label="Active profile" {...props}>
+            <button className={open ? "chip-btn open" : "chip-btn"} disabled={busy} aria-label={t("tb.activeProfile")} {...props}>
               <Avatar name={activeProfile?.user_name ?? "Git"} email={activeProfile?.user_email} size={20} />
-              <span className="chip-text">{activeProfile ? activeProfile.name : "System default"}</span>
+              <span className="chip-text">{activeProfile ? activeProfile.name : t("tb.systemDefault")}</span>
               <ChevronDown size={13} />
             </button>
           )}
@@ -436,15 +438,15 @@ export function Toolbar(p: Props) {
           minWidth={160}
           onPick={(id) => p.onTheme(id as ThemePref)}
           render={({ open: _open, ...props }) => (
-            <Tooltip label="Theme">
-              <button className="icon-btn" aria-label="Theme" {...props}>
+            <Tooltip label={t("tb.theme")}>
+              <button className="icon-btn" aria-label={t("tb.theme")} {...props}>
                 <ThemeIcon size={16} />
               </button>
             </Tooltip>
           )}
         />
-        <IconButton icon={CircleHelp} label="Keyboard shortcuts" shortcut={keys.help[0]} onClick={p.onShortcuts} />
-        <IconButton icon={Settings} label="Settings" shortcut={keys.settings[0]} onClick={p.onPreferences} />
+        <IconButton icon={CircleHelp} label={t("tb.shortcuts")} shortcut={keys.help[0]} onClick={p.onShortcuts} />
+        <IconButton icon={Settings} label={t("tb.settings")} shortcut={keys.settings[0]} onClick={p.onPreferences} />
       </div>
     </header>
   );

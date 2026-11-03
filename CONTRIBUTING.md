@@ -23,6 +23,8 @@ TypeScript on the front end. The rules that keep it safe and fast are short.
 5. Check UI changes in a release build (`pnpm tauri build --no-bundle`): the production
    Content-Security-Policy is stricter than the development one.
 6. Commit messages are a single subject line.
+7. New user-visible text goes through the catalogue (`src/i18n/`, see `docs/localisation.md`), and new
+   keyboard shortcuts through the registry in `src/lib/shortcuts.ts`, so they can be translated and rebound.
 
 See `docs/roadmap.md` for what is planned and `docs/security.md` and `docs/threat-model.md` for the security rules.
 

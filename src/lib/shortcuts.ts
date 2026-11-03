@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import type { Key } from "../i18n";
 import { usePref } from "./prefs";
 
 /**
@@ -29,36 +30,36 @@ export type ShortcutGroup = "General" | "View" | "Changes";
 
 export interface ShortcutDef {
   id: ShortcutId;
-  label: string;
+  /** The words for it are the catalogue's `shortcut.<id>`. */
   group: ShortcutGroup;
   /** Bindings used until the user picks their own. The first one is the one shown in menus and tooltips. */
   defaults: string[];
 }
 
 export const SHORTCUTS: ShortcutDef[] = [
-  { id: "palette", label: "Command palette", group: "General", defaults: ["Mod+K", "Mod+P"] },
-  { id: "open", label: "Open repository", group: "General", defaults: ["Mod+O"] },
-  { id: "search", label: "Search commits", group: "General", defaults: ["Mod+F"] },
-  { id: "undo", label: "Undo the last action", group: "General", defaults: ["Mod+Z"] },
-  { id: "redo", label: "Redo", group: "General", defaults: ["Mod+Shift+Z", "Mod+Y"] },
-  { id: "refresh", label: "Refresh", group: "General", defaults: ["F5", "Mod+R"] },
-  { id: "settings", label: "Settings", group: "General", defaults: ["Mod+,"] },
-  { id: "help", label: "Keyboard shortcuts", group: "General", defaults: ["?"] },
-  { id: "sidebar", label: "Show or hide the sidebar", group: "View", defaults: ["Mod+B"] },
-  { id: "zoomIn", label: "Zoom in", group: "View", defaults: ["Mod+=", "Mod+Plus"] },
-  { id: "zoomOut", label: "Zoom out", group: "View", defaults: ["Mod+-"] },
-  { id: "zoomReset", label: "Actual size", group: "View", defaults: ["Mod+0"] },
-  { id: "commit", label: "Commit (in the message box)", group: "Changes", defaults: ["Mod+Enter"] },
+  { id: "palette", group: "General", defaults: ["Mod+K", "Mod+P"] },
+  { id: "open", group: "General", defaults: ["Mod+O"] },
+  { id: "search", group: "General", defaults: ["Mod+F"] },
+  { id: "undo", group: "General", defaults: ["Mod+Z"] },
+  { id: "redo", group: "General", defaults: ["Mod+Shift+Z", "Mod+Y"] },
+  { id: "refresh", group: "General", defaults: ["F5", "Mod+R"] },
+  { id: "settings", group: "General", defaults: ["Mod+,"] },
+  { id: "help", group: "General", defaults: ["?"] },
+  { id: "sidebar", group: "View", defaults: ["Mod+B"] },
+  { id: "zoomIn", group: "View", defaults: ["Mod+=", "Mod+Plus"] },
+  { id: "zoomOut", group: "View", defaults: ["Mod+-"] },
+  { id: "zoomReset", group: "View", defaults: ["Mod+0"] },
+  { id: "commit", group: "Changes", defaults: ["Mod+Enter"] },
 ];
 
-/** Shortcuts that are not rebindable, listed in the cheat sheet so it stays complete. */
-export const FIXED_SHORTCUTS: { group: string; label: string; keys: string }[] = [
-  { group: "Graph", label: "Move between commits", keys: "↑ / ↓" },
-  { group: "Graph", label: "Page up / down", keys: "PgUp / PgDn" },
-  { group: "Graph", label: "First / last commit", keys: "Home / End" },
-  { group: "Graph", label: "Context menu", keys: "Shift+F10" },
-  { group: "Graph", label: "Merge, rebase, cherry-pick", keys: "Drag onto a branch" },
-  { group: "Changes", label: "Close diff", keys: "Esc" },
+/** Shortcuts that are not rebindable, listed in the cheat sheet so it stays complete. `keys` is key text, or a catalogue key when `translated`. */
+export const FIXED_SHORTCUTS: { group: ShortcutGroup | "Graph"; id: string; keys: string; translated?: boolean }[] = [
+  { group: "Graph", id: "move", keys: "↑ / ↓" },
+  { group: "Graph", id: "page", keys: "PgUp / PgDn" },
+  { group: "Graph", id: "ends", keys: "Home / End" },
+  { group: "Graph", id: "menu", keys: "Shift+F10" },
+  { group: "Graph", id: "drag", keys: "shortcut.fixed.dragKeys", translated: true },
+  { group: "Changes", id: "closeDiff", keys: "Esc" },
 ];
 
 export type Overrides = Partial<Record<ShortcutId, string[]>>;
@@ -159,14 +160,14 @@ export function bindingFromEvent(e: KeyEventLike, mac = isMac()): string | null 
 
 const capitalize = (s: string) => (/^f\d+$/.test(s) ? s.toUpperCase() : s.charAt(0).toUpperCase() + s.slice(1));
 
-/** Why a recorded binding cannot be used, or null when it is fine. */
-export function bindingProblem(binding: string): string | null {
+/** Why a recorded binding cannot be used (a catalogue key), or null when it is fine. */
+export function bindingProblem(binding: string): Key | null {
   const p = parseBinding(binding);
-  if (!p) return "That is not a key combination.";
-  if (p.key === "escape") return "Esc is used to cancel.";
-  if (p.key === "tab") return "Tab moves between controls.";
+  if (!p) return "shortcutsPage.notCombination";
+  if (p.key === "escape") return "shortcutsPage.escCancels";
+  if (p.key === "tab") return "shortcutsPage.tabMoves";
   const modified = p.mod || p.ctrl || p.alt || p.meta;
-  if (!modified && !/^f\d+$/.test(p.key) && !isSymbol(p.key)) return "Add Ctrl, Alt or ⌘: a bare letter would be typed into text boxes.";
+  if (!modified && !/^f\d+$/.test(p.key) && !isSymbol(p.key)) return "shortcutsPage.needModifier";
   return null;
 }
 

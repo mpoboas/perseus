@@ -100,9 +100,9 @@ describe("bindingProblem", () => {
   });
 
   it("rejects a bare letter, Esc and Tab", () => {
-    expect(bindingProblem("K")).toMatch(/typed into text boxes/);
-    expect(bindingProblem("Escape")).toMatch(/cancel/);
-    expect(bindingProblem("Tab")).toMatch(/controls/);
+    expect(bindingProblem("K")).toBe("shortcutsPage.needModifier");
+    expect(bindingProblem("Escape")).toBe("shortcutsPage.escCancels");
+    expect(bindingProblem("Tab")).toBe("shortcutsPage.tabMoves");
   });
 });
 

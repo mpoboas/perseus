@@ -1,20 +1,22 @@
+import { type Key, useT } from "./i18n";
 import { FIXED_SHORTCUTS, SHORTCUTS, useBindings } from "./lib/shortcuts";
 import { Button, Dialog, Shortcut } from "./ui";
 
 const GROUPS = ["General", "View", "Graph", "Changes"] as const;
 
 export function ShortcutsDialog({ onClose, onCustomize }: { onClose: () => void; onCustomize: () => void }) {
+  const t = useT();
   const bindings = useBindings();
   return (
     <Dialog
-      title="Keyboard shortcuts"
+      title={t("shortcut.dialogTitle")}
       width={560}
       onClose={onClose}
       footer={
         <>
-          <Button onClick={onCustomize}>Customize…</Button>
+          <Button onClick={onCustomize}>{t("shortcut.customize")}</Button>
           <Button variant="primary" onClick={onClose}>
-            Done
+            {t("shortcut.done")}
           </Button>
         </>
       }
@@ -26,14 +28,14 @@ export function ShortcutsDialog({ onClose, onCustomize }: { onClose: () => void;
           if (own.length + fixed.length === 0) return null;
           return (
             <section key={g}>
-              <h3>{g}</h3>
+              <h3>{t(`shortcut.group.${g}` as Key)}</h3>
               <dl>
                 {own.map((s) => (
                   <div key={s.id} className="shortcut-row">
-                    <dt>{s.label}</dt>
+                    <dt>{t(`shortcut.${s.id}` as Key)}</dt>
                     <dd>
                       {bindings[s.id].length === 0 ? (
-                        <span className="muted">Not assigned</span>
+                        <span className="muted">{t("shortcut.notAssigned")}</span>
                       ) : (
                         bindings[s.id].slice(0, 2).map((b) => <Shortcut key={b} keys={b} />)
                       )}
@@ -41,10 +43,10 @@ export function ShortcutsDialog({ onClose, onCustomize }: { onClose: () => void;
                   </div>
                 ))}
                 {fixed.map((s) => (
-                  <div key={s.label} className="shortcut-row">
-                    <dt>{s.label}</dt>
+                  <div key={s.id} className="shortcut-row">
+                    <dt>{t(`shortcut.fixed.${s.id}` as Key)}</dt>
                     <dd>
-                      <span className="muted">{s.keys}</span>
+                      <span className="muted">{s.translated ? t(s.keys as Key) : s.keys}</span>
                     </dd>
                   </div>
                 ))}

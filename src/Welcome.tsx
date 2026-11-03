@@ -2,6 +2,7 @@ import { Download, FolderOpen, FolderPlus, FolderX, GitBranch, Pencil, Search, S
 import type { RecentRepo } from "./ipc";
 import { relativeTime } from "./lib/format";
 import { repoLabel, splitRecents } from "./lib/repos";
+import { useT } from "./i18n";
 import { useBindings } from "./lib/shortcuts";
 import { Button, IconButton, Shortcut } from "./ui";
 
@@ -38,6 +39,7 @@ export function Welcome({
   onClone,
   onInit,
 }: Props) {
+  const t = useT();
   const keys = useBindings();
   const { favorites, others } = splitRecents(recents);
 
@@ -49,24 +51,24 @@ export function Welcome({
           className="recent-main"
           disabled={busy || !r.exists}
           onClick={() => onOpenRecent(r.path)}
-          title={r.exists ? r.path : `${r.path} (folder not found)`}
+          title={r.exists ? r.path : t("welcome.folderNotFound", { path: r.path })}
         >
           {r.exists ? <GitBranch size={16} /> : <FolderX size={16} />}
           <span className="recent-text">
             <strong>{label}</strong>
             <span className="recent-path">{r.alias ? `${r.name} · ${r.path}` : r.path}</span>
           </span>
-          <span className="recent-time">{r.exists ? relativeTime(r.last_opened) : "missing"}</span>
+          <span className="recent-time">{r.exists ? relativeTime(r.last_opened) : t("welcome.missing")}</span>
         </button>
         <IconButton
           icon={Star}
-          label={r.favorite ? `Remove ${label} from favorites` : `Add ${label} to favorites`}
+          label={t(r.favorite ? "welcome.removeFavorite" : "welcome.addFavorite", { name: label })}
           size="sm"
           active={r.favorite}
           onClick={() => onToggleFavorite(r.path, !r.favorite)}
         />
-        <IconButton icon={Pencil} label={`Rename ${label}`} size="sm" onClick={() => onRename(r.path)} />
-        <IconButton icon={X} label={`Remove ${label} from the list`} size="sm" onClick={() => onRemoveRecent(r.path)} />
+        <IconButton icon={Pencil} label={t("welcome.rename", { name: label })} size="sm" onClick={() => onRename(r.path)} />
+        <IconButton icon={X} label={t("welcome.removeFromList", { name: label })} size="sm" onClick={() => onRemoveRecent(r.path)} />
       </li>
     );
   };
@@ -77,41 +79,39 @@ export function Welcome({
         <div className="welcome-hero">
           <Logo />
           <h1>Perseus</h1>
-          <p>A fast, free visual Git client. Every feature, every repository, no paywall.</p>
+          <p>{t("welcome.tagline")}</p>
           <div className="welcome-actions">
             <Button variant="primary" icon={FolderOpen} disabled={busy} onClick={onOpen}>
-              Open repository
+              {t("welcome.open")}
               {keys.open[0] && <Shortcut keys={keys.open[0]} />}
             </Button>
             <Button icon={Search} onClick={onPalette}>
-              Command palette
+              {t("welcome.palette")}
               {keys.palette[0] && <Shortcut keys={keys.palette[0]} />}
             </Button>
           </div>
           <div className="welcome-actions secondary">
             <Button variant="ghost" icon={Download} disabled={busy} onClick={onClone}>
-              Clone a repository
+              {t("welcome.clone")}
             </Button>
             <Button variant="ghost" icon={FolderPlus} disabled={busy} onClick={onInit}>
-              Create a new repository
+              {t("welcome.create")}
             </Button>
           </div>
         </div>
 
         {favorites.length > 0 && (
-          <section className="recents" aria-label="Favorite repositories">
-            <h2>Favorites</h2>
+          <section className="recents" aria-label={t("welcome.favoritesLabel")}>
+            <h2>{t("welcome.favorites")}</h2>
             <ul>{favorites.map(row)}</ul>
           </section>
         )}
 
-        <section className="recents" aria-label="Recent repositories">
-          <h2>Recent</h2>
+        <section className="recents" aria-label={t("welcome.recentLabel")}>
+          <h2>{t("welcome.recent")}</h2>
           {others.length === 0 ? (
             <p className="muted recents-empty">
-              {favorites.length > 0
-                ? "Other repositories you open show up here."
-                : "Repositories you open show up here, so getting back to them is one click."}
+              {t(favorites.length > 0 ? "welcome.recentEmptyAfterFavorites" : "welcome.recentEmpty")}
             </p>
           ) : (
             <ul>{others.map(row)}</ul>
