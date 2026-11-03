@@ -136,3 +136,22 @@ ul {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Windows "contrast themes" and similar: the system replaces our colours, so make sure controls keep an edge and focus stays visible. */
+@media (forced-colors: active) {
+  :focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  .btn,
+  .input,
+  .select,
+  .textarea,
+  .badge,
+  .kbd {
+    border: 1px solid ButtonText;
+  }
+  .graph-scroller:focus-visible {
+    outline: 2px solid Highlight;
+  }
+}

@@ -12,6 +12,7 @@ import {
 } from "./graphLayout";
 import type { RefInfo } from "./ipc";
 import { absoluteTime, avatarColor, initials, relativeTime } from "./lib/format";
+import { describeCommit, describeWip, mirroredRows } from "./lib/graphA11y";
 import { scrollMap } from "./lib/scrollMap";
 import { avatarImage, ownerImage, subscribeAvatars } from "./lib/avatars";
 import { Avatar, EmptyState, Skeleton, Splitter } from "./ui";
@@ -224,6 +225,8 @@ export function GraphCanvas({
   const [viewH, setViewH] = useState(600);
   const [scrollbarW, setScrollbarW] = useState(0);
   const [graphW, setGraphW] = useState(PAD * 2 + LANE_W);
+  // The rows on screen, so the same rows can be offered to screen readers as a list (see below).
+  const [win, setWin] = useState({ first: 0, last: 0 });
   const raf = useRef(0);
   const palette = useRef<Palette | null>(null);
   const hover = useRef<number | null>(null);
@@ -284,6 +287,7 @@ export function GraphCanvas({
     const total = n + off;
     const firstDisplay = Math.max(0, Math.floor(top / ROW_H));
     const lastDisplay = Math.min(total - 1, Math.ceil((top + h) / ROW_H));
+    setWin((w) => (w.first === firstDisplay && w.last === lastDisplay ? w : { first: firstDisplay, last: lastDisplay }));
     const gW = PAD * 2 + Math.min(store.maxLanes, MAX_GRAPH_LANES) * LANE_W;
     const now = Date.now();
     const yOf = (display: number) => display * ROW_H - top;
@@ -806,6 +810,17 @@ export function GraphCanvas({
       return;
     }
     if (count === 0) return;
+    // The keyboard's own way to the context menu (the menu key, or Shift+F10), next to the selected row.
+    if (e.key === "ContextMenu" || (e.key === "F10" && e.shiftKey)) {
+      const sc = scroller.current;
+      if (!sc || selected === null) return;
+      e.preventDefault();
+      const display = selected === "wip" ? 0 : selected + offset;
+      const box = sc.getBoundingClientRect();
+      const y = box.top + Math.min(Math.max(display * ROW_H - listTop(), 0), box.height - ROW_H) + ROW_H / 2;
+      onMenu(selected === "wip" ? { kind: "wip" } : { kind: "commit", row: selected }, box.left + 120, y);
+      return;
+    }
     const page = Math.max(1, Math.floor(size.current.h / ROW_H) - 1);
     // Navigate in display rows so the working-tree row takes part like any other.
     const cur = selected === "wip" ? 0 : selected === null ? -1 : selected + offset;
@@ -900,6 +915,8 @@ export function GraphCanvas({
           tabIndex={0}
           role="listbox"
           aria-label="Commit history"
+          aria-multiselectable={picked.size > 0 || undefined}
+          aria-activedescendant={selected === "wip" ? "gc-wip" : selected !== null ? `gc-row-${selected}` : undefined}
           onScroll={() => {
             hideTip();
             schedule();
@@ -916,7 +933,32 @@ export function GraphCanvas({
           onDoubleClick={onDoubleClick}
           onKeyDown={onKeyDown}
         >
-          <canvas ref={canvas} className="graph-canvas" />
+          <canvas ref={canvas} className="graph-canvas" aria-hidden="true" />
+          {/* The canvas cannot be read by assistive technology, so the rows on screen are repeated here as options. */}
+          {mirroredRows(win.first, win.last, selected === "wip" ? 0 : selected === null ? null : selected + offset, count + offset).map((d) => {
+            if (d < offset) {
+              return (
+                <div key="wip" id="gc-wip" role="option" aria-selected={selected === "wip"} aria-posinset={1} aria-setsize={count + offset} className="sr-only">
+                  {describeWip(wip?.files ?? 0)}
+                </div>
+              );
+            }
+            const r = store.rows[d - offset];
+            if (!r) return null;
+            return (
+              <div
+                key={r.oid}
+                id={`gc-row-${d - offset}`}
+                role="option"
+                aria-selected={selected === d - offset || picked.has(d - offset)}
+                aria-posinset={d + 1}
+                aria-setsize={count + offset}
+                className="sr-only"
+              >
+                {describeCommit(r, refKinds)}
+              </div>
+            );
+          })}
           {/* Total scroll height = canvas height (sticky) + this spacer. */}
           <div style={{ height: scrollRange }} />
         </div>
